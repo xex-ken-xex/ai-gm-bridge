@@ -101,31 +101,38 @@ else
 fi
 
 # ------------------------------------------------------------------------------
-# 3. agy (Antigravity CLI) / Gemini 連携環境の診断
+# 3. agy (Antigravity CLI) 連携環境の必須検証
 # ------------------------------------------------------------------------------
-log_info "3. AI エンジン連携の診断中..."
+log_info "3. agy (Antigravity CLI) 連携環境の確認中..."
 
-AGY_FOUND=false
+AGY_BIN=""
 if command -v agy &>/dev/null; then
-  AGY_PATH=$(command -v agy)
-  AGY_FOUND=true
+  AGY_BIN="$(command -v agy)"
 elif [ -x "$HOME/.local/bin/agy" ]; then
-  AGY_PATH="$HOME/.local/bin/agy"
-  AGY_FOUND=true
+  AGY_BIN="$HOME/.local/bin/agy"
+  export PATH="$HOME/.local/bin:$PATH"
 fi
 
-if [ "$AGY_FOUND" = true ]; then
-  log_ok "agy (Antigravity CLI) 検出: $AGY_PATH (サポートGM 連携有効)"
-else
-  log_warn "agy コマンドが PATH に見つかりません。"
-  log_warn "  ※ サポートGM (チャット内ダンジョン自動生成等) を利用する場合は"
-  log_warn "     agy がインストールされ PATH に通っていることを確認してください。"
+if [ -z "$AGY_BIN" ]; then
+  log_error "agy (Antigravity CLI) がインストールされていません！"
+  log_error "本システム (AI GM Bridge) はサポートGM連携に agy を必須要件としています。"
+  log_error "先に agy のインストーラーを実行してセットアップを完了させてください。"
+  log_error "インストール完了後、再度 ./Setup.sh を実行してください。"
+  exit 1
 fi
+
+# agy コマンドの動作検証
+if ! "$AGY_BIN" --version &>/dev/null; then
+  log_error "agy コマンド ($AGY_BIN) の実行検証に失敗しました。"
+  log_error "agy のインストーラーが正常に完了しているかご確認ください。"
+  exit 1
+fi
+
+AGY_VER="$("$AGY_BIN" --version 2>/dev/null || echo "installed")"
+log_ok "agy (Antigravity CLI) 検出: $AGY_BIN (v${AGY_VER}) [サポートGM 連携準備完了]"
 
 if [ -n "${GEMINI_API_KEY:-}" ]; then
-  log_ok "GEMINI_API_KEY 環境変数が設定されています (Gemini 直接連携可能)"
-else
-  log_info "GEMINI_API_KEY は未設定です (agy 経由のサポートGM機能が優先利用されます)"
+  log_info "GEMINI_API_KEY 環境変数を検出しました (Gemini 直接連携も利用可能)"
 fi
 
 # ------------------------------------------------------------------------------
