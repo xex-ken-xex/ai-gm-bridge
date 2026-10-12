@@ -299,9 +299,14 @@ async def handler(websocket):
                 prompt = data.get("prompt", "").strip()
                 print(f"\n[FVTT GM指示] {user}: /ai {prompt}")
 
-                # ダンジョン生成のキーワード検知
-                dungeon_keywords = ["ダンジョン", "マップ", "迷宮", "遺跡", "城塞", "寺院", "洞窟", "要塞", "塔", "生成", "地下", "墓"]
-                if not prompt or any(k in prompt for k in dungeon_keywords):
+                # ダンジョン生成の意図判定 (ダンジョン/マップ/迷宮、または遺跡/城塞等の作成要求)
+                # NPCや会話指示など他の指示が含まれる場合は通常のアシスタントGMへルーティング
+                is_npc_or_dialogue = any(k in prompt.lower() for k in ["npc", "キャラクター", "敵", "モンスター", "会話", "セリフ", "ロールプレイ", "動か", "操作", "判定", "ダイス", "ルール"])
+                dungeon_explicit = any(k in prompt for k in ["ダンジョン", "マップ", "迷宮"])
+                structure_create = any(k in prompt for k in ["遺跡", "城塞", "寺院", "洞窟", "要塞", "塔", "地下"]) and any(k in prompt for k in ["生成", "作っ", "作成", "ビルド"])
+                is_dungeon_intent = (not prompt) or ((dungeon_explicit or structure_create) and not is_npc_or_dialogue)
+
+                if is_dungeon_intent:
                     agy_session["pending_dungeon"]["user_prompt"] = prompt
                     # ステップ1: サイズ選択肢カードを返送
                     card_msg = {
@@ -319,9 +324,10 @@ async def handler(websocket):
                     print("サイズ選択肢カードをFVTTへ送信しました。")
                     continue
 
-                # その他の自然言語指示は agy CLI へルーティング
+                # その他の自然言語指示は agy CLI へルーティング (NPC操作・相談・設定構築など)
                 print(f"agyへプロンプトを委譲中: {prompt}")
-                agy_resp, conv_id = await call_agy(prompt, agy_session["conversation_id"])
+                support_prompt = f"あなたはTRPG (D&D5e) の敏腕サポートGM (agy) です。メインGMからの指示や相談に的確・創造的・簡潔に回答してください。\nGMからの指示: {prompt}" if not agy_session["conversation_id"] else prompt
+                agy_resp, conv_id = await call_agy(support_prompt, agy_session["conversation_id"])
                 agy_session["conversation_id"] = conv_id
 
                 await websocket.send(json.dumps({
