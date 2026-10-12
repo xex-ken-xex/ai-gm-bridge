@@ -274,6 +274,9 @@ class DungeonGenerator:
                     dist[nxt] = dist[curr] + 1
                     queue.append(nxt)
 
+        self.adj = adj
+        self.dist = dist
+
         farthest_room_idx = max(range(num_rooms), key=lambda i: dist[i])
         self.start_room_idx = start_room_idx
         self.goal_room_idx = farthest_room_idx
@@ -287,6 +290,35 @@ class DungeonGenerator:
         self._seal_outer_walls()
 
         self.elapsed_time = time.time() - t0
+
+    def get_room_topologies(self) -> List[Dict]:
+        """各部屋の離散グラフ上のトポロジー（次数・深さ・面積・サイクル所属等）を抽出"""
+        topologies = []
+        num_rooms = len(self.rooms)
+        # MST以外の追加辺（サイクル形成辺）
+        cycle_edges = set(self.edges[num_rooms - 1:]) if len(self.edges) >= num_rooms else set()
+
+        for i, room in enumerate(self.rooms):
+            rx, ry, rw, rh = room
+            neighbors = self.adj.get(i, []) if hasattr(self, 'adj') else []
+            deg = len(neighbors)
+            depth = self.dist[i] if hasattr(self, 'dist') and i < len(self.dist) else 0
+            is_start = (i == self.start_room_idx)
+            is_goal = (i == self.goal_room_idx)
+            in_cycle = any((i, v) in cycle_edges or (v, i) in cycle_edges for v in neighbors)
+
+            topologies.append({
+                "id": i,
+                "deg": deg,
+                "depth": depth,
+                "start": is_start,
+                "goal": is_goal,
+                "in_cycle": in_cycle,
+                "area": rw * rh,
+                "bounds": [rx, ry, rw, rh],
+                "center": self.room_centers[i]
+            })
+        return topologies
 
     def get_fill_ratio(self) -> float:
         """床の充填率 (Fill Ratio: ρ)"""
@@ -400,11 +432,19 @@ class DungeonGenerator:
             lines.append("".join(self.grid[y][start_x : start_x + width]))
         return "\n".join(lines)
 
-    def get_room_flavor_notes(self, grid_size: int = 100) -> List[Dict]:
-        """各部屋のフレーバーノート（名前・情景描写・アイコン・座標）を生成"""
+    def get_room_flavor_notes(self, grid_size: int = 100, custom_flavors: Optional[List[Dict]] = None) -> List[Dict]:
+        """各部屋のフレーバーノート（名前・情景描写・アイコン・座標）を生成。AI生成カスタムフレーバーにも対応"""
         num_rooms = len(self.rooms)
         if num_rooms == 0:
             return []
+
+        # custom_flavors が提供されている場合、idによる辞書化
+        cf_map = {}
+        if custom_flavors:
+            for cf in custom_flavors:
+                cid = cf.get("id")
+                if cid is not None:
+                    cf_map[cid] = cf
 
         themes = [
             {
@@ -490,26 +530,47 @@ class DungeonGenerator:
             rx, ry, rw, rh = self.rooms[i]
             cx, cy = self.room_centers[i]
 
-            if i == self.start_room_idx:
+            # AI生成カスタムフレーバーが存在するかチェック (0-indexed または 1-indexed)
+            cf = cf_map.get(i) or cf_map.get(i + 1)
+
+            if cf:
+                room_type = cf.get("role", "room")
+                title = cf.get("title", f"部屋 {i + 1}")
+                icon = cf.get("icon", "icons/svg/door-steel.svg")
+                flavor = cf.get("tts_narration") or cf.get("flavor", "")
+                gm_notes = cf.get("gm_notes", "")
+                is_empty = cf.get("is_empty", False)
+                safe_rest = cf.get("safe_rest", False)
+            elif i == self.start_room_idx:
                 room_type = "start"
                 title = "迷宮の入口広間 (安全地帯)"
                 icon = "icons/svg/door-open-outline.svg"
                 flavor = "地上へと続く階段の麓にある、冷たい地下の空気が吹き抜ける石造りの広間。古い苔むした石畳が広がり、ここから未知の迷宮が始まる。"
+                gm_notes = "安全な退路。地上へ撤退可能。"
+                is_empty = False
+                safe_rest = True
             elif i == self.goal_room_idx:
                 room_type = "goal"
                 title = "最深部：災厄の祭壇 (ボス部屋)"
                 icon = "icons/svg/skull.svg"
                 flavor = "圧倒的な威圧感と澱んだ魔力が充満する巨大な円形広間。中央の黒曜石の祭壇には不穏な紫の光が揺らめき、古代の封印紋が刻まれている。"
+                gm_notes = "最深部ボス部屋。手強い敵と主要な財宝が眠る。"
+                is_empty = False
+                safe_rest = False
             else:
                 tmpl = theme_pool[(i - 1) % len(theme_pool)]
                 room_type = tmpl["type"]
                 title = tmpl["title"]
                 icon = tmpl["icon"]
                 flavor = tmpl["flavor"]
+                gm_notes = ""
+                is_empty = False
+                safe_rest = False
 
             results.append({
                 "id": i + 1,
-                "name": f"部屋 {i + 1}: {title}",
+                "name": f"部屋 {i + 1}: {title}" if not title.startswith(f"部屋 {i + 1}") else title,
+                "title": title,
                 "type": room_type,
                 "icon": icon,
                 "grid_x": rx,
@@ -518,7 +579,10 @@ class DungeonGenerator:
                 "grid_h": rh,
                 "cx": cx * grid_size + grid_size // 2,
                 "cy": cy * grid_size + grid_size // 2,
-                "flavor": flavor
+                "flavor": flavor,
+                "gm_notes": gm_notes,
+                "is_empty": is_empty,
+                "safe_rest": safe_rest
             })
 
         return results

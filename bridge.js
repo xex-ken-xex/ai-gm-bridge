@@ -264,41 +264,98 @@ Hooks.once('ready', async function() {
 
           // 部屋フレーバーノート用ジャーナル帳の作成 & マップノートピンの配置
           let noteCount = 0;
+          let createdJournal = null;
           if (data.rooms && data.rooms.length > 0) {
             console.log(`AI GM Bridge | 部屋フレーバーノート用ジャーナルを作成中 (${data.rooms.length} 部屋)...`);
-            const pages = data.rooms.map(r => ({
-              name: r.name,
-              type: "text",
-              title: { show: true, level: 1 },
-              text: {
-                content: `
-                <div class="ai-gm-room-note" style="font-family: inherit; line-height: 1.6; font-size: 14px;">
-                  <div style="font-size: 16px; font-weight: bold; color: #782e22; border-bottom: 2px solid #782e22; margin-bottom: 8px; padding-bottom: 4px;">
-                    ${r.name}
+            const pages = [];
+
+            // 1. フロア伝承・生態系ページの追加 (Tier 2 メゾ伝承)
+            if (data.lore) {
+              const lore = data.lore;
+              const factionsHtml = Array.isArray(lore.factions)
+                ? lore.factions.map(f => `<li style="margin-bottom: 4px;"><strong>${f.name || ''}</strong> (${f.territory || ''}): <em>${f.status || ''}</em></li>`).join('')
+                : `<li>${lore.factions || ''}</li>`;
+              const amb = lore.floor_ambience || {};
+
+              pages.push({
+                name: `【フロア伝承・生態系】${lore.floor_title || '概要'}`,
+                type: "text",
+                title: { show: true, level: 1 },
+                text: {
+                  content: `
+                  <div class="ai-gm-floor-lore" style="font-family: inherit; line-height: 1.6; font-size: 14px;">
+                    <h2 style="color: #782e22; border-bottom: 2px solid #782e22; padding-bottom: 4px; margin-top: 0;">
+                      🏰 ${lore.dungeon_name || 'ダンジョン概要'}
+                    </h2>
+                    <p style="margin-bottom: 10px;"><strong>【歴史の地層】:</strong> ${lore.history_summary || ''}</p>
+                    <p style="margin-bottom: 12px;"><strong>【フロアの成り立ち】:</strong> ${lore.floor_origin || ''}</p>
+                    
+                    <h3 style="color: #2c3e50; border-bottom: 1px solid #ddd; padding-bottom: 2px; margin-top: 14px;">⚔️ 勢力関係・縄張り (Factions)</h3>
+                    <ul style="padding-left: 20px; margin-bottom: 12px;">${factionsHtml}</ul>
+
+                    <h3 style="color: #2c3e50; border-bottom: 1px solid #ddd; padding-bottom: 2px; margin-top: 14px;">🌫️ 環境の五感 (Sensory Ambience)</h3>
+                    <ul style="padding-left: 20px; margin-bottom: 12px;">
+                      <li><strong>視覚:</strong> ${amb.visual || ''}</li>
+                      <li><strong>聴覚:</strong> ${amb.auditory || ''}</li>
+                      <li><strong>嗅覚:</strong> ${amb.olfactory || ''}</li>
+                      <li><strong>空気:</strong> ${amb.air || ''}</li>
+                    </ul>
                   </div>
-                  <p style="margin-bottom: 12px; font-style: italic; color: #222;">
-                    ${r.flavor}
-                  </p>
-                  <div style="font-size: 12px; color: #555; background: #f0f0f0; padding: 6px 10px; border-radius: 4px;">
-                    📍 マス目範囲: X: ${r.grid_x}〜${r.grid_x + r.grid_w}, Y: ${r.grid_y}〜${r.grid_y + r.grid_h} (${r.grid_w}x${r.grid_h} マス)
-                  </div>
+                  `,
+                  format: 1
+                }
+              });
+            }
+
+            // 2. 各部屋の個別フレーバーノートページの追加
+            for (const r of data.rooms) {
+              const restBadge = r.safe_rest
+                ? `<span style="display:inline-block; background:#27ae60; color:#fff; padding:2px 6px; border-radius:3px; font-size:11px; margin-left:8px;">⛺ 安全な休憩所</span>`
+                : (r.is_empty ? `<span style="display:inline-block; background:#7f8c8d; color:#fff; padding:2px 6px; border-radius:3px; font-size:11px; margin-left:8px;">静寂の空室</span>` : '');
+
+              const gmNoteHtml = r.gm_notes ? `
+                <div style="margin-top: 10px; background: #fff8e7; border-left: 4px solid #f39c12; padding: 6px 10px; font-size: 12px; color: #7f5200; border-radius: 2px;">
+                  <strong>GM専用メモ:</strong> ${r.gm_notes}
                 </div>
-                `,
-                format: 1
-              }
-            }));
+              ` : '';
+
+              pages.push({
+                name: r.name,
+                type: "text",
+                title: { show: true, level: 1 },
+                text: {
+                  content: `
+                  <div class="ai-gm-room-note" style="font-family: inherit; line-height: 1.6; font-size: 14px;">
+                    <div style="font-size: 16px; font-weight: bold; color: #782e22; border-bottom: 2px solid #782e22; margin-bottom: 8px; padding-bottom: 4px;">
+                      ${r.name} ${restBadge}
+                    </div>
+                    <p style="margin-bottom: 12px; font-style: italic; color: #222;">
+                      ${r.flavor}
+                    </p>
+                    ${gmNoteHtml}
+                    <div style="margin-top: 10px; font-size: 12px; color: #555; background: #f0f0f0; padding: 6px 10px; border-radius: 4px;">
+                      📍 マス目範囲: X: ${r.grid_x}〜${r.grid_x + r.grid_w}, Y: ${r.grid_y}〜${r.grid_y + r.grid_h} (${r.grid_w}x${r.grid_h} マス)
+                    </div>
+                  </div>
+                  `,
+                  format: 1
+                }
+              });
+            }
 
             const journalEntry = await JournalEntry.create({
               name: `【探索録】${newScene.name}`,
               pages: pages
             });
+            createdJournal = journalEntry;
 
             if (journalEntry) {
               console.log(`AI GM Bridge | マップノートピンを配置中 (${data.rooms.length} 本)...`);
               const pagesList = journalEntry.pages?.contents ?? [];
+              const pageOffset = data.lore ? 1 : 0;
               const noteDocs = data.rooms.map((r, idx) => ({
                 entryId: journalEntry.id,
-                pageId: pagesList[idx]?.id ?? null,
+                pageId: pagesList[idx + pageOffset]?.id ?? null,
                 x: r.cx + offsetX,
                 y: r.cy + offsetY,
                 text: r.name,
@@ -321,6 +378,13 @@ Hooks.once('ready', async function() {
           const wallCount = newScene.walls?.size ?? actualWalls;
           const roomCountStr = data.room_count ? `・部屋数: ${data.room_count} 部屋<br>` : "";
           const noteCountStr = noteCount > 0 ? `・フレーバーノート: ${noteCount} 箇所 (全室にマップピン📌配置済)<br>` : "";
+          const journalBtnHtml = createdJournal ? `
+            <button class="ai-gm-journal-open-btn" data-journal-id="${createdJournal.id}"
+                    style="flex: 1; padding: 6px; background: #8e44ad; color: #fff; border: none; border-radius: 4px; cursor: pointer;">
+              設定録を開く
+            </button>
+          ` : "";
+
           const successCard = `
           <div style="border: 2px solid #27ae60; border-radius: 6px; padding: 10px; background: rgba(20, 30, 25, 0.9); color: #ecf0f1;">
             <div style="font-weight: bold; color: #2ecc71; font-size: 14px; margin-bottom: 6px;">
@@ -341,6 +405,7 @@ Hooks.once('ready', async function() {
                       style="flex: 1; padding: 6px; background: #34495e; color: #fff; border: none; border-radius: 4px; cursor: pointer;">
                 GMのみ確認
               </button>
+              ${journalBtnHtml}
             </div>
           </div>
           `;
@@ -428,6 +493,18 @@ Hooks.once('ready', async function() {
         if (targetScene) {
           await targetScene.view();
           ui.notifications.info(`シーン「${targetScene.name}」をGM画面に表示しました`);
+        }
+      });
+    });
+
+    // 4. フロア設定録 (journal) 開くボタン
+    root.querySelectorAll(".ai-gm-journal-open-btn").forEach(btn => {
+      btn.addEventListener("click", async (ev) => {
+        ev.preventDefault();
+        const jId = btn.getAttribute("data-journal-id");
+        const targetJournal = game.journal.get(jId);
+        if (targetJournal) {
+          targetJournal.sheet.render(true);
         }
       });
     });

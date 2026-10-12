@@ -11,6 +11,12 @@ from google.genai import types
 from google.genai.errors import APIError
 
 from tools.dungeon_generator import DungeonGenerator, parse_size
+from tools.prompt_manager import (
+    get_active_world_info,
+    build_lore_prompt,
+    build_rooms_prompt,
+    extract_json_from_response
+)
 
 DATA_DIR = os.path.expanduser("~/foundrydata/Data")
 API_KEY = os.environ.get("GEMINI_API_KEY")
@@ -117,7 +123,7 @@ async def call_agy(prompt: str, conversation_id: Optional[str] = None) -> Tuple[
     if conversation_id:
         cmd.extend(["--conversation", conversation_id])
 
-    print(f"[agy 実行中] プロンプト: {prompt}")
+    print(f"[agy 実行中] プロンプト長: {len(prompt)}文字")
     proc = await asyncio.create_subprocess_exec(
         *cmd,
         stdout=asyncio.subprocess.PIPE,
@@ -134,8 +140,8 @@ async def call_agy(prompt: str, conversation_id: Optional[str] = None) -> Tuple[
     except Exception:
         return out_str or stderr.decode("utf-8").strip(), conversation_id or ""
 
-async def generate_and_create_dungeon_scene(websocket, size_key: str, loop_ratio: float, density: float = 0.5):
-    """ダンジョンを生成し、PNG画像を書き出してFVTTに新シーン作成命令を送信"""
+async def generate_and_create_dungeon_scene(websocket, size_key: str, loop_ratio: float, density: float = 0.5, user_prompt: str = ""):
+    """ダンジョンを生成し、ワールド設定から伝承・生態系・部屋フレーバーをリアルタイム補完してFVTTに新シーン作成命令を送信"""
     size_map = {
         "small": (100, 100, "小", 14),
         "medium": (500, 500, "中", 6),
@@ -147,7 +153,7 @@ async def generate_and_create_dungeon_scene(websocket, size_key: str, loop_ratio
     density_label = "標準" if density <= 0.5 else ("密集" if density <= 0.8 else "ギッシリ")
     print(f"\n[ダンジョン自動生成開始] サイズ: {size_name} ({w}x{h}), 密度: {density_label} ({density}), ループ率: {loop_ratio}")
 
-    # 1. ダンジョン生成
+    # 1. ダンジョン幾何学生成
     gen = DungeonGenerator(width=w, height=h, density=density, loop_ratio=loop_ratio)
     gen.generate()
 
@@ -172,19 +178,88 @@ async def generate_and_create_dungeon_scene(websocket, size_key: str, loop_ratio
             print(f"壁総数({len(raw_walls)}本)が上限(3000本)を超過したためパフォーマンス保護のためスキップ")
     print(f"壁セグメント抽出完了: {len(walls)} 本 (部屋数: {len(gen.rooms)})")
 
-    # 4. 各部屋のフレーバーノート自動生成
-    rooms = gen.get_room_flavor_notes(grid_size=100)
-    print(f"フレーバーノート生成完了: {len(rooms)} 部屋 (ノートピン & ジャーナル対応)")
+    # 4. ワールド設定の読み込み
+    world_info = get_active_world_info()
+    world_title = world_info.get("title", "The Antikythira")
+    world_desc = world_info.get("description", "ゴブリンキングとブラックドラゴンの地下城塞")
 
-    # 5. FVTTへシーン作成コマンド送信
+    # 進行状況をチャットへ即時通知（ユーザーへの応答速度と安心感向上）
+    await websocket.send(json.dumps({
+        "action": "chat",
+        "speaker": "サポートGM (agy)",
+        "content": f"🏰 <b>ダンジョン構造を算出しました</b> (部屋数: {len(gen.rooms)}部屋)<br>📜 ワールド設定『{world_desc}』に基づき、伝承・生態系と各部屋の情景をAI補完中..."
+    }))
+
+    # 5. Tier 1 & 2: ダンジョン全体の歴史・伝承とフロア生態系を生成
+    lore_prompt = build_lore_prompt(
+        world_title=world_title,
+        world_description=world_desc,
+        user_prompt=user_prompt,
+        floor_number=1,
+        size_name=size_name,
+        room_count=len(gen.rooms)
+    )
+    print("[Lore生成中] agy に問い合わせ...")
+    lore_data = None
+    try:
+        lore_resp, _ = await call_agy(lore_prompt)
+        lore_data = extract_json_from_response(lore_resp)
+    except Exception as e:
+        print(f"Lore生成失敗 ({e})。フォールバック伝承を使用します。")
+
+    if not isinstance(lore_data, dict) or "floor_title" not in lore_data:
+        lore_data = {
+            "dungeon_name": "黒水城塞 (Blackwater Bastion)",
+            "floor_title": f"第1層: 酸蝕の外郭城塞 ({size_name})",
+            "floor_origin": "古代の堅牢な要塞がブラックドラゴンの酸ブレスで崩壊し、現在はゴブリンキングの軍勢が占拠している。",
+            "history_summary": "沼沢地の要衝として建造されたが、竜の襲来により壊滅。現在は竜とゴブリンが共生・支配する。",
+            "factions": [
+                {"name": "泥爪ゴブリン軍団", "territory": "外郭検問所および詰所", "status": "侵入者を警戒し略奪を企む"},
+                {"name": "酸蝕の竜血信徒", "territory": "水路および深部通路", "status": "ブラックドラゴンに仕え酸の罠を設置"}
+            ],
+            "floor_ambience": {
+                "visual": "酸で溶解した切石の壁面と黒苔、粗末な獣脂松明の赤い光",
+                "auditory": "天井から滴る酸性水が石を焦がす音と遠くの獣の唸り声",
+                "olfactory": "鼻腔を突く刺激的な硫黄臭と獣の体臭",
+                "air": "生ぬるく肌にまとわりつく高湿度の酸性蒸気"
+            }
+        }
+
+    # 進行状況通知 2: 伝承確定
+    await websocket.send(json.dumps({
+        "action": "chat",
+        "speaker": "サポートGM (agy)",
+        "content": f"⚔️ <b>伝承決定:</b> 『{lore_data.get('dungeon_name')}』 - {lore_data.get('floor_title')}<br>各部屋のトポロジー（接続数・深さ・空室配分）に基づき情景とGMメモを補完中..."
+    }))
+
+    # 6. Tier 3: トポロジーに基づく部屋フレーバー補完生成
+    topologies = gen.get_room_topologies()
+    rooms_prompt = build_rooms_prompt(lore_data, topologies, max_rooms=15)
+    print("[Room補完中] agy に問い合わせ...")
+    custom_flavors = None
+    try:
+        rooms_resp, _ = await call_agy(rooms_prompt)
+        parsed_rooms = extract_json_from_response(rooms_resp)
+        if isinstance(parsed_rooms, list):
+            custom_flavors = parsed_rooms
+    except Exception as e:
+        print(f"Roomフレーバー生成失敗 ({e})。ベースプロシージャルノートを使用します。")
+
+    # 7. 各部屋フレーバーの統合
+    rooms = gen.get_room_flavor_notes(grid_size=100, custom_flavors=custom_flavors)
+    print(f"フレーバーノート生成完了: {len(rooms)} 部屋 (AI補完反映済)")
+
+    # 8. FVTTへシーン作成コマンド送信
+    scene_title = f"{lore_data.get('dungeon_name', '地下城塞')} - {lore_data.get('floor_title', f'第1層 ({size_name})')}"
     await websocket.send(json.dumps({
         "action": "create_dungeon_scene",
-        "name": f"地下迷宮 ({size_name}: {w}x{h})",
+        "name": scene_title,
         "background_src": png_filename,
         "grid_width": w,
         "grid_height": h,
         "grid_size": 100,
         "room_count": len(gen.rooms),
+        "lore": lore_data,
         "rooms": rooms,
         "density": density,
         "start_pos": gen.start_pos,
@@ -192,9 +267,9 @@ async def generate_and_create_dungeon_scene(websocket, size_key: str, loop_ratio
         "walls": walls
     }))
 
-    # 4. 音声報告
+    # 9. 音声報告
     voice_filename = f"voice_dungeon_{ts}.mp3"
-    speech_text = f"ダンジョン『地下迷宮 {size_name}』(部屋数: {len(gen.rooms)}部屋) のシーンを生成しました。チャットカードから全員で移動するかプレビューできます。"
+    speech_text = f"ダンジョン『{lore_data.get('dungeon_name', '地下城塞')}』のシーンを生成しました。全{len(gen.rooms)}部屋に生態系と情景ノートを設定しました。"
     ok = await generate_speech(speech_text, voice_filename, voice="ja-JP-NanamiNeural")
     if ok:
         await websocket.send(json.dumps({
@@ -223,6 +298,7 @@ async def handler(websocket):
 
                 # ダンジョン生成のキーワード検知
                 if not prompt or "ダンジョン" in prompt or "マップ" in prompt or "迷宮" in prompt:
+                    agy_session["pending_dungeon"]["user_prompt"] = prompt
                     # ステップ1: サイズ選択肢カードを返送
                     card_msg = {
                         "action": "interactive_card",
@@ -304,8 +380,8 @@ async def handler(websocket):
                         loop_ratio = float(parts[3])
                     else:
                         density = 0.5
-                        loop_ratio = float(parts[2])
-                    await generate_and_create_dungeon_scene(websocket, size_key, loop_ratio, density)
+                    user_prompt = agy_session["pending_dungeon"].get("user_prompt", "")
+                    await generate_and_create_dungeon_scene(websocket, size_key, loop_ratio, density, user_prompt=user_prompt)
                     continue
 
             # -------------------------------------------------------------

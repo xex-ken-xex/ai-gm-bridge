@@ -32,7 +32,8 @@ ai-gm-bridge/
     ├── Todo.md          # 開発タスクリスト & ロードマップ
     ├── investigation_fvtt_dnd5e_control.md # FVTT & D&D5e 制御仕様調査レポート (シーン・マップ・トークン・ロール)
     ├── dungeon_generator_spec.md # ダンジョン自動生成ツール仕様書
-    └── dungeon_math_investigation.md # ダンジョン生成の数学的モデリング調査・仕様化検討レポート
+    ├── dungeon_math_investigation.md # ダンジョン生成の数学的モデリング調査・仕様化検討レポート
+    └── ai_dungeon_flavor_spec.md # AI ダンジョン階層フレーバー生成仕様 & DMノウハウ調査レポート
 ```
 
 ### 各ファイルの役割
@@ -52,6 +53,8 @@ ai-gm-bridge/
   ダンジョン自動生成ツール (`dungeon_generator.py`) の仕様書。
 - **[`docs/dungeon_math_investigation.md`](file:///home/kenic/foundrydata/Data/modules/ai-gm-bridge/docs/dungeon_math_investigation.md)**
   グラフ理論、幾何学、パーコレーション理論等によるダンジョン生成の数学的側面調査と次期仕様化検討書。
+- **[`docs/ai_dungeon_flavor_spec.md`](file:///home/kenic/foundrydata/Data/modules/ai-gm-bridge/docs/ai_dungeon_flavor_spec.md)**
+  TRPG/DM設計ノウハウ（歴史の地層、生態系、空室の価値、Jaquaysing）と離散グラフ解析に基づくAI階層フレーバー生成仕様書。
 - **[`tools/dungeon_generator.py`](file:///home/kenic/foundrydata/Data/modules/ai-gm-bridge/tools/dungeon_generator.py)**
   シード値、サイズ、部屋密度を指定可能なダンジョン自動生成ツール。
 - **[`module.json`](file:///home/kenic/foundrydata/Data/modules/ai-gm-bridge/module.json)**
