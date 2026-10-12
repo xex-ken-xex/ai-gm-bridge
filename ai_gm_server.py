@@ -6,9 +6,17 @@ import time
 from typing import Optional, Tuple
 import websockets
 import edge_tts
+from edge_tts import constants, communicate
 from google import genai
 from google.genai import types
 from google.genai.errors import APIError
+
+# Microsoft Edge TTS エンドポイント移行 (api.msedgeservices.com) への恒久対応 (403回避)
+constants.WSS_URL = (
+    "wss://api.msedgeservices.com/tts/cognitiveservices/websocket/v1"
+    f"?Ocp-Apim-Subscription-Key={constants.TRUSTED_CLIENT_TOKEN}"
+)
+communicate.WSS_URL = constants.WSS_URL
 
 from tools.dungeon_generator import DungeonGenerator, parse_size
 from tools.prompt_manager import (
