@@ -115,6 +115,29 @@ flowchart TD
 }
 ```
 
+#### GM `/ai` コマンドイベント (`ai_command`)
+GM がチャット欄で `/ai <プロンプト>` を実行した際に送信されます。
+
+```json
+{
+  "event": "ai_command",
+  "user": "string (GM表示名)",
+  "prompt": "string (AIへの指示内容)"
+}
+```
+
+#### チャット内ボタン選択イベント (`ai_choice`)
+GM が対話型チャットカード上の選択肢ボタンをクリックした際に送信されます。
+
+```json
+{
+  "event": "ai_choice",
+  "user": "string (GM表示名)",
+  "value": "string (選択肢の内部識別値。例: 'dungeon_size:small')",
+  "label": "string (選択肢の表示名。例: '小 (100x100マス)')"
+}
+```
+
 ---
 
 ### 4.2 Python サーバー → FVTT
@@ -152,6 +175,37 @@ flowchart TD
   "action": "play_sound",
   "src": "string (Dataディレクトリからの相対パス。例: 'voice_1728712345.mp3')",
   "volume": "number (音量 0.0〜1.0。既定値: 1.0)"
+}
+```
+
+#### 4. インタラクティブ選択カード (`interactive_card`)
+GM 向けに対話型の選択肢ボタンを含むチャットカードを表示します。
+
+```json
+{
+  "action": "interactive_card",
+  "title": "ダンジョン自動生成",
+  "message": "生成するダンジョンの規模を選択してください：",
+  "choices": [
+    { "label": "小 (100x100マス)", "value": "dungeon_size:small" },
+    { "label": "中 (500x500マス)", "value": "dungeon_size:medium" }
+  ]
+}
+```
+
+#### 5. ダンジョンシーン構築 (`create_dungeon_scene`)
+生成されたマップ画像とパラメータを元に、FVTT 内部で `Scene.create` を実行させます。
+
+```json
+{
+  "action": "create_dungeon_scene",
+  "name": "地下迷宮 (小: 100x100)",
+  "background_src": "dungeon_100x100_1728712345.png",
+  "grid_width": 100,
+  "grid_height": 100,
+  "grid_size": 100,
+  "start_pos": [45, 60],
+  "goal_pos": [80, 20]
 }
 ```
 

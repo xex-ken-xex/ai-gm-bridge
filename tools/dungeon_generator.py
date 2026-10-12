@@ -278,6 +278,96 @@ class DungeonGenerator:
         """マップ全体を文字列として取得"""
         return "\n".join("".join(row) for row in self.grid)
 
+    def render_to_png(self, output_path: str, cell_size: int = 10):
+        """グリッドを標準PNG画像ファイルとして書き出し (純粋Python/zlib実装)"""
+        import zlib, struct
+        img_w = self.width * cell_size
+        img_h = self.height * cell_size
+
+        color_wall = (25, 25, 28)       # 濃いスレート岩壁
+        color_floor = (195, 185, 165)   # 石畳の床
+        color_start = (46, 204, 113)    # 緑のスタート地点
+        color_goal = (231, 76, 60)      # 赤のゴール/ボス部屋
+
+        raw_data = bytearray()
+        for y in range(img_h):
+            raw_data.append(0)  # filter type 0
+            grid_y = y // cell_size
+            row = self.grid[grid_y]
+            for x in range(img_w):
+                grid_x = x // cell_size
+                cell = row[grid_x]
+                if cell == WALL:
+                    c = color_wall
+                elif cell == FLOOR:
+                    c = color_floor
+                elif cell == START:
+                    c = color_start
+                elif cell == GOAL:
+                    c = color_goal
+                else:
+                    c = color_wall
+                raw_data.extend(c)
+
+        compressed = zlib.compress(raw_data, level=4)
+        with open(output_path, "wb") as f:
+            f.write(b"\x89PNG\r\n\x1a\n")
+            ihdr = struct.pack(">IIBBBBB", img_w, img_h, 8, 2, 0, 0, 0)
+            f.write(struct.pack(">I", len(ihdr)) + b"IHDR" + ihdr + struct.pack(">I", zlib.crc32(b"IHDR" + ihdr)))
+            f.write(struct.pack(">I", len(compressed)) + b"IDAT" + compressed + struct.pack(">I", zlib.crc32(b"IDAT" + compressed)))
+            f.write(struct.pack(">I", 0) + b"IEND" + struct.pack(">I", zlib.crc32(b"IEND")))
+
+    def extract_walls(self, grid_size: int = 100) -> List[List[int]]:
+        """ダンジョンの部屋・通路と壁の境界線を抽出し、結合された線分リスト [x0, y0, x1, y1] として返却"""
+        from collections import defaultdict
+
+        h_by_y = defaultdict(list)
+        for y in range(self.height):
+            for x in range(self.width):
+                is_floor = self.grid[y][x] != WALL
+                if is_floor and (y == 0 or self.grid[y - 1][x] == WALL):
+                    h_by_y[y].append((x, x + 1))
+                if is_floor and (y == self.height - 1 or self.grid[y + 1][x] == WALL):
+                    h_by_y[y + 1].append((x, x + 1))
+
+        v_by_x = defaultdict(list)
+        for x in range(self.width):
+            for y in range(self.height):
+                is_floor = self.grid[y][x] != WALL
+                if is_floor and (x == 0 or self.grid[y][x - 1] == WALL):
+                    v_by_x[x].append((y, y + 1))
+                if is_floor and (x == self.width - 1 or self.grid[y][x + 1] == WALL):
+                    v_by_x[x + 1].append((y, y + 1))
+
+        walls = []
+        for y, segs in h_by_y.items():
+            if not segs:
+                continue
+            segs.sort()
+            cur_start, cur_end = segs[0]
+            for s, e in segs[1:]:
+                if s <= cur_end:
+                    cur_end = max(cur_end, e)
+                else:
+                    walls.append([cur_start * grid_size, y * grid_size, cur_end * grid_size, y * grid_size])
+                    cur_start, cur_end = s, e
+            walls.append([cur_start * grid_size, y * grid_size, cur_end * grid_size, y * grid_size])
+
+        for x, segs in v_by_x.items():
+            if not segs:
+                continue
+            segs.sort()
+            cur_start, cur_end = segs[0]
+            for s, e in segs[1:]:
+                if s <= cur_end:
+                    cur_end = max(cur_end, e)
+                else:
+                    walls.append([x * grid_size, cur_start * grid_size, x * grid_size, cur_end * grid_size])
+                    cur_start, cur_end = s, e
+            walls.append([x * grid_size, cur_start * grid_size, x * grid_size, cur_end * grid_size])
+
+        return walls
+
     def get_preview(self, center: Optional[Tuple[int, int]] = None, width: int = 40, height: int = 20) -> str:
         """指定座標周辺の拡大プレビューを取得"""
         cx, cy = center if center else (self.start_pos or (self.width // 2, self.height // 2))
