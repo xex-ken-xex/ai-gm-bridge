@@ -18,15 +18,20 @@
 ```text
 ai-gm-bridge/
 ├── Setup.sh             # 環境セットアップスクリプト (冪等実行可能)
+├── README.md            # プロジェクト概要 & 利用ガイド
 ├── requirements.txt     # Python 依存ライブラリ一覧
 ├── AGENTS.md            # 本ドキュメント (AI エージェント向け仕様・規約)
 ├── module.json          # Foundry VTT モジュール定義ファイル
 ├── bridge.js            # FVTT 側 ESModule スクリプト (WebSocket クライアント)
 ├── ai_gm_server.py      # メインバックエンド (WebSocket サーバー + Gemini + edge-tts)
+├── prompts/             # プロンプトテンプレート (キャッシュ保持)
+│   ├── dungeon_lore_prompt.txt   # ダンジョン伝承・生態系生成用
+│   └── dungeon_rooms_prompt.txt  # 部屋トポロジー・情景補完用
 ├── tools/
-│   ├── test_send.py     # チャット & ダイス音送信の単体疎通テスト用スクリプト
-│   ├── test_voice.py    # 音声生成 & 再生指示の単体疎通テスト用スクリプト
-│   └── dungeon_generator.py # ダンジョン自動生成ツール (テキスト/グリッド出力)
+│   ├── prompt_manager.py    # プロンプト補完・ワールド情報取得
+│   ├── dungeon_generator.py # ダンジョン自動生成ツール (幾何学/壁/グラフ)
+│   ├── test_send.py         # チャット & ダイス音送信の単体疎通テスト用スクリプト
+│   └── test_voice.py        # 音声生成 & 再生指示の単体疎通テスト用スクリプト
 └── docs/
     ├── specification.md # 詳細仕様書 (アーキテクチャ・プロトコル・シーケンス)
     ├── Todo.md          # 開発タスクリスト & ロードマップ
