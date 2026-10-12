@@ -17,6 +17,8 @@
 
 ```text
 ai-gm-bridge/
+├── Setup.sh             # 環境セットアップスクリプト (冪等実行可能)
+├── requirements.txt     # Python 依存ライブラリ一覧
 ├── AGENTS.md            # 本ドキュメント (AI エージェント向け仕様・規約)
 ├── module.json          # Foundry VTT モジュール定義ファイル
 ├── bridge.js            # FVTT 側 ESModule スクリプト (WebSocket クライアント)
@@ -34,6 +36,11 @@ ai-gm-bridge/
 ```
 
 ### 各ファイルの役割
+
+- **[`Setup.sh`](file:///home/kenic/foundrydata/Data/modules/ai-gm-bridge/Setup.sh)**
+  環境自動セットアップスクリプト。Python 3、依存ライブラリ、agy CLI、Data ディレクトリ権限を自動検証・導入。何度実行しても安全な冪等設計。
+- **[`requirements.txt`](file:///home/kenic/foundrydata/Data/modules/ai-gm-bridge/requirements.txt)**
+  Python 依存パッケージ定義 (`websockets`, `edge-tts`, `google-genai`)。
 
 - **[`docs/specification.md`](file:///home/kenic/foundrydata/Data/modules/ai-gm-bridge/docs/specification.md)**
   システムの詳細仕様書。アーキテクチャ図、シーケンス図、通信プロトコル仕様、音声処理仕様を定義。
@@ -151,6 +158,9 @@ ai-gm-bridge/
 
 ### 実行コマンド
 ```bash
+# 環境セットアップ (初回および更新時・何度実行しても安全)
+./Setup.sh
+
 # メインサーバー起動
 python3 ai_gm_server.py
 
