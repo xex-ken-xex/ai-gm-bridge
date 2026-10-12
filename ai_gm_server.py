@@ -184,10 +184,13 @@ async def generate_and_create_dungeon_scene(websocket, size_key: str, loop_ratio
     world_desc = world_info.get("description", "ゴブリンキングとブラックドラゴンの地下城塞")
 
     # 進行状況をチャットへ即時通知（ユーザーへの応答速度と安心感向上）
+    is_custom_theme = bool(user_prompt and not any(user_prompt == kw for kw in ["ダンジョン", "ダンジョン生成", "マップ", "迷宮"]))
+    target_theme_desc = f"GM指定テーマ『{user_prompt}』" if is_custom_theme else f"ワールド設定『{world_desc}』"
+
     await websocket.send(json.dumps({
         "action": "chat",
         "speaker": "サポートGM (agy)",
-        "content": f"🏰 <b>ダンジョン構造を算出しました</b> (部屋数: {len(gen.rooms)}部屋)<br>📜 ワールド設定『{world_desc}』に基づき、伝承・生態系と各部屋の情景をAI補完中..."
+        "content": f"🏰 <b>ダンジョン構造を算出しました</b> (部屋数: {len(gen.rooms)}部屋)<br>📜 {target_theme_desc} に基づき、伝承・生態系と各部屋の情景をAI補完中..."
     }))
 
     # 5. Tier 1 & 2: ダンジョン全体の歴史・伝承とフロア生態系を生成
@@ -297,7 +300,8 @@ async def handler(websocket):
                 print(f"\n[FVTT GM指示] {user}: /ai {prompt}")
 
                 # ダンジョン生成のキーワード検知
-                if not prompt or "ダンジョン" in prompt or "マップ" in prompt or "迷宮" in prompt:
+                dungeon_keywords = ["ダンジョン", "マップ", "迷宮", "遺跡", "城塞", "寺院", "洞窟", "要塞", "塔", "生成", "地下", "墓"]
+                if not prompt or any(k in prompt for k in dungeon_keywords):
                     agy_session["pending_dungeon"]["user_prompt"] = prompt
                     # ステップ1: サイズ選択肢カードを返送
                     card_msg = {
