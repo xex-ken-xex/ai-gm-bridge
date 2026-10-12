@@ -172,7 +172,11 @@ async def generate_and_create_dungeon_scene(websocket, size_key: str, loop_ratio
             print(f"壁総数({len(raw_walls)}本)が上限(3000本)を超過したためパフォーマンス保護のためスキップ")
     print(f"壁セグメント抽出完了: {len(walls)} 本 (部屋数: {len(gen.rooms)})")
 
-    # 4. FVTTへシーン作成コマンド送信
+    # 4. 各部屋のフレーバーノート自動生成
+    rooms = gen.get_room_flavor_notes(grid_size=100)
+    print(f"フレーバーノート生成完了: {len(rooms)} 部屋 (ノートピン & ジャーナル対応)")
+
+    # 5. FVTTへシーン作成コマンド送信
     await websocket.send(json.dumps({
         "action": "create_dungeon_scene",
         "name": f"地下迷宮 ({size_name}: {w}x{h})",
@@ -181,6 +185,7 @@ async def generate_and_create_dungeon_scene(websocket, size_key: str, loop_ratio
         "grid_height": h,
         "grid_size": 100,
         "room_count": len(gen.rooms),
+        "rooms": rooms,
         "density": density,
         "start_pos": gen.start_pos,
         "goal_pos": gen.goal_pos,
@@ -304,7 +309,28 @@ async def handler(websocket):
                     continue
 
             # -------------------------------------------------------------
-            # C. 通常のプレイヤー発言 (Gemini TRPG GM 演出)
+            # C. トークン部屋進入検知 (room_entered 自動音声読み上げ)
+            # -------------------------------------------------------------
+            if event_type == "room_entered":
+                room_name = data.get("room_name", "部屋")
+                flavor = data.get("flavor", "")
+                token_name = data.get("token_name", "プレイヤー")
+                print(f"\n[部屋進入検知] {token_name} -> {room_name}: {flavor[:40]}...")
+                if flavor:
+                    voice_filename = f"voice_room_{int(time.time())}.mp3"
+                    speech_text = f"{room_name}。{flavor}"
+                    ok = await generate_speech(speech_text, voice_filename, voice="ja-JP-NanamiNeural")
+                    if ok:
+                        await websocket.send(json.dumps({
+                            "action": "play_sound",
+                            "src": voice_filename,
+                            "volume": 0.95
+                        }))
+                        print(f"部屋進入音声再生指示送信: {voice_filename}")
+                continue
+
+            # -------------------------------------------------------------
+            # D. 通常のプレイヤー発言 (Gemini TRPG GM 演出)
             # -------------------------------------------------------------
             if event_type == "player_message":
                 user = data.get("user", "Player")

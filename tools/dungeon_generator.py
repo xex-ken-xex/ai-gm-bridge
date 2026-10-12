@@ -91,6 +91,8 @@ class DungeonGenerator:
         self.cyclomatic_number: int = 0
         self.start_pos: Optional[Tuple[int, int]] = None
         self.goal_pos: Optional[Tuple[int, int]] = None
+        self.start_room_idx: int = 0
+        self.goal_room_idx: int = 0
         self.max_depth: int = 0
         self.floor_count: int = 0
         self.elapsed_time: float = 0.0
@@ -273,6 +275,8 @@ class DungeonGenerator:
                     queue.append(nxt)
 
         farthest_room_idx = max(range(num_rooms), key=lambda i: dist[i])
+        self.start_room_idx = start_room_idx
+        self.goal_room_idx = farthest_room_idx
         self.max_depth = dist[farthest_room_idx]
 
         goal_x, goal_y = self.room_centers[farthest_room_idx]
@@ -395,6 +399,129 @@ class DungeonGenerator:
         for y in range(start_y, start_y + height):
             lines.append("".join(self.grid[y][start_x : start_x + width]))
         return "\n".join(lines)
+
+    def get_room_flavor_notes(self, grid_size: int = 100) -> List[Dict]:
+        """各部屋のフレーバーノート（名前・情景描写・アイコン・座標）を生成"""
+        num_rooms = len(self.rooms)
+        if num_rooms == 0:
+            return []
+
+        themes = [
+            {
+                "type": "armory",
+                "title": "朽ちた武器庫",
+                "icon": "icons/svg/sword.svg",
+                "flavor": "壁際の木製ラックは崩れ落ち、錆びついた長剣や歪んだ鉄盾が散乱している。鉄錆と湿気た土の混ざった臭気が鼻をつき、古い戦いの名残を感じさせる。"
+            },
+            {
+                "type": "crypt",
+                "title": "眠れる納骨堂",
+                "icon": "icons/svg/skull.svg",
+                "flavor": "壁に穿たれた無数の窪みに、風化した頭蓋骨と骨が几帳面に並べられている。中央には古い石棺が鎮座し、かすかな悪寒が冒険者の背筋を走る。"
+            },
+            {
+                "type": "shrine",
+                "title": "廃れた偶像の礼拝堂",
+                "icon": "icons/svg/temple.svg",
+                "flavor": "倒れた石の長椅子の先に、顔を削り取られた異形の神像が佇んでいる。微かな魔力の残り香があり、床の退色した魔法陣が淡く揺らめいている。"
+            },
+            {
+                "type": "treasury",
+                "title": "忘れ去られた宝物庫",
+                "icon": "icons/svg/chest.svg",
+                "flavor": "頑丈な鉄扉の奥の小部屋。埃をかぶった木箱や真鍮の金具が置かれ、床の隅にはかつて黄金を求めて力尽きた冒険者の遺留品が転がっている。"
+            },
+            {
+                "type": "lab",
+                "title": "錬金術師の作業場",
+                "icon": "icons/svg/eye.svg",
+                "flavor": "割れたガラス管や変色した羊皮紙が作業台に散乱している。酸っぱい薬品の刺激臭が漂い、奥の棚には怪しげな液体が満たされたフラスコが残る。"
+            },
+            {
+                "type": "prison",
+                "title": "鎖された地下牢",
+                "icon": "icons/svg/door-steel.svg",
+                "flavor": "太い鉄格子で仕切られた湿った牢屋。壁には錆びた手枷と鎖が吊るされ、床の染みは何者かが長く苦しめられた凄惨な過去を物語っている。"
+            },
+            {
+                "type": "library",
+                "title": "湿った図書保管庫",
+                "icon": "icons/svg/book.svg",
+                "flavor": "湿気で歪んだ本棚に、カビだらけの革装丁の書物が詰まっている。触れれば崩れそうな羊皮紙の山から、古いインクと埃の匂いが立ち込めている。"
+            },
+            {
+                "type": "barracks",
+                "title": "旧衛兵詰所",
+                "icon": "icons/svg/shield.svg",
+                "flavor": "腐食した木製テーブルと倒れた椅子が残された部屋。かつてここで番をしていた衛兵たちのサイコロや割れた酒瓶が転がっている。"
+            },
+            {
+                "type": "cavern",
+                "title": "落石の洞穴",
+                "icon": "icons/svg/trap.svg",
+                "flavor": "天井の一部が崩落し、鋭い巨岩が床を塞いでいる。岩の隙間からは冷涼な風が吹き抜け、どこからかコツコツと岩を叩くような不気味な物音が反響する。"
+            },
+            {
+                "type": "dining",
+                "title": "朽ち果てた大食堂",
+                "icon": "icons/svg/statue.svg",
+                "flavor": "長い食卓と食器の破片が散らばる広間。中央の暖炉には冷え切った灰が残り、天井の蜘蛛の巣が微風に揺れている。"
+            },
+            {
+                "type": "storeroom",
+                "title": "地下貯蔵庫",
+                "icon": "icons/svg/door-closed.svg",
+                "flavor": "巨大な木樽が転がり、腐った穀物や麻袋が山積みになっている。足元を素早く走るネズミや害虫の気配が闇の中に消えていく。"
+            },
+            {
+                "type": "guard_post",
+                "title": "哨戒の監視所",
+                "icon": "icons/svg/target.svg",
+                "flavor": "通路を見渡す位置に作られた防衛拠点。銃眼のような覗き窓が穿たれ、床には使い古された矢やボウガンの矢柄が落ちている。"
+            }
+        ]
+
+        # シャッフルしたテーマリストを用意（シード値依存で再現性あり）
+        theme_pool = list(themes)
+        self.rng.shuffle(theme_pool)
+
+        results = []
+        for i in range(num_rooms):
+            rx, ry, rw, rh = self.rooms[i]
+            cx, cy = self.room_centers[i]
+
+            if i == self.start_room_idx:
+                room_type = "start"
+                title = "迷宮の入口広間 (安全地帯)"
+                icon = "icons/svg/door-open-outline.svg"
+                flavor = "地上へと続く階段の麓にある、冷たい地下の空気が吹き抜ける石造りの広間。古い苔むした石畳が広がり、ここから未知の迷宮が始まる。"
+            elif i == self.goal_room_idx:
+                room_type = "goal"
+                title = "最深部：災厄の祭壇 (ボス部屋)"
+                icon = "icons/svg/skull.svg"
+                flavor = "圧倒的な威圧感と澱んだ魔力が充満する巨大な円形広間。中央の黒曜石の祭壇には不穏な紫の光が揺らめき、古代の封印紋が刻まれている。"
+            else:
+                tmpl = theme_pool[(i - 1) % len(theme_pool)]
+                room_type = tmpl["type"]
+                title = tmpl["title"]
+                icon = tmpl["icon"]
+                flavor = tmpl["flavor"]
+
+            results.append({
+                "id": i + 1,
+                "name": f"部屋 {i + 1}: {title}",
+                "type": room_type,
+                "icon": icon,
+                "grid_x": rx,
+                "grid_y": ry,
+                "grid_w": rw,
+                "grid_h": rh,
+                "cx": cx * grid_size + grid_size // 2,
+                "cy": cy * grid_size + grid_size // 2,
+                "flavor": flavor
+            })
+
+        return results
 
 
 def parse_size(size_str: str) -> Tuple[int, int]:

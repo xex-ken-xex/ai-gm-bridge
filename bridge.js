@@ -262,9 +262,65 @@ Hooks.once('ready', async function() {
             await newScene.createEmbeddedDocuments("AmbientLight", lights);
           }
 
+          // 部屋フレーバーノート用ジャーナル帳の作成 & マップノートピンの配置
+          let noteCount = 0;
+          if (data.rooms && data.rooms.length > 0) {
+            console.log(`AI GM Bridge | 部屋フレーバーノート用ジャーナルを作成中 (${data.rooms.length} 部屋)...`);
+            const pages = data.rooms.map(r => ({
+              name: r.name,
+              type: "text",
+              title: { show: true, level: 1 },
+              text: {
+                content: `
+                <div class="ai-gm-room-note" style="font-family: inherit; line-height: 1.6; font-size: 14px;">
+                  <div style="font-size: 16px; font-weight: bold; color: #782e22; border-bottom: 2px solid #782e22; margin-bottom: 8px; padding-bottom: 4px;">
+                    ${r.name}
+                  </div>
+                  <p style="margin-bottom: 12px; font-style: italic; color: #222;">
+                    ${r.flavor}
+                  </p>
+                  <div style="font-size: 12px; color: #555; background: #f0f0f0; padding: 6px 10px; border-radius: 4px;">
+                    📍 マス目範囲: X: ${r.grid_x}〜${r.grid_x + r.grid_w}, Y: ${r.grid_y}〜${r.grid_y + r.grid_h} (${r.grid_w}x${r.grid_h} マス)
+                  </div>
+                </div>
+                `,
+                format: 1
+              }
+            }));
+
+            const journalEntry = await JournalEntry.create({
+              name: `【探索録】${newScene.name}`,
+              pages: pages
+            });
+
+            if (journalEntry) {
+              console.log(`AI GM Bridge | マップノートピンを配置中 (${data.rooms.length} 本)...`);
+              const pagesList = journalEntry.pages?.contents ?? [];
+              const noteDocs = data.rooms.map((r, idx) => ({
+                entryId: journalEntry.id,
+                pageId: pagesList[idx]?.id ?? null,
+                x: r.cx + offsetX,
+                y: r.cy + offsetY,
+                text: r.name,
+                texture: {
+                  src: r.icon || "icons/svg/book.svg"
+                },
+                iconSize: 36,
+                fontSize: 16
+              }));
+              await newScene.createEmbeddedDocuments("Note", noteDocs);
+              noteCount = noteDocs.length;
+              console.log("AI GM Bridge | マップノートピン配置完了！");
+
+              // 部屋メタデータをシーンのフラグに記録（トークン進入判定用）
+              await newScene.setFlag("ai-gm-bridge", "rooms", data.rooms);
+            }
+          }
+
           // 完了通知カード
           const wallCount = newScene.walls?.size ?? actualWalls;
           const roomCountStr = data.room_count ? `・部屋数: ${data.room_count} 部屋<br>` : "";
+          const noteCountStr = noteCount > 0 ? `・フレーバーノート: ${noteCount} 箇所 (全室にマップピン📌配置済)<br>` : "";
           const successCard = `
           <div style="border: 2px solid #27ae60; border-radius: 6px; padding: 10px; background: rgba(20, 30, 25, 0.9); color: #ecf0f1;">
             <div style="font-weight: bold; color: #2ecc71; font-size: 14px; margin-bottom: 6px;">
@@ -273,7 +329,7 @@ Hooks.once('ready', async function() {
             <div style="font-size: 12px; margin-bottom: 8px; line-height: 1.4;">
               ・サイズ: ${data.grid_width}x${data.grid_height} マス (${sceneWidth}x${sceneHeight} px)<br>
               ${roomCountStr}・自動配置した壁: ${wallCount} 本 (視界・衝突ブロック)<br>
-              ・スタート地点 (緑光): (${data.start_pos ? data.start_pos.join(", ") : "未設定"})<br>
+              ${noteCountStr}・スタート地点 (緑光): (${data.start_pos ? data.start_pos.join(", ") : "未設定"})<br>
               ・最深部ゴール (赤光): (${data.goal_pos ? data.goal_pos.join(", ") : "未設定"})
             </div>
             <div style="display: flex; gap: 6px;">
@@ -406,6 +462,79 @@ Hooks.once('ready', async function() {
         event: "player_message",
         user: message.author?.name || "Player",
         content: cleanContent
+      }));
+    }
+  });
+
+  // プレイヤー/トークンの部屋進入検知 & フレーバー自動通知 & 音声読み上げ
+  const visitedRoomsByScene = new Map();
+  const tokenLastRoom = new Map();
+
+  Hooks.on("updateToken", async (tokenDoc, change) => {
+    if (!game.user.isGM) return;
+    if (change.x === undefined && change.y === undefined) return;
+
+    const scene = tokenDoc.parent;
+    if (!scene) return;
+    const rooms = scene.flags?.["ai-gm-bridge"]?.rooms;
+    if (!rooms || rooms.length === 0) return;
+
+    const offsetX = scene.dimensions?.sceneX ?? 0;
+    const offsetY = scene.dimensions?.sceneY ?? 0;
+    const gridSize = scene.grid?.size ?? 100;
+
+    // トークンの中心座標
+    const tx = (change.x ?? tokenDoc.x) + (tokenDoc.width * gridSize) / 2;
+    const ty = (change.y ?? tokenDoc.y) + (tokenDoc.height * gridSize) / 2;
+
+    // どの部屋に入っているか探索 (バウンディングボックス判定)
+    const currentRoom = rooms.find(r => {
+      const rx0 = r.grid_x * gridSize + offsetX;
+      const rx1 = (r.grid_x + r.grid_w) * gridSize + offsetX;
+      const ry0 = r.grid_y * gridSize + offsetY;
+      const ry1 = (r.grid_y + r.grid_h) * gridSize + offsetY;
+      return tx >= rx0 && tx <= rx1 && ty >= ry0 && ty <= ry1;
+    });
+
+    if (!currentRoom) return;
+
+    const tokenKey = `${tokenDoc.id}`;
+    if (tokenLastRoom.get(tokenKey) === currentRoom.id) return;
+    tokenLastRoom.set(tokenKey, currentRoom.id);
+
+    let visited = visitedRoomsByScene.get(scene.id);
+    if (!visited) {
+      visited = new Set();
+      visitedRoomsByScene.set(scene.id, visited);
+    }
+
+    if (visited.has(currentRoom.id)) return;
+    visited.add(currentRoom.id);
+
+    console.log(`AI GM Bridge | トークン「${tokenDoc.name}」が「${currentRoom.name}」に進入！`);
+
+    // チャットに部屋の情景描写を自動投稿
+    await ChatMessage.create({
+      speaker: { alias: "AI GM (情景描写)" },
+      content: `
+      <div style="border-left: 4px solid #e67e22; padding: 6px 10px; background: rgba(30, 25, 20, 0.85); color: #f5f5dc; border-radius: 4px;">
+        <div style="font-weight: bold; color: #f39c12; font-size: 14px; margin-bottom: 4px;">
+          📍 ${currentRoom.name}
+        </div>
+        <p style="margin: 0; font-size: 13px; line-height: 1.5;">
+          ${currentRoom.flavor}
+        </p>
+      </div>
+      `
+    });
+
+    // サーバーへ音声生成指示を送信
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({
+        event: "room_entered",
+        token_name: tokenDoc.name,
+        room_name: currentRoom.name,
+        flavor: currentRoom.flavor
       }));
     }
   });

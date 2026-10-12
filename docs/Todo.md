@@ -40,6 +40,10 @@
   - `Scene.create` 時に `walls` ドキュメントを一括登録し、プレイヤー/トークンの壁すり抜け防止および動的視界 (Fog of War) の完全遮断を実現。
 - [x] **7. 冪等セットアップスクリプトの実装 (`Setup.sh` & `requirements.txt`)**
   - 依存ライブラリ (`websockets`, `edge-tts`, `google-genai`) の自動検証・導入、agy 検出、権限設定をワンコマンド化。何度実行しても安全な冪等設計。
+- [x] **8. 各部屋のフレーバーノート自動生成 & トークン進入時TTS読み上げ (`dungeon_generator.py`, `bridge.js`, `ai_gm_server.py`)**
+  - ダンジョン生成時に全部屋へ固有のタイトル・情景描写・SVGアイコンを自動付与。
+  - FVTT にジャーナル (`JournalEntry`) とマップノート (`Note`) を全室の中央に自動配置。
+  - トークン移動フック (`updateToken`) により部屋進入を検知し、チャット描写投稿と `edge-tts` による自動音声ナレーションをシームレスに連動。
 
 ---
 
