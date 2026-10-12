@@ -264,6 +264,7 @@ Hooks.once('ready', async function() {
 
           // 完了通知カード
           const wallCount = newScene.walls?.size ?? actualWalls;
+          const roomCountStr = data.room_count ? `・部屋数: ${data.room_count} 部屋<br>` : "";
           const successCard = `
           <div style="border: 2px solid #27ae60; border-radius: 6px; padding: 10px; background: rgba(20, 30, 25, 0.9); color: #ecf0f1;">
             <div style="font-weight: bold; color: #2ecc71; font-size: 14px; margin-bottom: 6px;">
@@ -271,7 +272,7 @@ Hooks.once('ready', async function() {
             </div>
             <div style="font-size: 12px; margin-bottom: 8px; line-height: 1.4;">
               ・サイズ: ${data.grid_width}x${data.grid_height} マス (${sceneWidth}x${sceneHeight} px)<br>
-              ・自動配置した壁: ${wallCount} 本 (視界・衝突ブロック)<br>
+              ${roomCountStr}・自動配置した壁: ${wallCount} 本 (視界・衝突ブロック)<br>
               ・スタート地点 (緑光): (${data.start_pos ? data.start_pos.join(", ") : "未設定"})<br>
               ・最深部ゴール (赤光): (${data.goal_pos ? data.goal_pos.join(", ") : "未設定"})
             </div>

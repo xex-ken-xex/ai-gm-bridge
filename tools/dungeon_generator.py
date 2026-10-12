@@ -162,25 +162,39 @@ class DungeonGenerator:
         # 500x500: ~80-120部屋
         # 1000x1000: ~150-250部屋
         # 2000x2000: ~300-450部屋
+        # 密度に応じた部屋数スケーリング
+        # 100x100マス時:
+        #   density=0.4 (標準)      : 約 21 部屋
+        #   density=0.7 (密集/多め) : 約 33 部屋
+        #   density=1.0 (ギッシリ)  : 約 48 部屋
         scale_factor = (area / 10000) ** 0.5
-        base_room_count = int(15 * scale_factor * (0.6 + 0.8 * self.density))
-        base_room_count = max(8, min(450, base_room_count))
+        base_room_count = int(scale_factor * (10 + 38 * (self.density ** 1.3)))
+        base_room_count = max(8, min(500, base_room_count))
 
-        # 部屋サイズの決定
-        min_room_size = max(5, int(min(self.width, self.height) * 0.025))
-        max_room_size = max(min_room_size + 3, int(min(self.width, self.height) * 0.065))
+        # 部屋サイズの決定 (密度が高いほど部屋もやや広めに)
+        min_room_size = max(5, int(min(self.width, self.height) * (0.025 + 0.012 * self.density)))
+        max_room_size = max(min_room_size + 3, int(min(self.width, self.height) * (0.055 + 0.020 * self.density)))
 
-        attempts = base_room_count * 4
+        attempts = base_room_count * 10
         for _ in range(attempts):
             w = self.rng.randint(min_room_size, max_room_size)
             h = self.rng.randint(min_room_size, max_room_size)
             x = self.rng.randint(2, self.width - w - 3)
             y = self.rng.randint(2, self.height - h - 3)
 
-            # 部屋同士が過度に重ならないよう配置
+            cx, cy = x + w // 2, y + h // 2
+            # 既存の部屋中心と近すぎる場合はスキップして別座標を試行
+            too_close = False
+            for ecx, ecy in self.room_centers:
+                if abs(cx - ecx) < min_room_size and abs(cy - ecy) < min_room_size:
+                    too_close = True
+                    break
+            if too_close and len(self.rooms) > 0:
+                continue
+
             self._carve_room(x, y, w, h)
             self.rooms.append((x, y, w, h))
-            self.room_centers.append((x + w // 2, y + h // 2))
+            self.room_centers.append((cx, cy))
 
             if len(self.rooms) >= base_room_count:
                 break

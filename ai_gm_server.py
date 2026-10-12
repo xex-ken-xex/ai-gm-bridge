@@ -134,7 +134,7 @@ async def call_agy(prompt: str, conversation_id: Optional[str] = None) -> Tuple[
     except Exception:
         return out_str or stderr.decode("utf-8").strip(), conversation_id or ""
 
-async def generate_and_create_dungeon_scene(websocket, size_key: str, loop_ratio: float):
+async def generate_and_create_dungeon_scene(websocket, size_key: str, loop_ratio: float, density: float = 0.5):
     """ダンジョンを生成し、PNG画像を書き出してFVTTに新シーン作成命令を送信"""
     size_map = {
         "small": (100, 100, "小", 14),
@@ -144,10 +144,11 @@ async def generate_and_create_dungeon_scene(websocket, size_key: str, loop_ratio
     }
     w, h, size_name, cell_size = size_map.get(size_key, (100, 100, "小", 14))
 
-    print(f"\n[ダンジョン自動生成開始] サイズ: {size_name} ({w}x{h}), ループ率: {loop_ratio}")
+    density_label = "標準" if density <= 0.5 else ("密集" if density <= 0.8 else "ギッシリ")
+    print(f"\n[ダンジョン自動生成開始] サイズ: {size_name} ({w}x{h}), 密度: {density_label} ({density}), ループ率: {loop_ratio}")
 
     # 1. ダンジョン生成
-    gen = DungeonGenerator(width=w, height=h, loop_ratio=loop_ratio)
+    gen = DungeonGenerator(width=w, height=h, density=density, loop_ratio=loop_ratio)
     gen.generate()
 
     # 2. PNG画像の書き出し (Dataディレクトリ直下)
@@ -169,7 +170,7 @@ async def generate_and_create_dungeon_scene(websocket, size_key: str, loop_ratio
             walls = raw_walls
         else:
             print(f"壁総数({len(raw_walls)}本)が上限(3000本)を超過したためパフォーマンス保護のためスキップ")
-    print(f"壁セグメント抽出完了: {len(walls)} 本")
+    print(f"壁セグメント抽出完了: {len(walls)} 本 (部屋数: {len(gen.rooms)})")
 
     # 4. FVTTへシーン作成コマンド送信
     await websocket.send(json.dumps({
@@ -179,6 +180,8 @@ async def generate_and_create_dungeon_scene(websocket, size_key: str, loop_ratio
         "grid_width": w,
         "grid_height": h,
         "grid_size": 100,
+        "room_count": len(gen.rooms),
+        "density": density,
         "start_pos": gen.start_pos,
         "goal_pos": gen.goal_pos,
         "walls": walls
@@ -186,7 +189,7 @@ async def generate_and_create_dungeon_scene(websocket, size_key: str, loop_ratio
 
     # 4. 音声報告
     voice_filename = f"voice_dungeon_{ts}.mp3"
-    speech_text = f"ダンジョン『地下迷宮 {size_name}』のシーンを生成しました。チャットカードから全員で移動するかプレビューできます。"
+    speech_text = f"ダンジョン『地下迷宮 {size_name}』(部屋数: {len(gen.rooms)}部屋) のシーンを生成しました。チャットカードから全員で移動するかプレビューできます。"
     ok = await generate_speech(speech_text, voice_filename, voice="ja-JP-NanamiNeural")
     if ok:
         await websocket.send(json.dumps({
@@ -251,29 +254,53 @@ async def handler(websocket):
                 label = data.get("label", "")
                 print(f"\n[FVTT GM選択] {label} ({val})")
 
-                # サイズ選択完了 -> ループ率選択肢カードを返送
+                # ステップ2: サイズ選択完了 -> 部屋の密度選択肢カードを返送
                 if val.startswith("dungeon_size:"):
                     size_key = val.split(":")[1]
                     card_msg = {
                         "action": "interactive_card",
-                        "title": "ダンジョン構造 (周回路)",
-                        "message": f"サイズ「{label}」を承りました。周回路（ループ・迂回ルート）の多さを選んでください：",
+                        "title": "ダンジョン構造 (部屋の密度)",
+                        "message": f"サイズ「{label}」を承りました。部屋の密集度（部屋数）を選んでください：",
                         "choices": [
-                            {"label": "袋小路のみ (純木構造 / 0%)", "value": f"dungeon_loop:{size_key}:0.0"},
-                            {"label": "標準 (適度な周回路 / 20%)", "value": f"dungeon_loop:{size_key}:0.2"},
-                            {"label": "迷路多め (複雑な周回 / 40%)", "value": f"dungeon_loop:{size_key}:0.4"}
+                            {"label": "標準 (適度な部屋数 / 20部屋前後)", "value": f"dungeon_density:{size_key}:0.4"},
+                            {"label": "密集 (部屋多め / 35部屋前後)", "value": f"dungeon_density:{size_key}:0.7"},
+                            {"label": "ギッシリ (超高密度 / 50部屋前後)", "value": f"dungeon_density:{size_key}:1.0"}
+                        ]
+                    }
+                    await websocket.send(json.dumps(card_msg))
+                    print("部屋密度選択肢カードをFVTTへ送信しました。")
+                    continue
+
+                # ステップ3: 部屋密度選択完了 -> ループ率選択肢カードを返送
+                if val.startswith("dungeon_density:"):
+                    parts = val.split(":")
+                    size_key = parts[1]
+                    density = float(parts[2])
+                    card_msg = {
+                        "action": "interactive_card",
+                        "title": "ダンジョン構造 (周回路)",
+                        "message": f"部屋密度「{label}」を承りました。周回路（ループ・迂回ルート）の多さを選んでください：",
+                        "choices": [
+                            {"label": "袋小路のみ (純木構造 / 0%)", "value": f"dungeon_loop:{size_key}:{density}:0.0"},
+                            {"label": "標準 (適度な周回路 / 20%)", "value": f"dungeon_loop:{size_key}:{density}:0.2"},
+                            {"label": "迷路多め (複雑な周回 / 40%)", "value": f"dungeon_loop:{size_key}:{density}:0.4"}
                         ]
                     }
                     await websocket.send(json.dumps(card_msg))
                     print("ループ率選択肢カードをFVTTへ送信しました。")
                     continue
 
-                # ループ率選択完了 -> 実際のダンジョン生成 & シーン作成を実行！
+                # ステップ4: ループ率選択完了 -> 実際のダンジョン生成 & シーン作成を実行！
                 if val.startswith("dungeon_loop:"):
                     parts = val.split(":")
                     size_key = parts[1]
-                    loop_ratio = float(parts[2])
-                    await generate_and_create_dungeon_scene(websocket, size_key, loop_ratio)
+                    if len(parts) >= 4:
+                        density = float(parts[2])
+                        loop_ratio = float(parts[3])
+                    else:
+                        density = 0.5
+                        loop_ratio = float(parts[2])
+                    await generate_and_create_dungeon_scene(websocket, size_key, loop_ratio, density)
                     continue
 
             # -------------------------------------------------------------
