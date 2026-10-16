@@ -124,4 +124,6 @@
   - AI GM の回答を即時投稿せず、GM が確認・修正してから投稿できるプレビュー UI
 - [ ] **ログ・デバッグ機能**
   - 対話ログ・ダイス履歴のエクスポート機能 (Markdown / JSON)
-- [ ] 自動テスト (pytest 等) および CI/CD の整備（※現在の `tools/` は手動疎通検証用）
+- [x] 自動テスト (pytest / node:test) の整備（`tests/`。※`tools/test_*.py` は手動疎通検証用）
+- [ ] CI/CD の整備
+- [ ] **reference/ 統合版の移植**（[`reference_porting_review.md`](reference_porting_review.md) の Phase 1〜6）
