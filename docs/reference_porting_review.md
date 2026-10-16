@@ -114,7 +114,7 @@ npm test                   # FVTT 側の純粋関数 (tests/js, Node 18+ の nod
 | H1 | 高 | 1750-1785 | NPC 会話を `chatMessage` フックで拾っているが、このフックは発言者本人のクライアントでしか呼ばれない。条件が `isGM` なので、プレイヤーの発言は NPC に一度も届かない | 🔜 GM 側の `createChatMessage` で検知し、`activeGM` だけが処理 |
 | H2 | 高 | 1764, 1203 | 発言者トークンを「GM が選択中のトークン」や「シーンの最初の PC」から取っている | 🔜 `message.speaker.token` (無ければ `author.character`) |
 | H3 | 高 | 1769 | `currentRoom = rooms[0]` 固定。常に部屋 1 の情景がプロンプトに入る | 🔜 `scripts/lib/rooms.js` の `findRoomAt` で発言者の位置から判定 |
-| H4 | 高 | 本番 514-541 と連動 | 統合すると GM の発言が `npc_dialogue_request` と `player_message` の両方で送られ、AI が二重応答 | 🔜 経路を 1 本にする (📝 どちらを優先するか) |
+| H4 | 高 | 本番 514-541 と連動 | 統合すると GM の発言が `npc_dialogue_request` と `player_message` の両方で送られ、AI が二重応答 | 🔜 経路を 1 本にする (§5-3 で決定: 近くに NPC がいれば NPC 会話、いなければ AI GM) |
 | H5 | 高 | 2061, 2079 | 生成器が `light_preset` / `ambient_sound_src` を部屋データにコピーしないため、部屋ごとの照明と環境音が一切作られない | 🔜 生成器の結果に追加 |
 | H6 | 高 | 1290-1326, 1640-1649, 1960-1975, 2104-2147 ほか | AI テキストのエスケープ漏れ (プレイヤー発言経由のプロンプトインジェクションで `<img onerror>` が全員の画面で動く) | 🔜 `scripts/lib/cards.js` 方式で移植 (本番分は ✅) |
 | H7 | 高 | 1310 | DM 秘密のヒントを公開カードの `data-hint` 属性に出している (プレイヤーが開発者ツールで読める) | 🔜 GM 側のメモリか GM 専用 flag に保存 |
@@ -171,10 +171,15 @@ npm test                   # FVTT 側の純粋関数 (tests/js, Node 18+ の nod
 | 5 | 集落 BGM (別 WSL オーディオ生成) と環境音 | — | Phase 1 |
 | 6 | アシスタント DM マスコット UI (`game.socket`、`module.json` に `"socket": true`) | L10 | — |
 
-## 5. 判断が必要な点 (📝)
+## 5. 判断事項
 
-1. **音声をプレイヤーにも流すか**: 現在は `AudioHelper.play(..., false)` で GM の画面だけで再生しています。AI GM として遊ぶならプレイヤーにも聞こえる `true` が自然です。
+決定済み (2026-10-16 ken):
+
+1. **音声はプレイヤーにも流す**: `AudioHelper.play(..., true)` で全クライアントに配信します (Phase 0 で反映)。
+3. **NPC 会話と通常の AI GM 応答の切り替え** (H4): 発言者の聴取範囲内に NPC がいれば NPC 会話 (`npc_dialogue_request`)、いなければ AI GM (`player_message`) の 1 経路だけで送ります。Phase 3 で実装します。
+
+未決定 (📝):
+
 2. **発言者名を「アギィ」に変えるか** (R2): 変える場合も、ループ検知はフラグ方式にしたので安全です。
-3. **NPC 会話と通常の AI GM 応答のどちらを優先するか** (H4): 近くに NPC がいれば NPC 会話、いなければ AI GM、という切り替えを提案します。
 4. **大きいマップの扱い** (M12)。
 5. **サーバーの待ち受けアドレス**: 既定が `0.0.0.0` で認証なしのため、LAN 内の誰でも接続できます。WSL の localhost 転送で問題が無ければ `AI_GM_HOST=127.0.0.1` を推奨します (既定値は互換性のため据え置き)。

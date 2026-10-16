@@ -36,13 +36,13 @@ async function playSound(data) {
   if (game.audio?.context?.state === "suspended") {
     await game.audio.context.resume();
   }
-  // 第2引数 false: GM クライアントのみで再生 (全員に流す場合は true)
+  // 第2引数 true: プレイヤーを含む全クライアントで再生 (2026-10-16 ken 決定)
   await foundry.audio.AudioHelper.play({
     src: data.src,
     volume: data.volume ?? 1.0,
     autoplay: true,
     loop: false,
-  }, false);
+  }, true);
 }
 
 async function showInteractiveCard(data) {
