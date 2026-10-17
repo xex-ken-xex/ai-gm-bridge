@@ -8,7 +8,14 @@ import { handleServerAction } from "./scripts/actions.js";
 import { buildRoomNarrationHtml } from "./scripts/lib/cards.js";
 import { generatedFlags, MODULE_ID, playerMessageToForward } from "./scripts/lib/chat-filter.js";
 import { AI_COMMAND_RGX, cleanCommandPrompt, parseAiCommand } from "./scripts/lib/commands.js";
-import { findRoomAt, RoomVisitTracker, tokenCenter } from "./scripts/lib/rooms.js";
+import {
+  findRoomAt,
+  isRoomReached,
+  markRoomReached,
+  RoomVisitTracker,
+  shouldNarrateToken,
+  tokenCenter,
+} from "./scripts/lib/rooms.js";
 import { BridgeConnection } from "./scripts/net/connection.js";
 
 let connection = null;
@@ -101,6 +108,16 @@ function onChatButtonClick(ev) {
   }
 }
 
+/** 部屋のマップノートから探索録ジャーナルのページを引く (無ければ null) */
+function findRoomPage(scene, room) {
+  const note = scene.notes?.find?.(n => n.text === room.name && n.entryId);
+  if (!note) return null;
+  const entry = game.journal?.get(note.entryId);
+  return (note.pageId ? entry?.pages?.get(note.pageId) : null)
+    ?? entry?.pages?.find?.(p => p.name === room.name)
+    ?? null;
+}
+
 Hooks.once("ready", async function() {
   console.log("AI GM Bridge | === チャット双方向 & サポートGM (agy) モジュール ロード完了 ===");
   if (!game.user.isGM) return;
@@ -147,8 +164,12 @@ Hooks.once("ready", async function() {
   const visits = new RoomVisitTracker();
   Hooks.on("updateToken", async (tokenDoc, change) => {
     if (change.x === undefined && change.y === undefined) return;
-    // NPC や非表示トークン (AI の NPC 移動など) ではナレーションしない
-    if (tokenDoc.hidden || !tokenDoc.actor?.hasPlayerOwner) return;
+    // NPC や非表示トークン (AI の NPC 移動など) ではナレーションしない。PC は所有者未設定でも対象
+    if (!shouldNarrateToken({
+      hidden: tokenDoc.hidden,
+      hasPlayerOwner: tokenDoc.actor?.hasPlayerOwner,
+      actorType: tokenDoc.actor?.type,
+    })) return;
 
     const scene = tokenDoc.parent;
     const rooms = scene?.getFlag?.(MODULE_ID, "rooms");
@@ -166,22 +187,44 @@ Hooks.once("ready", async function() {
       offsetX: scene.dimensions?.sceneX ?? 0,
       offsetY: scene.dimensions?.sceneY ?? 0,
     });
-    if (!currentRoom || !visits.enter(scene.id, tokenDoc.id, currentRoom.id)) return;
+    if (!currentRoom) {
+      // 通路に出たら記録を消す (同じ部屋に入り直したとき、印が消されていればまた読み上げる)
+      visits.changedRoom(tokenDoc.id, null);
+      return;
+    }
 
-    console.log(`AI GM Bridge | トークン「${tokenDoc.name}」が「${currentRoom.name}」に進入！`);
-    await ChatMessage.create({
-      speaker: { alias: "AI GM (情景描写)" },
-      content: buildRoomNarrationHtml(currentRoom),
-      flags: generatedFlags(),
-    });
+    // 部屋ページ (探索録) の情景テキスト先頭に <到達済> があれば読み上げない。読み上げたら印を付ける
+    const page = findRoomPage(scene, currentRoom);
+    if (page) {
+      if (!visits.changedRoom(tokenDoc.id, currentRoom.id)) return;
+      if (isRoomReached(page.text?.content)) return;
+      if (!visits.begin(scene.id, currentRoom.id)) return;
+    } else if (!visits.enter(scene.id, tokenDoc.id, currentRoom.id)) {
+      return;
+    }
 
-    if (connection.isOpen) {
-      connection.send({
-        event: "room_entered",
-        token_name: tokenDoc.name,
-        room_name: currentRoom.name,
-        flavor: currentRoom.flavor,
+    try {
+      console.log(`AI GM Bridge | トークン「${tokenDoc.name}」が「${currentRoom.name}」に進入！`);
+      await ChatMessage.create({
+        speaker: { alias: "AI GM (情景描写)" },
+        content: buildRoomNarrationHtml(currentRoom),
+        flags: generatedFlags(),
       });
+
+      if (connection.isOpen) {
+        connection.send({
+          event: "room_entered",
+          token_name: tokenDoc.name,
+          room_name: currentRoom.name,
+          flavor: currentRoom.flavor,
+        });
+      }
+
+      if (page) {
+        await page.update({ "text.content": markRoomReached(page.text?.content) });
+      }
+    } finally {
+      visits.finish(scene.id, currentRoom.id);
     }
   });
 });

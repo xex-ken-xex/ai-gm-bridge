@@ -4,7 +4,8 @@ import asyncio
 import json
 from typing import Awaitable, Callable, Optional, Tuple, Union
 
-from gm_server.config import GEMINI_MODEL
+from gm_server.config import AGY_TIMEOUT, GEMINI_MODEL, GEMINI_TIMEOUT
+from gm_server.progress import log, progress
 from gm_server.text import first_sentence, newlines_to_br
 from tools.prompt_manager import extract_json_from_response
 
@@ -35,13 +36,18 @@ def is_retryable_error(err: Exception) -> bool:
     return any(m in msg for m in _RETRYABLE_MARKERS)
 
 
-async def call_agy(prompt: str, conversation_id: Optional[str] = None) -> Tuple[str, str]:
-    """Antigravity Agent (agy) CLI を非同期呼び出し"""
+async def call_agy(
+    prompt: str, conversation_id: Optional[str] = None, timeout: Optional[float] = None
+) -> Tuple[str, str]:
+    """
+    Antigravity Agent (agy) CLI を非同期呼び出し。
+    timeout: None なら AGY_TIMEOUT、0 なら上限なし (呼び出し側が run_with_deadline で管理する場合)
+    """
     cmd = ["agy", "-p", prompt, "--output-format", "json"]
     if conversation_id:
         cmd.extend(["--conversation", conversation_id])
 
-    print(f"[agy 実行中] プロンプト長: {len(prompt)}文字")
+    log(f"[agy 実行中] プロンプト長: {len(prompt)}文字")
     try:
         proc = await asyncio.create_subprocess_exec(
             *cmd,
@@ -51,7 +57,21 @@ async def call_agy(prompt: str, conversation_id: Optional[str] = None) -> Tuple[
     except FileNotFoundError:
         print("agy CLI が見つかりません (PATH を確認してください)")
         return "", conversation_id or ""
-    stdout, stderr = await proc.communicate()
+    limit = (AGY_TIMEOUT if timeout is None else timeout) or None
+    try:
+        async with progress("agy 応答待ち", limit=limit):
+            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=limit)
+    except asyncio.CancelledError:
+        # 打ち切り (延長確認で「打ち切る」) のときは agy プロセスも止める
+        proc.kill()
+        await proc.wait()
+        raise
+    except asyncio.TimeoutError:
+        # 応答しないまま止まると後続の受信処理がすべて待たされるため打ち切る
+        log(f"agy が {limit:.0f} 秒以内に応答しなかったため打ち切りました (AI_GM_AGY_TIMEOUT で変更可)")
+        proc.kill()
+        await proc.wait()
+        return "", conversation_id or ""
     out_str = stdout.decode("utf-8", errors="replace").strip()
 
     try:
@@ -78,8 +98,10 @@ class LLMService:
         model: str = GEMINI_MODEL,
         agy_runner: AgyRunner = call_agy,
         sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
+        gemini_timeout: float = GEMINI_TIMEOUT,
     ):
         self.client = gemini_client
+        self.gemini_timeout = gemini_timeout
         self.model = model
         self.agy_runner = agy_runner
         self.sleep = sleep
@@ -104,6 +126,7 @@ class LLMService:
         contents: str,
         system_instruction: Optional[str] = None,
         retries: int = 3,
+        unbounded: bool = False,
     ) -> Optional[JsonValue]:
         """503エラーなどの一時的な混雑に備えて指数バックオフで再試行し、JSON を返す"""
         if not self.client:
@@ -111,7 +134,14 @@ class LLMService:
         for attempt in range(retries):
             try:
                 # 同期 SDK 呼び出しでイベントループを止めないよう別スレッドで実行
-                response = await asyncio.to_thread(self._generate, contents, system_instruction)
+                # 応答が無いまま待ち続けないよう上限を設ける (超えたら TimeoutError → 呼び出し側で agy へ)
+                # unbounded のときは呼び出し側 (run_with_deadline) が上限と延長確認を管理する
+                limit = None if unbounded else self.gemini_timeout
+                async with progress("Gemini 応答待ち", limit=limit):
+                    response = await asyncio.wait_for(
+                        asyncio.to_thread(self._generate, contents, system_instruction),
+                        timeout=limit,
+                    )
                 return extract_json_from_response(response.text)
             except Exception as e:
                 if is_retryable_error(e) and attempt < retries - 1:
@@ -122,16 +152,22 @@ class LLMService:
                     raise
         return None
 
-    async def query_json(self, prompt: str) -> Optional[JsonValue]:
-        """Gemini API (優先) または agy CLI を使用して構造化JSONを取得"""
+    async def query_json(self, prompt: str, unbounded: bool = False) -> Optional[JsonValue]:
+        """
+        Gemini API (優先) または agy CLI を使用して構造化JSONを取得。
+        unbounded=True なら個別のタイムアウトを掛けない (run_with_deadline で包んで使う)
+        """
         if self.client:
             try:
-                parsed = await self.query_gemini_with_retry(prompt)
+                parsed = await self.query_gemini_with_retry(prompt, unbounded=unbounded)
                 if parsed is not None:
                     return parsed
             except Exception as e:
-                print(f"Gemini JSON生成警告 ({e}) - agy へフォールバック")
-        resp_text, _ = await self.agy_runner(prompt, None)
+                log(f"Gemini JSON生成警告 ({e}) - agy へフォールバック")
+        if unbounded:
+            resp_text, _ = await self.agy_runner(prompt, None, timeout=0)
+        else:
+            resp_text, _ = await self.agy_runner(prompt, None)
         return extract_json_from_response(resp_text)
 
     async def query_ai_gm(self, player_input: str) -> dict:

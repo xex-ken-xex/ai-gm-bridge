@@ -4,6 +4,7 @@ import json
 import traceback
 from typing import Awaitable, Callable, Dict
 
+from gm_server.deadline import is_timeout_choice
 from gm_server.handlers import ai_command, player_message, room_entered
 
 Handler = Callable[[object, dict], Awaitable[None]]
@@ -14,6 +15,18 @@ HANDLERS: Dict[str, Handler] = {
     "room_entered": room_entered.handle,
     "player_message": player_message.handle,
 }
+
+
+def is_immediate(raw_message) -> bool:
+    """
+    受信キューを待たずに処理するメッセージか。
+    延長確認の回答は、回答を待っている処理 (ダンジョン生成) が受信キューを塞いでいるため先に通す。
+    """
+    try:
+        data = json.loads(raw_message)
+    except (TypeError, ValueError):
+        return False
+    return isinstance(data, dict) and data.get("event") == "ai_choice" and is_timeout_choice(data.get("value"))
 
 
 async def dispatch(ctx, raw_message) -> bool:

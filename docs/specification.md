@@ -193,21 +193,43 @@ GM 向けに対話型の選択肢ボタンを含むチャットカードを表�
 }
 ```
 
+#### 部屋進入の読み上げと「到達済」の印
+PC のトークン (プレイヤー所有、または所有者未設定の `character`) が部屋に入ると、FVTT がチャットに情景を出し `room_entered` をサーバーへ送って読み上げます。
+読み上げた後、探索録ジャーナルの部屋ページの情景テキスト先頭に `<到達済>` を付けます。印があるページの部屋は読み上げません。GM が印を消せば、次に入ったときにまた読み上げます。
+
+#### 4-2. 途中経過 (`progress`)
+マップ生成・伝承・部屋の情景など待ち時間の長い処理の間、30 秒ごとに送ります。GM の画面に通知 (`ui.notifications.info`) として出し、チャットには残しません。
+
+```json
+{ "action": "progress", "message": "[部屋の情景] 完了 1/3 / 経過 30秒 / タイムアウトまで残り 570秒" }
+```
+
+待ち処理がタイムアウト (伝承・部屋の情景は agy 300 秒 / Gemini 120 秒、マップ生成 300 秒) を過ぎると、処理は続けたまま GM に `interactive_card` で延長を確認します。選択肢の値は `timeout_extend:<id>` (同じ秒数だけ延長) / `timeout_abort:<id>` (打ち切って既定の内容で続行) です。120 秒回答が無ければ打ち切ります。この回答はサーバーの受信キューを待たずに処理されます。
+
 #### 5. ダンジョンシーン構築 (`create_dungeon_scene`)
 生成されたマップ画像とパラメータを元に、FVTT 内部で `Scene.create` を実行させます。
+`/ai ダンジョン` のウィザードは「舞台 (`dungeon_mode:<mode>`) → サイズ → 部屋密度 → 周回路」の順に選択カードを出します (野外は部屋密度を飛ばします)。
 
 ```json
 {
   "action": "create_dungeon_scene",
+  "scene_mode": "underground",
   "name": "地下迷宮 (小: 100x100)",
-  "background_src": "dungeon_100x100_1728712345.png",
+  "background_src": "dungeon_underground_100x100_1728712345.png",
   "grid_width": 100,
   "grid_height": 100,
   "grid_size": 100,
   "start_pos": [45, 60],
-  "goal_pos": [80, 20]
+  "goal_pos": [80, 20],
+  "walls": [[0, 0, 500, 0, "normal"], [500, 0, 500, 200, "door"]],
+  "rooms": [{ "id": 1, "name": "部屋 1: …", "role": "start", "type": "start", "light_preset": "torch_warm", "ambient_sound_src": null, "cx": 350, "cy": 450, "grid_w": 4, "grid_h": 4 }]
 }
 ```
+
+- `scene_mode`: `underground` (暗さ 0.75) / `ruins` (暗さ 0.35) / `wilderness` (暗さ 0.35・全体光あり・壁なし)。省略時は `underground`。
+- `walls[i][4]` (壁タイプ): `normal` / `door` / `secret_door` / `low_wall`・`rubble` (移動のみ遮り、視線・光・音は通す)。省略時は `normal`。
+- `rooms[i].light_preset`: `torch_warm` / `bonfire_bright` / `magic_blue` / `acid_green` / `moonlight_dim` / `dark` / `null`。`null` で安全な休憩所なら焚き火を置きます。
+- `rooms[i].ambient_sound_src`: 部屋の中心に置く環境音 (Data フォルダからの相対パス)。半径は部屋の長辺のマス数 × 1 マスの距離 × 0.85。
 
 ---
 

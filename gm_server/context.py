@@ -14,6 +14,8 @@ from gm_server.tts import SpeechSynthesizer
 class SessionState:
     # /ai で始まったダンジョン生成ウィザードの途中経過 (user_prompt など)
     pending_dungeon: Dict[str, Any] = field(default_factory=dict)
+    # タイムアウト延長確認カードの回答待ち (request_id -> Future[bool])
+    timeout_requests: Dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass

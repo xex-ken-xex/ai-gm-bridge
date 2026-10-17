@@ -7,6 +7,7 @@
 GM追加指示: {user_prompt}
 フロア番号: 第{floor_number}層
 フロア規模: {size_name} (部屋数: {room_count}部屋)
+舞台の種類: {scene_mode_label}
 
 【DM設計指針】
 1. 歴史の地層 (Layered History): 本来の建設者・建造目的、没落と放棄の経緯、現在の占有者による適応的再利用 (Adaptive Reuse)。

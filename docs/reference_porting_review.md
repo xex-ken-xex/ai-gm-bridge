@@ -5,7 +5,7 @@ FVTT API との互換性は [`reference/foundry_vtt_api_spec.md`](../reference/f
 
 - 対象: `reference/tools/ai_gm_server.py` (805 行)・`reference/tools/prompt_manager.py` (658 行)・`reference/tools/bridge.js` (2,395 行)・`reference/prompts/*.txt`
 - 比較元: 本番の `ai_gm_server.py`・`bridge.js`・`tools/*.py`
-- 状態の凡例: ✅ 本番で修正済み (Phase 0) / 🔜 その機能を移植するときに直す / 📝 判断が必要
+- 状態の凡例: ✅ 本番で修正済み (Phase 0、Phase 1 以降は ✅ の後にフェーズ番号) / 🔜 その機能を移植するときに直す / 📝 判断が必要
 
 ---
 
@@ -15,11 +15,13 @@ FVTT API との互換性は [`reference/foundry_vtt_api_spec.md`](../reference/f
 
 | モジュール | 役割 | テスト |
 |---|---|---|
-| `config.py` | 環境変数・定数 (`AI_GM_DATA_DIR`, `AI_GM_HOST`, `AI_GM_PORT`, `AI_GM_GEMINI_MODEL`) | — |
+| `config.py` | 環境変数・定数 (`AI_GM_DATA_DIR`, `AI_GM_HOST`, `AI_GM_PORT`, `AI_GM_GEMINI_MODEL`, `AI_GM_AGY_TIMEOUT`, `AI_GM_GEMINI_TIMEOUT`, `AI_GM_MAPGEN_TIMEOUT`) | — |
 | `text.py` | HTML 除去・ダイス式抽出・TTS 話速/音高の正規化 (純粋関数) | `test_text.py` |
 | `protocol.py` | FVTT へ送る action メッセージの組み立て | `test_handlers.py` |
 | `tts.py` | edge-tts 音声合成 (`SpeechSynthesizer`、声色指定対応) | `test_handlers.py` |
 | `llm.py` | Gemini (リトライ付き) / agy CLI 問い合わせ (`LLMService`) | `test_llm.py` |
+| `deadline.py` | タイムアウト付きの待ち (上限を過ぎたら FVTT の GM に延長を確認) | `test_deadline.py` |
+| `progress.py` | 待ち時間の表示 (経過時間とタイムアウトまでの残り時間を同じ行に上書き) | `test_progress.py` |
 | `dungeon_scene.py` | ダンジョン生成ウィザード・シーン構築命令 | `test_handlers.py` |
 | `handlers/*.py` | event ごとの処理 (`player_message`, `ai_command`, `ai_choice`, `room_entered`) | `test_handlers.py` |
 | `router.py` | event 名 → ハンドラの振り分け表 | `test_handlers.py` |
@@ -75,17 +77,17 @@ npm test                   # FVTT 側の純粋関数 (tests/js, Node 18+ の nod
 
 | # | 重要度 | 箇所 (reference) | 問題 | 修正方針 |
 |---|---|---|---|---|
-| R1 | 高 | `ai_gm_server.py` 324, 472 | `DungeonGenerator(scene_mode=...)` を呼ぶが、本番の生成器に `scene_mode` 引数は無く `TypeError` で落ちる。壁タイプ (`door` 等) を返す `extract_walls` も無い | 🔜 生成器に scene_mode・壁タイプを実装してから builder を移植 |
+| R1 | 高 | `ai_gm_server.py` 324, 472 | `DungeonGenerator(scene_mode=...)` を呼ぶが、本番の生成器に `scene_mode` 引数は無く `TypeError` で落ちる。壁タイプ (`door` 等) を返す `extract_walls` も無い | ✅ Phase 1: 生成器に `scene_mode`・壁タイプ付き `extract_walls` を実装 (builder は Phase 2) |
 | R2 | 高 | `ai_gm_server.py` 771, 781, 421 | 発言者名を `アギィ (AI GM)` `アギィ (Agy)` に変更しているが、本番 bridge のループ検知は `AI GM` / `サポートGM` の前方一致。そのまま統合すると AI の発言が再送されて無限ループ | ✅ bridge 側は AI 生成フラグ (`flags["ai-gm-bridge"].generated`) でも判定するようにした。名前変更は 📝 |
 | R3 | 高 | `ai_gm_server.py` 194, 215 | モデルが `gemini-2.5-flash` にハードコード (本番は `gemini-3.8-flash`) | ✅ `AI_GM_GEMINI_MODEL` に一本化 |
 | R4 | 中 | `prompt_manager.py` `build_settlement_stage_prompt` ほか | `region_ctx.get("public_lore")` は dict だが `str.format` にそのまま渡すため Python の repr (`{'climate': ...}`) がプロンプトに入る | 🔜 `json.dumps(..., ensure_ascii=False)` で渡す |
-| R5 | 中 | `prompt_manager.py` `build_site_rooms_stage_prompt` | `neighbors` だけ +1 して id は 0 始まりのまま。AI から見ると隣接番号と id がずれる | 🔜 両方 0 始まりに統一 (本番の生成器は `neighbors` を出力するようにした) |
+| R5 | 中 | `prompt_manager.py` `build_site_rooms_stage_prompt` | `neighbors` だけ +1 して id は 0 始まりのまま。AI から見ると隣接番号と id がずれる | ✅ Phase 1: 部屋プロンプトに `neighbors` / `in_cycle` を id と同じ 0 始まりで渡す |
 | R6 | 中 | `ai_gm_server.py` 全体 | 1 メッセージずつ `await` するため、シーン構築中は NPC 手番・会話がすべて止まる | 🔜 NPC 系 event はタスク化 (`asyncio.create_task`) し、シーン構築だけ直列にする |
 | R7 | 中 | `ai_gm_server.py` 57-61 | `agy_session` (会話 ID・ワイルダネス生成器) がモジュールグローバルで、接続をまたいで共有・リロードで消える | 🔜 `SessionState` に移す |
 | R8 | 中 | `ai_gm_server.py` 716 | agy の応答を `\n→<br>` 変換だけしてチャットへ流す (HTML 注入) | 🔜 `html.escape` してから `<br>` 化 |
 | R9 | 低 | `prompt_manager.py` `load_cached_prompt` | 内蔵テンプレートを使ったときはキャッシュしない。ファイルとの差分に気付きにくい | 🔜 |
 | R10 | 低 | `ai_gm_server.py` 351 | `size_label` に `xlarge` が無い | 🔜 `SIZE_PRESETS` を共用 |
-| R11 | 低 | `tools/dungeon_generator.py` `get_room_topologies` | `in_cycle` は「追加辺の端点」かどうかで、実際に閉路上にあるかではない | 🔜 橋 (bridge) 判定で計算し直す |
+| R11 | 低 | `tools/dungeon_generator.py` `get_room_topologies` | `in_cycle` は「追加辺の端点」かどうかで、実際に閉路上にあるかではない | ✅ Phase 1: Tarjan の橋判定で「橋でない辺を 1 本以上持つ部屋」を `in_cycle` にした |
 
 ---
 
@@ -115,11 +117,11 @@ npm test                   # FVTT 側の純粋関数 (tests/js, Node 18+ の nod
 | H2 | 高 | 1764, 1203 | 発言者トークンを「GM が選択中のトークン」や「シーンの最初の PC」から取っている | 🔜 `message.speaker.token` (無ければ `author.character`) |
 | H3 | 高 | 1769 | `currentRoom = rooms[0]` 固定。常に部屋 1 の情景がプロンプトに入る | 🔜 `scripts/lib/rooms.js` の `findRoomAt` で発言者の位置から判定 |
 | H4 | 高 | 本番 514-541 と連動 | 統合すると GM の発言が `npc_dialogue_request` と `player_message` の両方で送られ、AI が二重応答 | 🔜 経路を 1 本にする (§5-3 で決定: 近くに NPC がいれば NPC 会話、いなければ AI GM) |
-| H5 | 高 | 2061, 2079 | 生成器が `light_preset` / `ambient_sound_src` を部屋データにコピーしないため、部屋ごとの照明と環境音が一切作られない | 🔜 生成器の結果に追加 |
+| H5 | 高 | 2061, 2079 | 生成器が `light_preset` / `ambient_sound_src` を部屋データにコピーしないため、部屋ごとの照明と環境音が一切作られない | ✅ Phase 1: 生成器が部屋データにコピーし、FVTT が AmbientLight / AmbientSound を作る |
 | H6 | 高 | 1290-1326, 1640-1649, 1960-1975, 2104-2147 ほか | AI テキストのエスケープ漏れ (プレイヤー発言経由のプロンプトインジェクションで `<img onerror>` が全員の画面で動く) | 🔜 `scripts/lib/cards.js` 方式で移植 (本番分は ✅) |
 | H7 | 高 | 1310 | DM 秘密のヒントを公開カードの `data-hint` 属性に出している (プレイヤーが開発者ツールで読める) | 🔜 GM 側のメモリか GM 専用 flag に保存 |
-| M1 | 中 | 2083 | AmbientSound の `radius` は距離単位 (ft) なのにピクセル値を入れている (音が非常に遠くまで届く) | 🔜 `マス数 × grid.distance` |
-| M2 | 中 | 2128 | `r.role === "sub_goal"` は常に false (生成器は `type` キーに入れる) | 🔜 `r.type` |
+| M1 | 中 | 2083 | AmbientSound の `radius` は距離単位 (ft) なのにピクセル値を入れている (音が非常に遠くまで届く) | ✅ Phase 1: `buildRoomSounds` で `マス数 × grid.distance × 0.85` |
+| M2 | 中 | 2128 | `r.role === "sub_goal"` は常に false (生成器は `type` キーに入れる) | ✅ Phase 1: 生成器が `role` と `type` に同じ値を入れ、FVTT は `roomRole()` で読む |
 | M3 | 中 | 1196, 1255, 1630, 2329 | 対象シーンを `game.scenes.active` で取るが、衝突判定は GM が表示中のシーンの壁を使う | 🔜 `combat.scene` / `tokenDoc.parent` を引き回す |
 | M4 | 中 | 2287-2338 | 技能判定ボタンがプレイヤーには効かず、GM が押しても `1d20+3` 固定 | 🔜 socket で GM に依頼し、dnd5e の `actor.rollSkill` を使う |
 | M5 | 中 | 1655-1663 | `item.use()` の失敗時に Roll へフォールバックしない (§6 #13 の記述は誤り)。カードが二重投稿。AI の `dice_formula` を検証しない | 🔜 catch で Roll、`Roll.validate` で検証 |
@@ -141,7 +143,7 @@ npm test                   # FVTT 側の純粋関数 (tests/js, Node 18+ の nod
 | L9 | 低 | 1275 | `leave_scene` が `alpha: 0.3` だけでトークンが残る | 🔜 `hidden: true` |
 | L10 | 低 | 106, 276 | `localStorage` の JSON.parse 例外未処理、吹き出しタイマー未解除 | 🔜 |
 | L11 | 低 | 1854, 1033 | ランドマークを `window` に置いておりリロードで消える | 🔜 journal flag を参照 |
-| L13 | 低 | 56-57 | 照明アニメーション `type: "none"` は存在しないキー (⚠️ 未確認) | 🔜 `null` |
+| L13 | 低 | 56-57 | 照明アニメーション `type: "none"` は存在しないキー (⚠️ 未確認) | ✅ Phase 1: `null` |
 
 ### 3.3 プロトコルの不整合 (reference の bridge ⇄ server)
 
@@ -164,7 +166,7 @@ npm test                   # FVTT 側の純粋関数 (tests/js, Node 18+ の nod
 | Phase | 内容 | 主な対象 | 前提 |
 |---|---|---|---|
 | **0 (完了)** | モジュール分割・テスト基盤・本番の不具合修正・Reference のユーティリティ移植 (TTS 声色・JSON 取得) | §2.1, §3.1 | — |
-| 1 | 生成器の拡張: `scene_mode` (underground / ruins / wilderness)・壁タイプ (扉・隠し扉・低い壁)・照明プリセット・部屋データへの `light_preset` / `ambient_sound_src` | R1, R5, R11, H5, M1, M2, L13 | — |
+| **1 (PR 済み)** | 生成器の拡張: `scene_mode` (underground / ruins / wilderness)・壁タイプ (扉・隠し扉・低い壁)・照明プリセット・部屋データへの `light_preset` / `ambient_sound_src` | R1, R5, R11, H5, M1, M2, L13 | — |
 | 2 | 4 段階シナリオビルダー (サーバー: `builder_generate_stage` / `builder_build_scene`、FVTT: アトラスジャーナル、DialogV2 化) | R4, R9, R10, M12, L11 | Phase 1 |
 | 3 | NPC 会話システム (聴取範囲・記憶と忘却) | H1-H4, H7, M4, M8-M10, L4-L8 | — |
 | 4 | NPC 自律戦闘 | M3, M5-M7 | Phase 3 の知覚処理 |

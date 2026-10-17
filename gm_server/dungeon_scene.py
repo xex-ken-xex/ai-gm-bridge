@@ -7,10 +7,17 @@ from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
 
 from gm_server import protocol
-from gm_server.config import SPEAKER_SUPPORT
+from gm_server.config import AGY_TIMEOUT, GEMINI_TIMEOUT, LLM_CONCURRENCY, MAPGEN_TIMEOUT, SPEAKER_SUPPORT
+from gm_server.deadline import run_with_deadline
+from gm_server.progress import log
 from gm_server.tts import voice_filename
-from tools.dungeon_generator import DungeonGenerator
-from tools.prompt_manager import build_lore_prompt, build_rooms_prompt, get_active_world_info
+from tools.dungeon_generator import LIGHT_PRESET_KEYS, SCENE_MODES, DungeonGenerator
+from tools.prompt_manager import (
+    build_lore_prompt,
+    build_rooms_prompt,
+    get_active_world_info,
+    prioritize_key_topologies,
+)
 
 # size_key -> (幅, 高さ, 表示名, PNG 1マスあたりのピクセル数)
 SIZE_PRESETS: Dict[str, Tuple[int, int, str, int]] = {
@@ -22,10 +29,22 @@ SIZE_PRESETS: Dict[str, Tuple[int, int, str, int]] = {
 DEFAULT_SIZE_KEY = "small"
 DEFAULT_DENSITY = 0.5
 DEFAULT_LOOP_RATIO = 0.2
+DEFAULT_SCENE_MODE = "underground"
+
+# scene_mode -> (表示名, シーン名の既定値)
+SCENE_MODE_INFO: Dict[str, Tuple[str, str]] = {
+    "underground": ("地下迷宮", "地下城塞"),
+    "ruins": ("地上の廃墟", "廃墟"),
+    "wilderness": ("野外", "旅路"),
+}
+# 野外は部屋数 = 道中の地点数。密度ではなく固定数で生成する
+WILDERNESS_POINT_COUNT = 9
 
 # FVTT のパフォーマンス保護のための壁本数上限
 MAX_WALLS = 3000
 MAX_ROOMS_FOR_AI = 15
+# 部屋の情景は 1 回の問い合わせを小さくするため、この部屋数ずつに分けて並列に問い合わせる
+ROOMS_PER_JOB = 5
 
 # GM が明示的にテーマを指定していないとみなすプロンプト
 GENERIC_DUNGEON_PROMPTS = ("ダンジョン", "ダンジョン生成", "マップ", "迷宮")
@@ -51,12 +70,26 @@ def is_dungeon_intent(prompt: str) -> bool:
 
 
 # -------------------------------------------------------------------------
-# ウィザードの選択肢カード (サイズ → 部屋密度 → ループ率)
+# ウィザードの選択肢カード (モード → サイズ → 部屋密度 → ループ率)
+# 野外モードは部屋密度を使わないためサイズの次にループ率へ進む
 # -------------------------------------------------------------------------
-def size_card() -> Dict:
+def mode_card() -> Dict:
     return protocol.interactive_card(
         title="ダンジョン自動生成",
-        message="サポートGM (agy) です。生成するダンジョンの規模を選択してください：",
+        message="サポートGM (agy) です。生成する舞台の種類を選択してください：",
+        choices=[
+            {"label": "地下迷宮 (石壁・扉・隠し扉)", "value": "dungeon_mode:underground"},
+            {"label": "地上の廃墟 (崩れた壁・瓦礫越しに見通せる)", "value": "dungeon_mode:ruins"},
+            {"label": f"野外 (壁なし・{WILDERNESS_POINT_COUNT}地点前後の旅路)", "value": "dungeon_mode:wilderness"},
+        ],
+    )
+
+
+def size_card(mode_label: str = "") -> Dict:
+    lead = f"舞台「{mode_label}」を承りました。" if mode_label else "サポートGM (agy) です。"
+    return protocol.interactive_card(
+        title="ダンジョン自動生成",
+        message=f"{lead}生成するマップの規模を選択してください：",
         choices=[
             {"label": "小 (100x100マス)", "value": "dungeon_size:small"},
             {"label": "中 (500x500マス)", "value": "dungeon_size:medium"},
@@ -78,10 +111,10 @@ def density_card(size_key: str, size_label: str) -> Dict:
     )
 
 
-def loop_card(size_key: str, density: float, density_label: str) -> Dict:
+def loop_card(size_key: str, density: float, density_label: str, prev_kind: str = "部屋密度") -> Dict:
     return protocol.interactive_card(
         title="ダンジョン構造 (周回路)",
-        message=f"部屋密度「{density_label}」を承りました。周回路（ループ・迂回ルート）の多さを選んでください：",
+        message=f"{prev_kind}「{density_label}」を承りました。周回路（ループ・迂回ルート）の多さを選んでください：",
         choices=[
             {"label": "袋小路のみ (純木構造 / 0%)", "value": f"dungeon_loop:{size_key}:{density}:0.0"},
             {"label": "標準 (適度な周回路 / 20%)", "value": f"dungeon_loop:{size_key}:{density}:0.2"},
@@ -92,10 +125,11 @@ def loop_card(size_key: str, density: float, density_label: str) -> Dict:
 
 @dataclass
 class DungeonChoice:
-    kind: str  # "size" | "density" | "loop"
+    kind: str  # "mode" | "size" | "density" | "loop"
     size_key: str
     density: float = DEFAULT_DENSITY
     loop_ratio: float = DEFAULT_LOOP_RATIO
+    scene_mode: str = DEFAULT_SCENE_MODE
 
 
 def _to_float(value: str, default: float, lo: float = 0.0, hi: float = 1.0) -> float:
@@ -106,11 +140,14 @@ def _to_float(value: str, default: float, lo: float = 0.0, hi: float = 1.0) -> f
 
 
 def parse_dungeon_choice(value: str) -> Optional[DungeonChoice]:
-    """`dungeon_size:small` / `dungeon_density:small:0.4` / `dungeon_loop:small:0.4:0.2` を解釈"""
+    """`dungeon_mode:ruins` / `dungeon_size:small` / `dungeon_density:small:0.4` / `dungeon_loop:small:0.4:0.2` を解釈"""
     if not value or not value.startswith("dungeon_"):
         return None
     parts = value.split(":")
     head = parts[0]
+    if head == "dungeon_mode":
+        mode = parts[1] if len(parts) >= 2 and parts[1] in SCENE_MODES else DEFAULT_SCENE_MODE
+        return DungeonChoice(kind="mode", size_key=DEFAULT_SIZE_KEY, scene_mode=mode)
     size_key = parts[1] if len(parts) >= 2 and parts[1] in SIZE_PRESETS else DEFAULT_SIZE_KEY
     density = _to_float(parts[2], DEFAULT_DENSITY) if len(parts) >= 3 else DEFAULT_DENSITY
     loop_ratio = _to_float(parts[3], DEFAULT_LOOP_RATIO) if len(parts) >= 4 else DEFAULT_LOOP_RATIO
@@ -118,6 +155,14 @@ def parse_dungeon_choice(value: str) -> Optional[DungeonChoice]:
     if head not in kinds:
         return None
     return DungeonChoice(kind=kinds[head], size_key=size_key, density=density, loop_ratio=loop_ratio)
+
+
+def normalize_scene_mode(scene_mode: Optional[str]) -> str:
+    return scene_mode if scene_mode in SCENE_MODES else DEFAULT_SCENE_MODE
+
+
+def scene_mode_label(scene_mode: str) -> str:
+    return SCENE_MODE_INFO[normalize_scene_mode(scene_mode)][0]
 
 
 def density_label(density: float) -> str:
@@ -146,7 +191,7 @@ def fallback_lore(size_name: str) -> Dict:
     }
 
 
-def select_walls(gen: DungeonGenerator, max_walls: int = MAX_WALLS) -> List[List[int]]:
+def select_walls(gen: DungeonGenerator, max_walls: int = MAX_WALLS) -> List[list]:
     """壁セグメントを抽出。上限超過または特大マップではパフォーマンス保護のため送らない"""
     if gen.width > 1000:
         return []
@@ -157,10 +202,81 @@ def select_walls(gen: DungeonGenerator, max_walls: int = MAX_WALLS) -> List[List
     return walls
 
 
-def _build_geometry(w: int, h: int, density: float, loop_ratio: float, png_path: str, cell_size: int, seed: Optional[int]):
+def _normalize_chunk_ids(items: List[Dict], expected_ids: List[int]) -> List[Dict]:
+    """
+    1 ジョブ分の応答 id を 0 始まりにそろえ、そのジョブで頼んだ部屋だけ残す。
+    AI が 1 始まりで返すこともあるため、0 / 1 始まりのどちらがより多く一致するかで判定する。
+    """
+    expected = set(expected_ids)
+    ids = []
+    for item in items:
+        try:
+            ids.append(int(item.get("id")))
+        except (TypeError, ValueError):
+            ids.append(None)
+    hits0 = sum(1 for i in ids if i in expected)
+    hits1 = sum(1 for i in ids if i is not None and i - 1 in expected)
+    offset = 1 if hits1 > hits0 else 0
+    result = []
+    for item, cid in zip(items, ids):
+        if cid is not None and cid - offset in expected:
+            result.append({**item, "id": cid - offset})
+    return result
+
+
+async def query_room_flavors(ctx, lore: Dict, topologies: List[Dict], scene_mode: str) -> Optional[List[Dict]]:
+    """
+    部屋の情景を ROOMS_PER_JOB 部屋ずつのジョブに分け、LLM_CONCURRENCY 本まで並列に問い合わせる。
+    返す id は 0 始まり。全ジョブ失敗なら None (呼び出し側は既定のノートを使う)。
+    """
+    selected = prioritize_key_topologies(topologies, max_count=MAX_ROOMS_FOR_AI)
+    chunks = [selected[i:i + ROOMS_PER_JOB] for i in range(0, len(selected), ROOMS_PER_JOB)]
+    if not chunks:
+        return None
+    sem = asyncio.Semaphore(LLM_CONCURRENCY)
+    done = 0
+    # 打ち切りになっても、それまでに終わったジョブの結果は使う
+    flavors: List[Dict] = []
+
+    async def run(chunk: List[Dict]) -> None:
+        nonlocal done
+        async with sem:
+            try:
+                prompt = build_rooms_prompt(
+                    lore, chunk, max_rooms=len(chunk),
+                    scene_mode=scene_mode, light_presets=list(LIGHT_PRESET_KEYS),
+                )
+                parsed = await ctx.llm.query_json(prompt, unbounded=True)
+            except Exception as e:
+                log(f"Roomフレーバー生成失敗 ({e})。この部屋群は既定のノートを使用します。")
+                parsed = None
+            finally:
+                done += 1
+        items = [r for r in parsed if isinstance(r, dict)] if isinstance(parsed, list) else []
+        flavors.extend(_normalize_chunk_ids(items, [t["id"] for t in chunk]))
+
+    # タイムアウト: 1 ジョブの上限 × 並列で回す段数
+    rounds = -(-len(chunks) // LLM_CONCURRENCY)
+    try:
+        await run_with_deadline(
+            ctx, "部屋の情景", asyncio.gather(*(run(c) for c in chunks)),
+            limit=llm_step_limit(ctx) * rounds, detail=lambda: f"完了 {done}/{len(chunks)}",
+        )
+    except asyncio.TimeoutError:
+        log(f"部屋の情景を打ち切りました (完了 {done}/{len(chunks)})。残りは既定のノートを使用します。")
+    return sorted(flavors, key=lambda r: r["id"]) or None
+
+
+def llm_step_limit(ctx) -> float:
+    """AI 問い合わせ 1 回の待ち上限 (Gemini があれば Gemini、無ければ agy の上限)"""
+    return GEMINI_TIMEOUT if getattr(ctx.llm, "client", None) else AGY_TIMEOUT
+
+
+def _build_geometry(w: int, h: int, density: float, loop_ratio: float, png_path: str, cell_size: int,
+                    seed: Optional[int], scene_mode: str = DEFAULT_SCENE_MODE):
     """CPU 負荷の高い幾何生成と PNG 書き出し (別スレッドで実行)"""
-    gen = DungeonGenerator(width=w, height=h, density=density, loop_ratio=loop_ratio, seed=seed)
-    gen.generate()
+    gen = DungeonGenerator(width=w, height=h, density=density, loop_ratio=loop_ratio, seed=seed, scene_mode=scene_mode)
+    gen.generate(target_room_count=WILDERNESS_POINT_COUNT if scene_mode == "wilderness" else None)
     gen.render_to_png(png_path, cell_size=cell_size)
     walls = select_walls(gen)
     return gen, walls
@@ -173,16 +289,32 @@ async def generate_and_create_dungeon_scene(
     density: float = DEFAULT_DENSITY,
     user_prompt: str = "",
     seed: Optional[int] = None,
-) -> Dict:
+    scene_mode: str = DEFAULT_SCENE_MODE,
+) -> Optional[Dict]:
     """ダンジョンを生成し、ワールド設定から伝承・生態系・部屋フレーバーを補完してFVTTに新シーン作成命令を送信"""
+    scene_mode = normalize_scene_mode(scene_mode)
+    mode_name, default_scene_name = SCENE_MODE_INFO[scene_mode]
     w, h, size_name, cell_size = SIZE_PRESETS.get(size_key, SIZE_PRESETS[DEFAULT_SIZE_KEY])
-    print(f"\n[ダンジョン自動生成開始] サイズ: {size_name} ({w}x{h}), 密度: {density_label(density)} ({density}), ループ率: {loop_ratio}")
+    print(f"\n[ダンジョン自動生成開始] モード: {mode_name}, サイズ: {size_name} ({w}x{h}), 密度: {density_label(density)} ({density}), ループ率: {loop_ratio}")
 
     # 1-3. 幾何生成・PNG 書き出し・壁抽出 (イベントループを止めないよう別スレッド)
     ts = int(time.time())
-    png_filename = f"dungeon_{w}x{h}_{ts}.png"
+    png_filename = f"dungeon_{scene_mode}_{w}x{h}_{ts}.png"
     png_filepath = os.path.join(ctx.data_dir, png_filename)
-    gen, walls = await asyncio.to_thread(_build_geometry, w, h, density, loop_ratio, png_filepath, cell_size, seed)
+    try:
+        gen, walls = await run_with_deadline(
+            ctx, "マップ生成",
+            asyncio.to_thread(_build_geometry, w, h, density, loop_ratio, png_filepath, cell_size, seed, scene_mode),
+            limit=MAPGEN_TIMEOUT,
+        )
+    except asyncio.TimeoutError:
+        # 別スレッドの計算は止められないが、結果は使わずにウィザードを終える
+        log("マップ生成を打ち切りました (上限は AI_GM_MAPGEN_TIMEOUT で変更可)")
+        await ctx.send(protocol.chat(
+            "⚠️ マップ生成を打ち切りました。小さいサイズか低い密度でやり直してください。",
+            speaker=SPEAKER_SUPPORT,
+        ))
+        return None
     print(f"壁セグメント抽出完了: {len(walls)} 本 (部屋数: {len(gen.rooms)})")
 
     # 4. ワールド設定の読み込み
@@ -193,7 +325,7 @@ async def generate_and_create_dungeon_scene(
     is_custom_theme = bool(user_prompt and user_prompt not in GENERIC_DUNGEON_PROMPTS)
     target_theme_desc = f"GM指定テーマ『{user_prompt}』" if is_custom_theme else f"ワールド設定『{world_desc}』"
     await ctx.send(protocol.chat(
-        f"🏰 <b>ダンジョン構造を算出しました</b> (部屋数: {len(gen.rooms)}部屋)<br>📜 {target_theme_desc} に基づき、伝承・生態系と各部屋の情景をAI補完中...",
+        f"🏰 <b>{mode_name}の構造を算出しました</b> (部屋数: {len(gen.rooms)}部屋)<br>📜 {target_theme_desc} に基づき、伝承・生態系と各部屋の情景をAI補完中...",
         speaker=SPEAKER_SUPPORT,
     ))
 
@@ -205,10 +337,13 @@ async def generate_and_create_dungeon_scene(
         floor_number=1,
         size_name=size_name,
         room_count=len(gen.rooms),
+        scene_mode=scene_mode,
     )
     lore_data = None
     try:
-        lore_data = await ctx.llm.query_json(lore_prompt)
+        lore_data = await run_with_deadline(
+            ctx, "伝承", ctx.llm.query_json(lore_prompt, unbounded=True), limit=llm_step_limit(ctx)
+        )
     except Exception as e:
         print(f"Lore生成失敗 ({e})。フォールバック伝承を使用します。")
     if not isinstance(lore_data, dict) or "floor_title" not in lore_data:
@@ -220,23 +355,17 @@ async def generate_and_create_dungeon_scene(
     ))
 
     # 6. Tier 3: トポロジーに基づく部屋フレーバー補完
-    custom_flavors = None
-    try:
-        rooms_prompt = build_rooms_prompt(lore_data, gen.get_room_topologies(), max_rooms=MAX_ROOMS_FOR_AI)
-        parsed_rooms = await ctx.llm.query_json(rooms_prompt)
-        if isinstance(parsed_rooms, list):
-            custom_flavors = [r for r in parsed_rooms if isinstance(r, dict)]
-    except Exception as e:
-        print(f"Roomフレーバー生成失敗 ({e})。ベースプロシージャルノートを使用します。")
+    custom_flavors = await query_room_flavors(ctx, lore_data, gen.get_room_topologies(), scene_mode)
 
-    # 7. 各部屋フレーバーの統合
-    rooms = gen.get_room_flavor_notes(grid_size=100, custom_flavors=custom_flavors)
+    # 7. 各部屋フレーバーの統合 (id は query_room_flavors で 0 始まりに正規化済み)
+    rooms = gen.get_room_flavor_notes(grid_size=100, custom_flavors=custom_flavors, id_base=0)
 
     # 8. FVTTへシーン作成コマンド送信
-    scene_title = f"{lore_data.get('dungeon_name', '地下城塞')} - {lore_data.get('floor_title', f'第1層 ({size_name})')}"
+    scene_title = f"{lore_data.get('dungeon_name', default_scene_name)} - {lore_data.get('floor_title', f'第1層 ({size_name})')}"
     scene_msg = {
         "action": "create_dungeon_scene",
         "name": scene_title,
+        "scene_mode": scene_mode,
         "background_src": png_filename,
         "grid_width": w,
         "grid_height": h,
@@ -252,7 +381,7 @@ async def generate_and_create_dungeon_scene(
     await ctx.send(scene_msg)
 
     # 9. 音声報告
-    speech_text = f"ダンジョン『{lore_data.get('dungeon_name', '地下城塞')}』のシーンを生成しました。全{len(gen.rooms)}部屋に生態系と情景ノートを設定しました。"
+    speech_text = f"{mode_name}『{lore_data.get('dungeon_name', default_scene_name)}』のシーンを生成しました。全{len(gen.rooms)}部屋に生態系と情景ノートを設定しました。"
     file_name = voice_filename("voice_dungeon")
     if await ctx.tts.synthesize(speech_text, file_name):
         await ctx.send(protocol.play_sound(file_name, 1.0, subtitle=speech_text))

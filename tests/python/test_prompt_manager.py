@@ -66,8 +66,18 @@ def test_build_prompts_format_without_missing_placeholders():
     rooms_prompt = pm.build_rooms_prompt(lore, _topos(20), max_rooms=10)
     assert "世界" in lore_prompt
     assert "黒水城塞" in rooms_prompt and "ゴブリン: 警戒" in rooms_prompt
-    payload = rooms_prompt[rooms_prompt.index('[{"id"'):]
-    assert json.loads(payload[: payload.index("]") + 1])[0]["id"] == 0
+    payload, _ = json.JSONDecoder().raw_decode(rooms_prompt[rooms_prompt.index('[{"id"'):])
+    assert payload[0]["id"] == 0
+    assert {"in_cycle", "neighbors"} <= set(payload[0])
+    assert "bonfire_bright" in rooms_prompt
+    assert "地下迷宮" in lore_prompt and "地下迷宮" in rooms_prompt
+
+
+@pytest.mark.parametrize("mode, word", [("ruins", "廃墟"), ("wilderness", "野外"), ("bogus", "地下迷宮")])
+def test_build_prompts_mention_scene_mode(mode, word):
+    lore_prompt = pm.build_lore_prompt("世界", "説明", scene_mode=mode)
+    rooms_prompt = pm.build_rooms_prompt({}, _topos(3), scene_mode=mode)
+    assert word in lore_prompt and word in rooms_prompt
 
 
 def test_get_active_world_info_reads_world_json(tmp_path, monkeypatch):
