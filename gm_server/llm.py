@@ -4,7 +4,7 @@ import asyncio
 import json
 from typing import Awaitable, Callable, Optional, Tuple, Union
 
-from gm_server.config import GEMINI_MODEL
+from gm_server.config import AGY_TIMEOUT, GEMINI_MODEL
 from gm_server.text import first_sentence, newlines_to_br
 from tools.prompt_manager import extract_json_from_response
 
@@ -35,7 +35,9 @@ def is_retryable_error(err: Exception) -> bool:
     return any(m in msg for m in _RETRYABLE_MARKERS)
 
 
-async def call_agy(prompt: str, conversation_id: Optional[str] = None) -> Tuple[str, str]:
+async def call_agy(
+    prompt: str, conversation_id: Optional[str] = None, timeout: Optional[float] = None
+) -> Tuple[str, str]:
     """Antigravity Agent (agy) CLI を非同期呼び出し"""
     cmd = ["agy", "-p", prompt, "--output-format", "json"]
     if conversation_id:
@@ -51,7 +53,15 @@ async def call_agy(prompt: str, conversation_id: Optional[str] = None) -> Tuple[
     except FileNotFoundError:
         print("agy CLI が見つかりません (PATH を確認してください)")
         return "", conversation_id or ""
-    stdout, stderr = await proc.communicate()
+    limit = AGY_TIMEOUT if timeout is None else timeout
+    try:
+        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=limit)
+    except asyncio.TimeoutError:
+        # 応答しないまま止まると後続の受信処理がすべて待たされるため打ち切る
+        print(f"agy が {limit:.0f} 秒以内に応答しなかったため打ち切りました (AI_GM_AGY_TIMEOUT で変更可)")
+        proc.kill()
+        await proc.wait()
+        return "", conversation_id or ""
     out_str = stdout.decode("utf-8", errors="replace").strip()
 
     try:

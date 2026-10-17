@@ -111,3 +111,20 @@ async def test_call_agy_missing_binary(monkeypatch):
 
     monkeypatch.setattr("asyncio.create_subprocess_exec", raise_missing)
     assert await call_agy("hi", "conv") == ("", "conv")
+
+
+async def test_call_agy_times_out_and_kills_process(monkeypatch):
+    import asyncio
+    import sys
+
+    real_exec = asyncio.create_subprocess_exec
+    procs = []
+
+    async def slow_agy(*args, **kwargs):
+        proc = await real_exec(sys.executable, "-c", "import time; time.sleep(30)", **kwargs)
+        procs.append(proc)
+        return proc
+
+    monkeypatch.setattr("asyncio.create_subprocess_exec", slow_agy)
+    assert await call_agy("hi", "conv", timeout=0.2) == ("", "conv")
+    assert procs[0].returncode is not None
