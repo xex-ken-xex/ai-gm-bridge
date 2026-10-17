@@ -11,7 +11,7 @@
 .ai-gm-builder .aib input[type=text], .ai-gm-builder .aib select { height: 28px; }
 .ai-gm-builder .aib input[type=range] { width: 100%; margin: 4px 0 0 0; }
 .ai-gm-builder .aib textarea { resize: vertical; line-height: 1.5; }
-.ai-gm-builder .aib textarea.aib-tall { height: 190px; min-height: 120px; }
+.ai-gm-builder .aib textarea.aib-tall { height: 160px; min-height: 120px; }
 .ai-gm-builder .aib textarea.aib-short { height: 90px; min-height: 60px; }
 .ai-gm-builder .aib .aib-pub { border-left: 3px solid #2ecc71; padding-left: 6px; }
 .ai-gm-builder .aib .aib-dm { border-left: 3px solid #e74c3c; padding-left: 6px; }
@@ -26,8 +26,11 @@
 .ai-gm-builder .aib .aib-checks { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 2px 10px; max-height: 120px; overflow-y: auto; margin-top: 4px; }
 .ai-gm-builder .aib .aib-check { display: flex; flex-direction: row; align-items: center; gap: 4px; margin: 0; color: #f0f0e0; font-weight: normal; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ai-gm-builder .aib .aib-check input { flex: none; width: 14px; height: 14px; margin: 0; }
-.ai-gm-builder .aib .aib-actions { display: flex; flex-direction: row; gap: 6px; padding-top: 8px; border-top: 1px solid #333; }
-.ai-gm-builder .aib .aib-actions button { flex: 1 1 0; width: auto; margin: 0; color: #fff; border: none; padding: 7px; border-radius: 4px; cursor: pointer; font-weight: bold; white-space: nowrap; }
+.ai-gm-builder .aib .aib-actions { display: flex; flex-direction: row; gap: 6px; padding-top: 8px; border-top: 1px solid #333; flex-wrap: wrap; }
+.ai-gm-builder .aib .aib-actions button { flex: 1 1 160px; width: auto; margin: 0; color: #fff; border: none; padding: 7px; border-radius: 4px; cursor: pointer; font-weight: bold; white-space: normal; }
 .ai-gm-builder .aib .aib-gen { background: #8e44ad; } .ai-gm-builder .aib .aib-save { background: #2980b9; } .ai-gm-builder .aib .aib-build { background: #27ae60; }
-.ai-gm-builder .aib .aib-busy { color: #f1c40f; margin: 0; }
+.ai-gm-builder .aib .aib-busy { color: #f1c40f; margin: 0; white-space: pre-line; }
 .ai-gm-builder .aib .aib-auto-extend { display: flex; align-items: center; gap: 4px; margin: 4px 0; }
+.ai-gm-builder .aib .aib-build-script { background: #16a085; }
+.ai-gm-builder .aib .aib-actions button:disabled { opacity: 0.45; cursor: not-allowed; }
+.ai-gm-builder .aib .aib-actions button span { white-space: nowrap; display: inline-block; }

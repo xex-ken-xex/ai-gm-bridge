@@ -162,11 +162,13 @@ test("formatStageDraft: 人柄が届かなかった NPC も undefined を出さ�
 
 test("formatBuilderProgress: 工程・完了数・経過・残り秒を並べ、受信後の秒数だけ進める", () => {
   const p = { step: 2, steps: 2, step_label: "地点の描写", detail: "完了 1/2", elapsed: 40, remaining: 260 };
+  // 1 行目は全体 (工程と全体の経過)、2 行目はいまの作業
   assert.equal(
-    formatBuilderProgress(p, 3),
-    "⏳ AI が下書きを作成中です… 工程 2/2「地点の描写」 ・ 完了 1/2 ・ 経過 43秒 ・ タイムアウトまで残り 257秒",
+    formatBuilderProgress(p, 3, "draft", 75),
+    "⏳ AI が下書きを作成中です… 工程 2/2「地点の描写」 ・ 全体の経過 75秒\n└ 完了 1/2 ・ この工程の経過 43秒 ・ タイムアウトまで残り 257秒",
   );
-  assert.equal(formatBuilderProgress({ step: 1, steps: 1, elapsed: 5, remaining: 295 }), "⏳ AI が下書きを作成中です… 経過 5秒 ・ タイムアウトまで残り 295秒");
+  assert.equal(formatBuilderProgress({ step: 1, steps: 1, elapsed: 5, remaining: 295 }), "⏳ AI が下書きを作成中です…\n└ 経過 5秒 ・ タイムアウトまで残り 295秒");
+  assert.equal(formatBuilderProgress(null, 0, "draft", 2), "⏳ AI が下書きを作成中です… 全体の経過 2秒");
   assert.ok(formatBuilderProgress({ ...p, remaining: 2 }, 5).endsWith("タイムアウト。延長するかチャットのカードで選んでください"));
   assert.equal(formatBuilderProgress(null), "⏳ AI が下書きを作成中です…");
 });

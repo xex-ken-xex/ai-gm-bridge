@@ -335,6 +335,27 @@ async def test_build_site_reflects_rooms_as_each_job_finishes(make_ctx, sent):
     assert ("build", "完了") in progress_kinds
 
 
+async def test_build_site_by_script_does_not_ask_ai(make_ctx, sent):
+    """「スクリプト」で構築: AI に区画の情景を頼まず、仮の区画のままシーンを作って終える"""
+    llm = FakeLLM()
+    ctx = make_ctx(llm)
+    await builder.handle_build_scene(ctx, {"scene_mode": "ruins", "name": "塔", "seed": 8, "use_ai": False})
+    assert llm.prompts == []
+    assert actions(sent) == ["create_dungeon_scene", "play_sound"]
+    assert "scene_key" not in main(sent)[0]
+    steps = {m["steps"] for m in sent if m["action"] == "builder_progress"}
+    assert steps == {1}
+
+
+async def test_build_wilderness_by_script_ignores_landmarks(make_ctx, sent):
+    ctx = make_ctx()
+    await builder.handle_build_scene(ctx, {"scene_mode": "wilderness", "use_ai": False,
+                                           "landmarks": [{"id": 0, "title": "古い下書き"}]})
+    # seed が無くても警告は出さない (自分で作る DM 向け)
+    assert actions(sent) == ["create_dungeon_scene", "play_sound"]
+    assert all(r["title"] != "古い下書き" for r in main(sent)[0]["rooms"])
+
+
 async def test_auto_extend_flag_is_passed_to_the_deadline(make_ctx, sent, monkeypatch):
     seen = []
 

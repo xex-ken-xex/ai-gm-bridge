@@ -33,6 +33,10 @@ const TABS = [
   { id: "wilderness", stage: "wilderness", label: "🌲 3. 旅路", defaultName: "新しい旅路" },
   { id: "site", stage: "site_lore", label: "🏰 4. 遺跡・迷宮", defaultName: "新しい遺跡" },
 ];
+// シーン構築は 2 通り: スクリプト (ジェネレータの地図と仮の区画だけ。文面は DM が書く) / AI (区画の情景も AI が書く)
+const BUILD_BUTTONS = `
+    <button type="button" class="aib-build aib-build-script" data-action="build" data-use-ai="false"><span>🛠️ 保存してシーン構築</span> <span>(スクリプト)</span></button>
+    <button type="button" class="aib-build" data-action="build" data-use-ai="true"><span>🤖 保存してシーン構築</span> <span>(AI)</span></button>`;
 const SETTLEMENT_SCALES = ["辺境の開拓村・小村", "街道の宿場町・交易町", "鉱山街・職人街", "城塞都市・港町"];
 
 const state = {
@@ -54,6 +58,8 @@ const state = {
   autoExtend: false,
   // tab -> 下書き作成・シーン構築の進捗 (builder_progress と受け取った時刻)
   progress: {},
+  // tab -> 依頼した時刻 (全体の経過秒を出すため)
+  startedAt: {},
   progressTimer: null,
 };
 
@@ -260,7 +266,7 @@ function panelHtml(tab) {
       field("出発地の集落", select("parentSettlement", options(atlasEntries("settlement"), d.parentSettlement, "(なし)"))),
     );
     labels = { prompt: "道中の地形や中継地のイメージ" };
-    buttons += `<button type="button" class="aib-build" data-action="build">🌲 保存して旅路シーンを構築</button>`;
+    buttons += BUILD_BUTTONS;
   } else if (tab.id === "site") {
     const actors = game.actors?.contents ?? [];
     const pcs = actors.filter(a => a.type === "character" || a.hasPlayerOwner);
@@ -284,7 +290,7 @@ function panelHtml(tab) {
     );
     extraBlock = checkList("🎯 物語に絡める PC / NPC", items);
     labels = { prompt: "シチュエーションや仕掛けの要望" };
-    buttons += `<button type="button" class="aib-build" data-action="build">🏰 保存してシーン構築</button>`;
+    buttons += BUILD_BUTTONS;
   }
 
   const busy = state.pending[tab.id] ? `<p class="aib-busy" data-busy-for="${tab.id}">${escapeHtml(progressText(tab.id))}</p>` : "";
@@ -415,7 +421,7 @@ function bindEvents(root) {
       const action = btn.dataset.action;
       if (action === "generate") requestDraft(tab);
       else if (action === "save") saveTab(tab).then(() => openScenarioBuilder(tab.id));
-      else if (action === "build") buildScene(tab);
+      else if (action === "build") buildScene(tab, btn.dataset.useAi !== "false");
     }));
   }
 }
@@ -487,6 +493,7 @@ function requestDraft(tab) {
   if (state.send(payload)) {
     state.pending[tab.id] = "draft";
     state.progress[tab.id] = null;
+    state.startedAt[tab.id] = Date.now();
     ui.notifications.info(`AI GM Bridge: ${tab.label.replace(/^\S+\s*\d+\.\s*/, "")}の下書きを依頼しました。`);
     openScenarioBuilder(tab.id);
   }
@@ -495,7 +502,8 @@ function requestDraft(tab) {
 function progressText(tabId) {
   const p = state.progress[tabId];
   const progress = p ? { ...p.data, auto_extend: state.autoExtend } : null;
-  return formatBuilderProgress(progress, p ? (Date.now() - p.at) / 1000 : 0, state.pending[tabId] || "draft");
+  const total = state.startedAt[tabId] ? (Date.now() - state.startedAt[tabId]) / 1000 : null;
+  return formatBuilderProgress(progress, p ? (Date.now() - p.at) / 1000 : 0, state.pending[tabId] || "draft", total);
 }
 
 /** 「作成中」の行だけを書き換える (画面全体を描き直すと入力中の文字が消えるため) */
@@ -605,7 +613,7 @@ async function saveTab(tab) {
   return { entry, meta };
 }
 
-async function buildScene(tab) {
+async function buildScene(tab, useAi = true) {
   if (!state.send) {
     ui.notifications.warn("AI GM Bridge: Python サーバー (8765) に接続されていません。");
     return;
@@ -623,6 +631,7 @@ async function buildScene(tab) {
     public_lore: d.public ?? "",
     dm_secrets: d.dm ?? "",
     auto_extend: state.autoExtend,
+    use_ai: useAi,
     ...ctx,
   };
   if (tab.id === "wilderness") {
@@ -639,6 +648,7 @@ async function buildScene(tab) {
   if (state.send(payload)) {
     state.pending[tab.id] = "build";
     state.progress[tab.id] = null;
+    state.startedAt[tab.id] = Date.now();
     ui.notifications.info(`AI GM Bridge: 『${entry.name}』のシーン構築を依頼しました。`);
   }
   await openScenarioBuilder(tab.id);

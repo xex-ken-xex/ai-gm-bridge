@@ -34,6 +34,8 @@ class Context:
 
 # 接続が無いあいだは溜めない種類 (途中経過は後から届いても意味が無い)
 NO_BACKLOG_ACTIONS = ("progress",)
+# 詳細ログに書かない種類 (数秒ごとに届く途中経過。中身はコンソールの上書き行と同じ)
+NO_LOG_ACTIONS = ("progress", "builder_progress")
 
 
 class ConnectionHub:
@@ -59,7 +61,7 @@ class ConnectionHub:
     async def send(self, message: Dict, origin=None) -> bool:
         """送れたら True。送れなければ (途中経過以外は) 溜めて False"""
         text = json.dumps(message, ensure_ascii=False)
-        if message.get("action") not in NO_BACKLOG_ACTIONS:
+        if message.get("action") not in NO_LOG_ACTIONS:
             logs.logger.info(f"送信 {message.get('action')}: {logs.clip_for_log(text)}")
         targets = [origin] if origin is not None else []
         targets += [ws for ws in reversed(self.connections) if ws is not origin]

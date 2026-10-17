@@ -11,8 +11,8 @@ GEMINI_MODEL = os.environ.get("AI_GM_GEMINI_MODEL", "gemini-3.8-flash")
 
 # agy CLI の応答待ち上限 (秒)。超えたら打ち切り、呼び出し側のフォールバックに任せる
 AGY_TIMEOUT = float(os.environ.get("AI_GM_AGY_TIMEOUT", "300"))
-# agy に渡すモデル (`agy models` で一覧)・推論の深さ (low|medium|high|xhigh|max)。空なら agy の既定
-AGY_MODEL = os.environ.get("AI_GM_AGY_MODEL", "").strip()
+# agy に渡すモデル (`agy models` で一覧。既定 gemini-3.8-flash-medium、空文字なら agy 自身の既定)・推論の深さ (low|medium|high|xhigh|max)
+AGY_MODEL = os.environ.get("AI_GM_AGY_MODEL", "gemini-3.8-flash-medium").strip()
 AGY_EFFORT = os.environ.get("AI_GM_AGY_EFFORT", "").strip()
 # agy を同時に何本まで動かすか。agy は同時に複数起動すると応答が返らなくなることがあるため既定は 1 (順番に実行)
 AGY_CONCURRENCY = max(1, int(os.environ.get("AI_GM_AGY_CONCURRENCY", "1")))

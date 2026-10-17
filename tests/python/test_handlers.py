@@ -277,5 +277,5 @@ async def test_long_steps_send_progress_to_fvtt(make_ctx, sent, monkeypatch):
     await dungeon_scene.generate_and_create_dungeon_scene(ctx, "small", 0.2, seed=1)
     progress_msgs = [m["message"] for m in sent if m["action"] == "progress"]
     assert any(m.startswith("[伝承]") for m in progress_msgs)
-    assert any(m.startswith("[部屋の情景] 完了") for m in progress_msgs)
+    assert any(m.startswith("[部屋の情景] 部屋 ") for m in progress_msgs)
     assert "create_dungeon_scene" in actions(sent)

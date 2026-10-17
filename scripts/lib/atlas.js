@@ -301,18 +301,21 @@ export function actorsContext(actors) {
  * シナリオビルダーの「作成中」の行 (builder_progress)。
  * sinceSec は進捗を受け取ってからの秒数 (次の進捗が届くまで画面側で数え進める)。
  */
-export function formatBuilderProgress(progress, sinceSec = 0, kind = "draft") {
+export function formatBuilderProgress(progress, sinceSec = 0, kind = "draft", totalSec = null) {
   // kind: "draft" (下書き作成) / "build" (シーン構築)。進捗が届いていれば、そちらの kind を使う
   const base = (progress?.kind ?? kind) === "build" ? "⏳ シーンを構築中です…" : "⏳ AI が下書きを作成中です…";
-  if (!progress) return base;
+  // 1 行目: 全体 (工程と、依頼してからの経過)。2 行目: いまの作業 (この工程の細かい進み具合と残り秒)
+  const total = totalSec == null ? null : Math.max(0, Math.floor(Number(totalSec) || 0));
+  const totalText = total == null ? "" : `全体の経過 ${total}秒`;
+  if (!progress) return totalText ? `${base} ${totalText}` : base;
   const since = Math.max(0, Math.floor(Number(sinceSec) || 0));
-  const parts = [];
   const steps = Number(progress.steps) || 1;
-  if (steps > 1) parts.push(`工程 ${progress.step}/${steps}「${progress.step_label ?? ""}」`);
+  const head = [steps > 1 ? `工程 ${progress.step}/${steps}「${progress.step_label ?? ""}」` : "", totalText].filter(Boolean);
+  const parts = [];
   if (progress.detail) parts.push(progress.detail);
-  parts.push(`経過 ${(Number(progress.elapsed) || 0) + since}秒`);
+  parts.push(`${steps > 1 ? "この工程の" : ""}経過 ${(Number(progress.elapsed) || 0) + since}秒`);
   const remaining = (Number(progress.remaining) || 0) - since;
   if (remaining > 0) parts.push(`タイムアウトまで残り ${remaining}秒`);
   else parts.push(progress.auto_extend ? "タイムアウト。自動で延長します" : "タイムアウト。延長するかチャットのカードで選んでください");
-  return `${base} ${parts.join(" ・ ")}`;
+  return `${base}${head.length ? " " + head.join(" ・ ") : ""}\n└ ${parts.join(" ・ ")}`;
 }

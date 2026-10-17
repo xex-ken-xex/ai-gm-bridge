@@ -12,6 +12,7 @@ flag に保存する (L11: ブラウザのリロードでランドマークが�
 
 import asyncio
 import random
+import time
 import uuid
 from typing import Dict, List, Optional
 
@@ -31,7 +32,7 @@ from gm_server.dungeon_scene import (
     scene_mode_label,
     send_scene,
 )
-from gm_server.progress import log
+from gm_server.progress import log, log_detail, log_group, log_step
 from gm_server.tts import voice_filename
 from tools.dungeon_generator import LIGHT_PRESET_KEYS, DungeonGenerator
 from tools.prompt_manager import get_active_world_info, prioritize_key_topologies
@@ -270,13 +271,20 @@ def auto_extend_of(data: dict) -> bool:
 
 async def query_stage(ctx, label: str, prompt: str, on_status=None, auto_extend: bool = False):
     """AI に 1 回問い合わせる。打ち切り・失敗なら None"""
+    log_step(f"[{label}] AI に問い合わせます (プロンプト {len(prompt)} 文字、上限 {int(llm_step_limit(ctx))}秒"
+        f"{'、自動延長あり' if auto_extend else ''})")
+    started = time.monotonic()
     try:
-        return await run_with_deadline(ctx, label, ctx.llm.query_json(prompt, unbounded=True), limit=llm_step_limit(ctx),
-                                       on_status=on_status, auto_extend=auto_extend)
+        result = await run_with_deadline(ctx, label, ctx.llm.query_json(prompt, unbounded=True), limit=llm_step_limit(ctx),
+                                         on_status=on_status, auto_extend=auto_extend)
+        took = int(time.monotonic() - started)
+        log_step(f"[{label}] 応答を受け取りました ({took}秒)" if result is not None
+            else f"[{label}] 応答を JSON として読めませんでした ({took}秒)")
+        return result
     except asyncio.TimeoutError:
-        log(f"[{label}] 打ち切りました。")
+        log_step(f"[{label}] 打ち切りました。")
     except Exception as e:
-        log(f"[{label}] 生成に失敗しました ({e})")
+        log_step(f"[{label}] 生成に失敗しました ({e})")
     return None
 
 
@@ -383,7 +391,13 @@ async def handle_generate_stage(ctx, data: dict) -> None:
     seed = parse_seed(data.get("seed")) or new_seed()
     rng = random.Random(seed)
     cards = draw_cards(stage, rng, data.get("recent_cards"))
-    print(f"\n[シナリオビルダー] {stage_label} の下書きを生成 (seed={seed}, カード: {' / '.join(c['text'] for c in cards)})")
+    started = time.monotonic()
+    log("")
+    log_group(f"シナリオビルダー: {stage_label}の下書きを作ります (seed={seed})")
+    log_detail(f"カード: {' / '.join(c['text'] for c in cards)}")
+    log_detail(f"依頼の内容: 上位 {[p.get('name') for p in data.get('parents') or [] if isinstance(p, dict)]}"
+        f" / 名前の指定「{data.get('fixed_name') or 'なし'}」 / GM 指示 {len(str(data.get('user_prompt') or ''))} 文字"
+        f" / 自動延長 {'あり' if auto_extend_of(data) else 'なし'}")
 
     map_info = None
     topologies = None
@@ -391,6 +405,7 @@ async def handle_generate_stage(ctx, data: dict) -> None:
         gen = await asyncio.to_thread(make_wilderness_generator, seed)
         topologies = gen.get_room_topologies()
         map_info = {"seed": seed, **WILDERNESS_MAP}
+        log_step(f"旅路の地点グラフを作りました ({len(topologies)} 地点)")
 
     size_key = builder_size_key(data.get("size_key"))
     prompt = build_stage_prompt(
@@ -429,7 +444,8 @@ async def handle_generate_stage(ctx, data: dict) -> None:
         result["landmarks"] = normalize_landmarks(result.get("landmarks"), topologies)
 
     await ctx.send(protocol.builder_stage_result(stage, result, cards=cards, seed=seed, fallback=fallback, map_info=map_info))
-    print(f"[シナリオビルダー] {stage_label} の下書きを送信しました。")
+    log_group(f"シナリオビルダー: {stage_label}の下書きを送りました ({int(time.monotonic() - started)}秒)"
+          f" ({'骨組みのみ' if fallback else '一部欠けあり' if partial else 'すべて受け取り済み'})。")
 
 
 # -------------------------------------------------------------------------
@@ -441,12 +457,16 @@ async def handle_build_scene(ctx, data: dict) -> None:
     name = str(data.get("name") or "").strip() or ("旅路" if scene_mode == "wilderness" else "名もなき遺跡")
     site_public = str(data.get("public_lore") or "")
     site_dm = str(data.get("dm_secrets") or "")
+    # use_ai: false は「スクリプト」で構築 (ジェネレータの地図と仮の区画だけ。文面は DM が自分で書く)
+    use_ai = data.get("use_ai") is not False
 
     if scene_mode == "wilderness":
         map_info = data.get("map") if isinstance(data.get("map"), dict) else {}
         seed = parse_seed(map_info.get("seed"))
-        landmarks = data.get("landmarks")
-        if seed is None:
+        landmarks = data.get("landmarks") if use_ai else []
+        if seed is None and not use_ai:
+            seed = new_seed()
+        elif seed is None:
             # 下書きの地点グラフが分からないので、ランドマークは使えない
             seed, landmarks = new_seed(), []
             await ctx.send(protocol.chat(
@@ -460,9 +480,11 @@ async def handle_build_scene(ctx, data: dict) -> None:
         size_key = builder_size_key(data.get("size_key"))
         density = _clamp(data.get("density"), 0.5, 0.2, 1.0)
         loop_ratio = _clamp(data.get("loop_ratio"), 0.25, 0.0, 0.5)
-    print(f"\n[シナリオビルダー] シーン構築: {name} ({mode_name}, {size_key}, seed={seed})")
+    started = time.monotonic()
+    log("")
+    log_group(f"シナリオビルダー: {mode_name}『{name}』のシーンを構築します ({'AI' if use_ai else 'スクリプト'}、{size_key}、seed={seed})")
     stage = "wilderness" if scene_mode == "wilderness" else "site_lore"
-    steps = 1 if scene_mode == "wilderness" else 2
+    steps = 2 if scene_mode != "wilderness" and use_ai else 1
     auto_extend = auto_extend_of(data)
     try:
         await build_scene(ctx, data, scene_mode, name, site_public, site_dm, seed, size_key, density, loop_ratio,
@@ -470,6 +492,7 @@ async def handle_build_scene(ctx, data: dict) -> None:
     finally:
         # 画面の「構築中」を消す (失敗・打ち切りでも)
         await ctx.send(protocol.builder_progress(stage, steps, steps, "完了", 0, 0, kind="build", finished=True))
+        log_group(f"シナリオビルダー: 『{name}』のシーン構築を終えました ({int(time.monotonic() - started)}秒)")
 
 
 async def build_scene(ctx, data, scene_mode, name, site_public, site_dm, seed, size_key, density, loop_ratio,
@@ -486,6 +509,7 @@ async def build_scene(ctx, data, scene_mode, name, site_public, site_dm, seed, s
         return
     gen, walls, png_filename = built
     topologies = gen.get_room_topologies()
+    log_step(f"[1/{steps} マップ生成] マップを作りました ({len(gen.rooms)} 区画、壁 {len(walls)} 本、画像 {png_filename})")
     lore = {
         "dungeon_name": name,
         "floor_title": f"{name} ({mode_name})",
@@ -499,18 +523,23 @@ async def build_scene(ctx, data, scene_mode, name, site_public, site_dm, seed, s
         rooms = gen.get_room_flavor_notes(grid_size=100, custom_flavors=custom or None, id_base=0)
         speech_text = f"{mode_name}『{name}』のシーンを構築しました。全{len(gen.rooms)}地点に情景を設定しました。"
         await send_scene(ctx, name, scene_mode, png_filename, gen, walls, lore, rooms, density, speech_text)
-        print("[シナリオビルダー] シーン構築指示を送信しました。")
         return
 
     selected = prioritize_key_topologies(topologies, max_count=MAX_ROOMS_FOR_AI)
     sub_objectives = data.get("sub_objectives") if isinstance(data.get("sub_objectives"), list) else []
     plan = plan_site_rooms(selected, sub_objectives, random.Random(gen.seed))
+    log_step(f"区画の役割を割り当てました (AI に書かせる {len(selected)} 区画、中目標 {len(sub_objectives)} 件)")
     world_fallback = get_active_world_info()
 
     # 先にマップだけのシーンを作る (区画は役割の割り当てと既定の文面)
     scene_key = f"builder-{gen.seed}-{uuid.uuid4().hex[:8]}"
     written: List[Dict] = []
     rooms = gen.get_room_flavor_notes(grid_size=100, custom_flavors=apply_room_plan(None, plan) or None, id_base=0)
+    if steps == 1:
+        # スクリプト: AI に区画の情景を頼まずに終える
+        speech_text = f"{mode_name}『{name}』のシーンを構築しました。全{len(gen.rooms)}区画は仮の名前なので、探索録で書き足してください。"
+        await send_scene(ctx, name, scene_mode, png_filename, gen, walls, lore, rooms, density, speech_text)
+        return
     await send_scene(ctx, name, scene_mode, png_filename, gen, walls, lore, rooms, density, None, scene_key=scene_key)
     await ctx.send(protocol.chat(
         f"🏰 <b>{mode_name}『{name}』のマップを作りました</b> (区画数: {len(gen.rooms)})<br>"
@@ -529,8 +558,12 @@ async def build_scene(ctx, data, scene_mode, name, site_public, site_dm, seed, s
         ids = {i["id"] for i in items}
         notes = gen.get_room_flavor_notes(grid_size=100, custom_flavors=apply_room_plan(written, plan), id_base=0)
         # 部屋ノートの id は 1 始まり (区画番号 + 1)
-        await ctx.send(protocol.update_dungeon_rooms(scene_key, [r for r in notes if r["id"] - 1 in ids]))
+        rooms_now = [r for r in notes if r["id"] - 1 in ids]
+        await ctx.send(protocol.update_dungeon_rooms(scene_key, rooms_now))
+        log_detail(f"区画 {'・'.join(str(r['id']) for r in rooms_now)} の情景をシーンに反映しました"
+            f" ({len(written)}/{len(selected)} 区画)")
 
+    log_step(f"[2/{steps} 区画の情景] AI に {len(selected)} 区画の情景を頼みます")
     flavors = await query_room_flavors(
         ctx, None, selected, scene_mode, prompt_for_chunk=prompt_for_chunk, label="区画の情景",
         on_status=stage_status(ctx, stage, 2, steps, "区画の情景", kind="build"),
@@ -542,4 +575,3 @@ async def build_scene(ctx, data, scene_mode, name, site_public, site_dm, seed, s
     file_name = voice_filename("voice_dungeon")
     if await ctx.tts.synthesize(speech_text, file_name):
         await ctx.send(protocol.play_sound(file_name, 1.0, subtitle=speech_text))
-    print("[シナリオビルダー] シーン構築が終わりました。")
