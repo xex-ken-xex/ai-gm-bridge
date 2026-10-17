@@ -39,3 +39,14 @@
 .ai-gm-builder .aib .aib-build-script { background: #16a085; }
 .ai-gm-builder .aib .aib-actions button:disabled { opacity: 0.45; cursor: not-allowed; }
 .ai-gm-builder .aib .aib-actions button span { white-space: nowrap; display: inline-block; }
+/* NPC ブレイン管理画面 (scripts/npc.js) */
+.ai-gm-builder .aib-brain .aib-top select { flex: 1 1 auto; height: 28px; background: #101014; color: #f0f0f0; border: 1px solid #555; border-radius: 4px; }
+.ai-gm-builder .aib-brain .aib-top button { flex: none; width: auto; margin: 0; background: #34495e; color: #fff; border: none; padding: 5px 8px; border-radius: 4px; cursor: pointer; font-size: 12px; }
+.ai-gm-builder .aib-brain .aib-voice { display: flex; gap: 4px; }
+.ai-gm-builder .aib-brain .aib-voice input { width: 64px; flex: none; }
+.ai-gm-builder .aib-brain .aib-mem-list { max-height: 180px; overflow-y: auto; background: #101014; padding: 6px; border: 1px solid #333; border-radius: 4px; }
+.ai-gm-builder .aib-brain .aib-mem-row { display: flex; gap: 6px; align-items: center; margin-bottom: 4px; font-size: 11px; color: #aaa; }
+.ai-gm-builder .aib-brain .aib-mem-row .mem-summary { flex: 1 1 auto; }
+.ai-gm-builder .aib-brain .aib-mem-row label { display: flex; align-items: center; gap: 2px; margin: 0; white-space: nowrap; }
+.ai-gm-builder .aib-brain .aib-mem-row input[type=number] { width: 52px; background: #101014; color: #f39c12; border: 1px solid #333; }
+.ai-gm-builder .aib-brain .aib-short-mem { margin: 4px 0 0 16px; padding: 0; font-size: 12px; }

@@ -78,6 +78,9 @@ flowchart TD
   - ループ防止: 送信者のエイリアスが `AI GM` で始まる場合は送信除外。
   - コマンド除外: 先頭が `/` (スラッシュコマンド) や `[` (マクロ等) で始まるメッセージは除外。
   - 通常のプレイヤー会話のみを抽出してサーバーに転送。
+- **送り先の切り替え (NPC 会話)**: 発言者のトークン (`message.speaker.token`、無ければ発言ユーザーのキャラクターのトークン) から
+  35ft 以内で、壁で音が遮られていない NPC (character 以外・プレイヤー非所有・非表示でない) がいれば `npc_dialogue_request`、
+  いなければ `player_message` を送る。どちらか 1 経路だけ (二重応答を防ぐ)。発言者のトークンが分からないときは `player_message`。
 
 ---
 
@@ -192,6 +195,28 @@ FVTT のビルダー画面にも同じ内容を 2 行で出します (`builder_p
   "content": "string (発言テキスト本文)"
 }
 ```
+
+#### NPC 会話イベント (`npc_dialogue_request`)
+発言者の声が届く NPC (近い順に最大 4 人) がいるときに、`player_message` の代わりに送ります。NPC の知識・秘密・記憶は actor の flag `npc_brain` (`/ai NPC` の画面で編集)。
+
+```json
+{
+  "event": "npc_dialogue_request",
+  "speaker_name": "アリア", "speaker_token_id": "トークン id", "scene_id": "シーン id",
+  "player_input": "帳簿を見せてくれ",
+  "room_name": "発言者がいる部屋 (部屋の外ならシーン名)", "room_flavor": "部屋の情景",
+  "check_result_context": null,
+  "listening_npcs": [{
+    "id": "トークン id", "name": "エドガー", "distance_ft": 5,
+    "goal": "…", "trust": 0, "public_known": "…", "secret_known": "…", "ignorance": "…",
+    "short_term_memory": ["…"], "long_term_memory": ["[うろ覚え] (重要度:4) …"],
+    "voice": { "name": "ja-JP-KeitaNeural", "rate": "+0%", "pitch": "+0Hz" }
+  }]
+}
+```
+
+判定ボタンで振った結果を受けたときは、`check_result_context` に「説得判定 成功 (出目の合計 16 / 目標値 14)。打ち明けてよい内容: …」を入れて同じ形で送ります
+(ヒントと目標値は GM のクライアントが覚えている値を使い、プレイヤー側の値は使いません)。
 
 #### GM `/ai` コマンドイベント (`ai_command`)
 GM がチャット欄で `/ai <プロンプト>` を実行した際に送信されます。
@@ -355,6 +380,33 @@ PC のトークン (プレイヤー所有、または所有者未設定の `char
 
 `scene_key` の flag を持つシーンを探し、`rooms[i].id` が同じ区画について、探索録のページ (名前と本文)・マップノート (名前とアイコン)・光源と環境音 (作り直し)・シーンの `rooms` flag を書き換えます。
 シーンが見つからなければ何もしません (コンソールに警告)。
+
+#### 5-3. NPC 会話の反応 (`npc_dialogue_response`)
+
+```json
+{
+  "action": "npc_dialogue_response", "speaker_token_id": "…", "scene_id": "…",
+  "result": {
+    "primary_npc_id": "トークン id", "primary_npc_name": "エドガー",
+    "internal_thought": "GM だけが読む内心", "narrative_action": "地の文", "speech": "セリフ (かぎ括弧なし)",
+    "ambient_reactions": [{ "npc_id": "…", "npc_name": "…", "silent_emote": "…" }],
+    "physical_action": "stay | approach_speaker | step_back | leave_scene | turn_hostile",
+    "trust_delta": -2〜2, "new_memory": { "summary": "…", "importance": 1〜5 } | null,
+    "check_offer": { "skill": "説得", "dc": 5〜30, "target_secret_hint": "GM だけが読む" } | null,
+    "fallback": false
+  }
+}
+```
+
+- サーバーは AI の応答を検める: `primary_npc_id` / `ambient_reactions` は聴き手の id だけ、数値は範囲内に丸め、読めなければ最も近い NPC の既定の反応 (`fallback: true`)。
+- FVTT は、NPC を発言者にした小説風カード (地の文・セリフ・脇役の仕草・判定ボタン) を全員に、内心・信頼度・動きたがっている行動・判定成功時のヒントを GM にだけウィスパーで出し、吹き出しを表示する。
+  NPC の記憶 (`new_memory`) と信頼度 (`trust_delta`) を `npc_brain` に書く。`physical_action` は GM へのメモだけ (トークンは動かさない。移動は Phase 4)。
+- セリフは NPC の声色 (`voice`) で読み上げ、`play_sound` (字幕付き) を続けて送る。
+
+**NPC の記憶と忘却** (`scripts/lib/npc-brain.js`)
+- 短期記憶は最新 5 件。あふれた古いものは鮮明度 0.9 で長期記憶へ移す。重要度 4 以上はすぐ長期記憶にも入れる (二重には移さない)。
+- 「⏳ 時間を進める」で長期記憶を 1 段階風化させる: 鮮明度 × (1 − (5 − 重要度) × (1 − 記憶力) × 0.35)。重要度 5 は忘れない。0.15 未満で忘れる。
+- AI には鮮明度を [鮮明] (0.8 以上) / [うろ覚え] (0.4 以上) / [ほぼ忘却] の印で渡す。
 
 #### 6. シナリオビルダーの下書き (`builder_stage_result`)
 

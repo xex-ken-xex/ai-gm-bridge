@@ -27,10 +27,11 @@ ai-gm-bridge/
 ├── scripts/             # FVTT 側の実装 (bridge.js から import)
 │   ├── actions.js       # サーバーからの action 処理 (Foundry 依存)
 │   ├── builder.js       # シナリオビルダー画面 (DialogV2) と地図帳ジャーナル (Foundry 依存)
+│   ├── npc.js           # NPC 会話 (聴き手の収集・反応の表示・記憶の更新・技能判定・/ai NPC のブレイン管理画面) (Foundry 依存)
 │   ├── net/connection.js # WebSocket 接続・自動再接続・受信の直列処理
-│   └── lib/             # Foundry 非依存の純粋関数 (html / commands / chat-filter / rooms / scene-docs / cards / atlas)
+│   └── lib/             # Foundry 非依存の純粋関数 (html / commands / chat-filter / rooms / scene-docs / cards / atlas / npc-brain / npc-listen)
 ├── ai_gm_server.py      # サーバー起動スクリプト (実装は gm_server/)
-├── gm_server/           # バックエンド実装 (config / logs (詳細ログ: ~/ai-gm-logs/<日付>/server.log) / text / protocol / tts / llm / progress / deadline / dungeon_scene / builder / handlers / router / app)
+├── gm_server/           # バックエンド実装 (config / logs (詳細ログ: ~/ai-gm-logs/<日付>/server.log) / text / protocol / tts / llm / progress / deadline / dungeon_scene / builder / handlers (npc_dialogue ほか) / router / app)
 ├── tests/
 │   ├── python/          # pytest (python3 -m pytest)
 │   └── js/              # node:test (npm test)
@@ -40,7 +41,8 @@ ai-gm-bridge/
 │   ├── dungeon_lore_prompt.txt   # ダンジョン伝承・生態系生成用
 │   ├── dungeon_rooms_prompt.txt  # 部屋トポロジー・情景補完用
 │   ├── builder_rules.txt         # シナリオビルダー共通ルール (整合性・マンネリ防止・自己点検)
-│   └── builder_*_prompt.txt      # シナリオビルダー各段階 (region / settlement / wilderness / site_lore / site_rooms)
+│   ├── builder_*_prompt.txt      # シナリオビルダー各段階 (region / settlement / wilderness / site_lore / site_rooms)
+│   └── npc_dialogue_prompt.txt   # NPC 会話 (知識の境界・記憶の鮮明度・判定の提案)
 ├── tools/
 │   ├── prompt_manager.py    # プロンプト補完・ワールド情報取得
 │   ├── dungeon_generator.py # ダンジョン自動生成ツール (幾何学/壁/グラフ)

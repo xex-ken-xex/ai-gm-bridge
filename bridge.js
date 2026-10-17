@@ -8,7 +8,7 @@ import { handleServerAction } from "./scripts/actions.js";
 import { openScenarioBuilder, setBuilderSender } from "./scripts/builder.js";
 import { buildRoomNarrationHtml } from "./scripts/lib/cards.js";
 import { generatedFlags, MODULE_ID, playerMessageToForward } from "./scripts/lib/chat-filter.js";
-import { AI_COMMAND_RGX, cleanCommandPrompt, isBuilderCommand, parseAiCommand } from "./scripts/lib/commands.js";
+import { AI_COMMAND_RGX, cleanCommandPrompt, isBrainCommand, isBuilderCommand, parseAiCommand } from "./scripts/lib/commands.js";
 import {
   findRoomAt,
   isRoomReached,
@@ -18,6 +18,14 @@ import {
   tokenCenter,
 } from "./scripts/lib/rooms.js";
 import { BridgeConnection } from "./scripts/net/connection.js";
+import {
+  handleNpcCheckRoll,
+  isNpcCheckRoll,
+  onNpcCheckClick,
+  openNpcBrainManager,
+  sendDialogueIfHeard,
+  setNpcSender,
+} from "./scripts/npc.js";
 
 let connection = null;
 
@@ -32,6 +40,11 @@ function sendAiCommand(prompt) {
   // `/ai ビルダー` はシナリオビルダー画面を開くだけ (サーバーへは送らない)
   if (isBuilderCommand(prompt)) {
     openScenarioBuilder();
+    return;
+  }
+  // `/ai NPC` は NPC のブレイン管理画面を開くだけ
+  if (isBrainCommand(prompt)) {
+    openNpcBrainManager();
     return;
   }
   if (!connection) {
@@ -126,6 +139,8 @@ function findRoomPage(scene, room) {
 
 Hooks.once("ready", async function() {
   console.log("AI GM Bridge | === チャット双方向 & サポートGM (agy) モジュール ロード完了 ===");
+  // NPC 会話の「本音を引き出す」判定ボタンはプレイヤーも押す (押した人のキャラクターで振る)
+  document.addEventListener("click", onNpcCheckClick);
   if (!game.user.isGM) return;
 
   registerAiCommands();
@@ -145,6 +160,7 @@ Hooks.once("ready", async function() {
   });
   connection.connect();
   setBuilderSender(payload => connection.send(payload));
+  setNpcSender(payload => connection.send(payload));
 
   // FVTTのチャット投稿を検知してPythonへ転送するフック (通常発言)
   Hooks.on("createChatMessage", (message) => {
@@ -156,6 +172,12 @@ Hooks.once("ready", async function() {
       return;
     }
 
+    // NPC 会話の判定ボタンで振った結果 → NPC に続きを反応させる
+    if (isNpcCheckRoll(message)) {
+      if (connection.isOpen) handleNpcCheckRoll(message);
+      return;
+    }
+
     const content = playerMessageToForward({
       alias: message.speaker?.alias,
       content: message.content,
@@ -163,6 +185,8 @@ Hooks.once("ready", async function() {
       flags: message.flags,
     });
     if (content === null || !connection.isOpen) return;
+    // H4: 発言者の声が届く NPC がいれば NPC 会話、いなければ AI GM。どちらか 1 経路だけで送る
+    if (sendDialogueIfHeard(message, content)) return;
     console.log("AI GM Bridge | プレイヤー発言を検知、送信中:", content);
     connection.send({ event: "player_message", user: message.author?.name || "Player", content });
   });
