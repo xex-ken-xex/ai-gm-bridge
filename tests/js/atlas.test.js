@@ -5,6 +5,7 @@ import {
   atlasEntryContext,
   atlasIndex,
   buildAtlasPages,
+  formatBuilderProgress,
   formatStageDraft,
   htmlToText,
   recentCardIds,
@@ -157,4 +158,15 @@ test("formatStageDraft: 人柄が届かなかった NPC も undefined を出さ�
   });
   assert.ok(d.publicText.includes("・エドガー (職人頭) / 望み: 道を取り戻す"));
   assert.ok(!d.publicText.includes("undefined"));
+});
+
+test("formatBuilderProgress: 工程・完了数・経過・残り秒を並べ、受信後の秒数だけ進める", () => {
+  const p = { step: 2, steps: 2, step_label: "地点の描写", detail: "完了 1/2", elapsed: 40, remaining: 260 };
+  assert.equal(
+    formatBuilderProgress(p, 3),
+    "⏳ AI が下書きを作成中です… 工程 2/2「地点の描写」 ・ 完了 1/2 ・ 経過 43秒 ・ タイムアウトまで残り 257秒",
+  );
+  assert.equal(formatBuilderProgress({ step: 1, steps: 1, elapsed: 5, remaining: 295 }), "⏳ AI が下書きを作成中です… 経過 5秒 ・ タイムアウトまで残り 295秒");
+  assert.ok(formatBuilderProgress({ ...p, remaining: 2 }, 5).endsWith("タイムアウト。延長するかチャットのカードで選んでください"));
+  assert.equal(formatBuilderProgress(null), "⏳ AI が下書きを作成中です…");
 });

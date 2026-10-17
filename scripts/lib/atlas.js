@@ -296,3 +296,21 @@ export function actorsContext(actors) {
   }
   return { pcs, npcs };
 }
+
+/**
+ * シナリオビルダーの「作成中」の行 (builder_progress)。
+ * sinceSec は進捗を受け取ってからの秒数 (次の進捗が届くまで画面側で数え進める)。
+ */
+export function formatBuilderProgress(progress, sinceSec = 0) {
+  const base = "⏳ AI が下書きを作成中です…";
+  if (!progress) return base;
+  const since = Math.max(0, Math.floor(Number(sinceSec) || 0));
+  const parts = [];
+  const steps = Number(progress.steps) || 1;
+  if (steps > 1) parts.push(`工程 ${progress.step}/${steps}「${progress.step_label ?? ""}」`);
+  if (progress.detail) parts.push(progress.detail);
+  parts.push(`経過 ${(Number(progress.elapsed) || 0) + since}秒`);
+  const remaining = (Number(progress.remaining) || 0) - since;
+  parts.push(remaining > 0 ? `タイムアウトまで残り ${remaining}秒` : "タイムアウト。延長するかチャットのカードで選んでください");
+  return `${base} ${parts.join(" ・ ")}`;
+}

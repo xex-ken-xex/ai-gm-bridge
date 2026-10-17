@@ -254,10 +254,18 @@ def fallback_stage_result(stage: str) -> Dict:
 # -------------------------------------------------------------------------
 # builder_generate_stage
 # -------------------------------------------------------------------------
-async def query_stage(ctx, label: str, prompt: str):
+def stage_status(ctx, stage: str, step: int, steps: int, step_label: str):
+    """run_with_deadline の on_status: ビルダー画面の「作成中」の行に工程・完了数・残り秒を出す"""
+    async def _send(elapsed: float, remaining: float, detail: str) -> None:
+        await ctx.send(protocol.builder_progress(stage, step, steps, step_label, elapsed, remaining, detail))
+    return _send
+
+
+async def query_stage(ctx, label: str, prompt: str, on_status=None):
     """AI に 1 回問い合わせる。打ち切り・失敗なら None"""
     try:
-        return await run_with_deadline(ctx, label, ctx.llm.query_json(prompt, unbounded=True), limit=llm_step_limit(ctx))
+        return await run_with_deadline(ctx, label, ctx.llm.query_json(prompt, unbounded=True), limit=llm_step_limit(ctx),
+                                       on_status=on_status)
     except asyncio.TimeoutError:
         log(f"[{label}] 打ち切りました。")
     except Exception as e:
@@ -302,11 +310,13 @@ def merge_settlement(core: Dict, extra) -> Dict:
 
 async def generate_settlement(ctx, data: dict, label: str, core_prompt: str):
     """集落: 骨組み (表の情報・人物の顔ぶれ・真相の要点) → 人柄・隠し事・BGM。(応答, 一部欠けたか) を返す"""
-    core = await query_stage(ctx, f"{label} 1/2 骨組み", core_prompt)
+    core = await query_stage(ctx, f"{label} 1/2 骨組み", core_prompt,
+                             on_status=stage_status(ctx, "settlement", 1, 2, "骨組み"))
     if normalize_stage_result("settlement", core) is None:
         return core, False
     prompt = build_settlement_secrets_prompt(data, core, world_fallback=get_active_world_info())
-    extra = await query_stage(ctx, f"{label} 2/2 人物と秘密", prompt)
+    extra = await query_stage(ctx, f"{label} 2/2 人物と秘密", prompt,
+                              on_status=stage_status(ctx, "settlement", 2, 2, "人物と秘密"))
     return merge_settlement(core, extra), not isinstance(extra, dict)
 
 
@@ -332,7 +342,8 @@ def merge_landmarks(plan: Dict[int, Dict], details: Optional[List[Dict]]) -> Lis
 
 async def generate_wilderness(ctx, data: dict, label: str, core_prompt: str, topologies: List[Dict]):
     """旅路: 骨組み (全体像・秘密・各地点の名前と役割) → 地点ごとの読み上げと GM メモ (並列)"""
-    core = await query_stage(ctx, f"{label} 1/2 骨組み", core_prompt)
+    core = await query_stage(ctx, f"{label} 1/2 骨組み", core_prompt,
+                             on_status=stage_status(ctx, "wilderness", 1, 2, "骨組み"))
     if normalize_stage_result("wilderness", core) is None:
         return core, False
     plan = landmark_plan(core, topologies)
@@ -348,6 +359,7 @@ async def generate_wilderness(ctx, data: dict, label: str, core_prompt: str, top
     targets = [t for t in topologies if t["id"] in plan]
     details = await query_room_flavors(
         ctx, None, targets, "wilderness", prompt_for_chunk=prompt_for_chunk, label=f"{label} 2/2 地点の描写",
+        on_status=stage_status(ctx, "wilderness", 2, 2, "地点の描写"),
     )
     result = {k: v for k, v in core.items() if k != "landmark_plan"}
     result["landmarks"] = merge_landmarks(plan, details)
@@ -390,7 +402,7 @@ async def handle_generate_stage(ctx, data: dict) -> None:
     elif stage == "wilderness":
         raw, partial = await generate_wilderness(ctx, data, label, prompt, topologies)
     else:
-        raw = await query_stage(ctx, label, prompt)
+        raw = await query_stage(ctx, label, prompt, on_status=stage_status(ctx, stage, 1, 1, "下書き"))
 
     result = normalize_stage_result(stage, raw)
     fallback = result is None

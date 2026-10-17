@@ -286,6 +286,15 @@ PC のトークン (プレイヤー所有、または所有者未設定の `char
 `map` は旅路のみ。`landmarks[i].id` は地点グラフの 0 始まりの id です。`fallback: true` は AI 応答が使えず骨組みを返したことを示します。
 `create_dungeon_scene.lore.dm_secrets` があれば、探索録の伝承ページに DM 専用情報として表示します。
 
+#### 7. シナリオビルダーの進捗 (`builder_progress`)
+下書きの作成中、2 秒ごとに送ります。ビルダー画面の「⏳ AI が下書きを作成中です…」の行に、工程・完了数・経過・タイムアウトまでの残り秒を出します
+(次の進捗が届くまでは画面側で 1 秒ずつ数え進めます。残りが 0 になったら、延長確認のカードを選ぶよう案内します)。
+
+```json
+{ "action": "builder_progress", "stage": "wilderness", "step": 2, "steps": 2, "step_label": "地点の描写",
+  "detail": "完了 1/2", "elapsed": 40, "remaining": 260 }
+```
+
 ---
 
 ## 5. シーケンスフロー

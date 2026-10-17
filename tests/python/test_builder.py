@@ -12,6 +12,20 @@ def fixed_world(monkeypatch):
     monkeypatch.setattr(builder, "get_active_world_info", lambda: {"title": "W", "description": "D"})
 
 
+@pytest.fixture(autouse=True)
+def progress(monkeypatch):
+    """画面の進捗表示 (builder_progress) は sent と分けて集める"""
+    calls = []
+
+    def fake_status(ctx, stage, step, steps, step_label):
+        async def _send(elapsed, remaining, detail):
+            calls.append((stage, step, steps, step_label, detail))
+        return _send
+
+    monkeypatch.setattr(builder, "stage_status", fake_status)
+    return calls
+
+
 def actions(sent):
     return [m["action"] for m in sent]
 
@@ -269,3 +283,22 @@ async def test_wilderness_details_run_one_at_a_time_on_agy(make_ctx, sent):
     await builder.handle_generate_stage(make_ctx(OneAtATime(answer)), {"stage": "wilderness", "seed": 99})
     assert peak == 1
     assert all(lm.get("tts_narration") == "音" for lm in sent[-1]["result"]["landmarks"])
+
+
+async def test_split_stages_report_each_step_for_the_progress_line(make_ctx, sent, progress):
+    await builder.handle_generate_stage(make_ctx(FakeLLM(json_responses=[settlement_core(), {}])), {"stage": "settlement"})
+    assert [(p[1], p[2], p[3]) for p in progress] == [(1, 2, "骨組み"), (2, 2, "人物と秘密")]
+
+
+async def test_stage_status_sends_builder_progress(make_ctx, sent, monkeypatch):
+    from gm_server import deadline
+
+    monkeypatch.undo()
+    ctx = make_ctx()
+    send = builder.stage_status(ctx, "wilderness", 2, 2, "地点の描写")
+    await send(12.6, 287.4, "完了 1/2")
+    assert sent == [{
+        "action": "builder_progress", "stage": "wilderness", "step": 2, "steps": 2, "step_label": "地点の描写",
+        "detail": "完了 1/2", "elapsed": 12, "remaining": 287,
+    }]
+    assert deadline.STATUS_INTERVAL > 0

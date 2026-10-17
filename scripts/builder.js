@@ -13,6 +13,7 @@ import {
   atlasEntryContext,
   atlasIndex,
   buildAtlasPages,
+  formatBuilderProgress,
   formatStageDraft,
   htmlToText,
   joinLines,
@@ -48,6 +49,9 @@ const state = {
   // この画面で引いたカード (保存前でも次の抽選で避ける)
   sessionCards: [],
   pending: {},
+  // tab -> 下書き作成の進捗 (builder_progress と受け取った時刻)
+  progress: {},
+  progressTimer: null,
 };
 
 /** bridge.js から WebSocket 送信関数を受け取る */
@@ -280,7 +284,7 @@ function panelHtml(tab) {
     buttons += `<button type="button" class="aib-build" data-action="build">🏰 保存してシーン構築</button>`;
   }
 
-  const busy = state.pending[tab.id] ? `<p class="aib-busy">⏳ AI が下書きを作成中です…</p>` : "";
+  const busy = state.pending[tab.id] ? `<p class="aib-busy" data-busy-for="${tab.id}">${escapeHtml(progressText(tab.id))}</p>` : "";
   return `
     <section class="aib-panel ${state.activeTab === tab.id ? "active" : ""}" data-tab="${tab.id}">
       <div class="aib-grid aib-settings">${settings.join("")}</div>
@@ -472,9 +476,41 @@ function requestDraft(tab) {
   }
   if (state.send(payload)) {
     state.pending[tab.id] = true;
+    state.progress[tab.id] = null;
     ui.notifications.info(`AI GM Bridge: ${tab.label.replace(/^\S+\s*\d+\.\s*/, "")}の下書きを依頼しました。`);
     openScenarioBuilder(tab.id);
   }
+}
+
+function progressText(tabId) {
+  const p = state.progress[tabId];
+  return formatBuilderProgress(p?.data, p ? (Date.now() - p.at) / 1000 : 0);
+}
+
+/** 「作成中」の行だけを書き換える (画面全体を描き直すと入力中の文字が消えるため) */
+function refreshProgressLines() {
+  let busy = false;
+  for (const tab of TABS) {
+    if (!state.pending[tab.id]) continue;
+    busy = true;
+    const el = state.root?.querySelector?.(`[data-busy-for="${tab.id}"]`);
+    if (el) el.textContent = progressText(tab.id);
+  }
+  // 作成中のタブが無くなったら、毎秒の数え進めを止める
+  if (!busy && state.progressTimer) {
+    clearInterval(state.progressTimer);
+    state.progressTimer = null;
+  }
+}
+
+/** サーバーから届いた下書き作成の進捗 (工程・完了数・残り秒) を「作成中」の行に出す */
+export function handleBuilderProgress(data) {
+  const tab = TABS.find(t => t.stage === data.stage);
+  if (!tab || !state.pending[tab.id]) return;
+  state.progress[tab.id] = { data, at: Date.now() };
+  refreshProgressLines();
+  // 次の進捗が届くまでの間も、経過と残り秒を 1 秒ごとに数え進める
+  state.progressTimer ??= setInterval(refreshProgressLines, 1000);
 }
 
 /** サーバーから届いた下書きを画面に反映する (画面が閉じていれば開き直す) */
@@ -482,6 +518,7 @@ export async function handleBuilderStageResult(data) {
   const tab = TABS.find(t => t.stage === data.stage);
   if (!tab) return;
   state.pending[tab.id] = false;
+  state.progress[tab.id] = null;
   const res = data.result ?? {};
   const draft = formatStageDraft(data.stage, res);
   const cardIds = (data.cards ?? []).map(c => c.id).filter(Boolean);

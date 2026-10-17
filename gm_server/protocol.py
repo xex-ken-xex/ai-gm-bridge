@@ -59,3 +59,18 @@ def builder_stage_result(
     if map_info:
         msg["map"] = map_info
     return msg
+
+
+def builder_progress(stage: str, step: int, steps: int, step_label: str, elapsed: float, remaining: float,
+                     detail: str = "") -> Dict:
+    """シナリオビルダーの下書き作成の進捗 (画面の「作成中」の行に出す)。remaining はタイムアウトまでの残り秒"""
+    return {
+        "action": "builder_progress",
+        "stage": stage,
+        "step": step,
+        "steps": steps,
+        "step_label": step_label,
+        "detail": detail,
+        "elapsed": int(elapsed),
+        "remaining": max(0, int(remaining)),
+    }

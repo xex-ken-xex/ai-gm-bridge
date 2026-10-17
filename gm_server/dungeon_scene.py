@@ -231,6 +231,7 @@ async def query_room_flavors(
     scene_mode: str,
     prompt_for_chunk: Optional[Callable[[List[Dict]], str]] = None,
     label: str = "部屋の情景",
+    on_status=None,
 ) -> Optional[List[Dict]]:
     """
     部屋の情景を ROOMS_PER_JOB 部屋ずつのジョブに分け、ctx.llm.concurrency 本まで並列に問い合わせる
@@ -274,7 +275,7 @@ async def query_room_flavors(
     try:
         await run_with_deadline(
             ctx, label, asyncio.gather(*(run(c) for c in chunks)),
-            limit=llm_step_limit(ctx) * rounds, detail=lambda: f"完了 {done}/{len(chunks)}",
+            limit=llm_step_limit(ctx) * rounds, detail=lambda: f"完了 {done}/{len(chunks)}", on_status=on_status,
         )
     except asyncio.TimeoutError:
         log(f"{label}を打ち切りました (完了 {done}/{len(chunks)})。残りは既定のノートを使用します。")
