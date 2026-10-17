@@ -3,7 +3,7 @@
 .ai-gm-builder .aib { color: #f0f0e0; background: #1a1a20; padding: 10px; border-radius: 6px; font-size: 13px; display: flex; flex-direction: column; gap: 8px; }
 .ai-gm-builder .aib * { box-sizing: border-box; }
 .ai-gm-builder .aib .aib-grid { display: grid; gap: 8px 10px; align-items: start; }
-.ai-gm-builder .aib .aib-settings { grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); }
+.ai-gm-builder .aib .aib-settings { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .ai-gm-builder .aib .aib-two { grid-template-columns: 1fr 1fr; }
 .ai-gm-builder .aib .aib-field { display: flex; flex-direction: column; gap: 3px; min-width: 0; margin: 0; }
 .ai-gm-builder .aib .aib-label { color: #f39c12; font-weight: bold; font-size: 12px; line-height: 1.3; }
