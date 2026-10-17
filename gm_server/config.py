@@ -47,4 +47,4 @@ DEFAULT_VOICE = "ja-JP-NanamiNeural"
 # 発言者名 (bridge.js のループ検知 `AI GM` / `サポートGM` 前方一致と揃えること)
 SPEAKER_GM = "AI GM"
 SPEAKER_GM_ROLL = "AI GM (判定)"
-SPEAKER_SUPPORT = "サポートGM (agy)"
+SPEAKER_SUPPORT = "サポートGM アギィ"

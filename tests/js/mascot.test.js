@@ -79,3 +79,19 @@ test("mascotSvgDataUri は状態ごとの SVG を返す", () => {
   assert.ok(mascotSvgDataUri("thinking").startsWith("data:image/svg+xml;utf8,"));
   assert.notEqual(mascotSvgDataUri("thinking"), mascotSvgDataUri("idle"));
 });
+
+test("名札とチャットの発言者名は同じキャラクター (サポートGM アギィ)", async () => {
+  const { MASCOT_NAME, MASCOT_TITLE } = await import("../../scripts/lib/mascot.js");
+  const { isAiAlias } = await import("../../scripts/lib/chat-filter.js");
+  assert.equal(MASCOT_NAME, "アギィ");
+  assert.match(MASCOT_TITLE, /サポートGM/);
+  assert.ok(isAiAlias(`サポートGM ${MASCOT_NAME}`));
+});
+
+test("内蔵の顔: 考え中は「…」、切断は「z」、話し中だけ口を開ける", () => {
+  const svg = s => decodeURIComponent(mascotSvgDataUri(s).split(",")[1]);
+  assert.ok(svg("thinking").includes("#f1c40f\"><circle"));
+  assert.ok(svg("offline").includes(">z</text>"));
+  assert.ok(svg("speaking").includes("#c0392b"));
+  assert.ok(!svg("idle").includes("#c0392b"));
+});

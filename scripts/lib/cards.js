@@ -15,7 +15,7 @@ export function buildChoiceCardHtml({ title, message, choices }) {
   return `
   <div class="ai-gm-interactive-card" style="border: 2px solid #e67e22; border-radius: 6px; padding: 10px; background: rgba(20, 20, 25, 0.85); color: #f0f0e0; margin-top: 4px;">
     <div style="font-weight: bold; color: #f39c12; font-size: 14px; margin-bottom: 6px; display: flex; align-items: center; gap: 6px;">
-      <span>🧙‍♂️</span> <span>${escapeHtml(title || "サポートGM (agy)")}</span>
+      <span>🧙‍♂️</span> <span>${escapeHtml(title || "サポートGM アギィ")}</span>
     </div>
     <p style="margin: 0 0 10px 0; font-size: 13px; line-height: 1.4;">${escapeHtml(message || "選択してください：")}</p>
     <div class="ai-gm-choice-container" style="display: flex; flex-wrap: wrap; gap: 4px;">

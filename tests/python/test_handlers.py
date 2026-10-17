@@ -93,7 +93,7 @@ def test_is_dungeon_intent(prompt, expected):
 async def test_ai_command_routes_to_support_gm(make_ctx, sent):
     llm = FakeLLM(support_responses=["了解です。\n次の手を考えます"])
     await dispatch(make_ctx(llm), json.dumps({"event": "ai_command", "prompt": "敵の作戦を考えて"}))
-    assert sent == [{"action": "chat", "speaker": "サポートGM (agy)", "content": "了解です。<br>次の手を考えます"}]
+    assert sent == [{"action": "chat", "speaker": "サポートGM アギィ", "content": "了解です。<br>次の手を考えます"}]
 
 
 async def test_ai_command_empty_support_reply_shows_warning(make_ctx, sent):

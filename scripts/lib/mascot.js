@@ -2,7 +2,9 @@
 // 送受信ごとの台詞・保存位置の読み込み・内蔵 SVG
 // GM の画面での状態を game.socket で全員に配る (scripts/mascot.js)。プレイヤーに見せてよいものだけを配る
 
-export const MASCOT_NAME = "アギィ (Agy)";
+// 呼び名は 1 つにそろえる: チャットの発言者名は「サポートGM アギィ」(gm_server/config.py の SPEAKER_SUPPORT)、名札は「アギィ」
+export const MASCOT_NAME = "アギィ";
+export const MASCOT_TITLE = "星詠みのサポートGM";
 export const MASCOT_STATES = Object.freeze(["idle", "thinking", "speaking", "offline"]);
 export const DEFAULT_POSITION = Object.freeze({ left: 110, top: 90 });
 // ウィジェットの大きさ (画面の外に出さないための目安)
@@ -131,14 +133,39 @@ export class MascotController {
   }
 }
 
+// 内蔵 SVG の顔 (状態ごと)。目・口・飾り (考え中の「…」、切断の「z」) を描き分ける
+const FACES = Object.freeze({
+  // 待機: 丸い目と小さな笑み
+  idle: {
+    eyes: '<ellipse cx="32" cy="40" rx="3" ry="4" fill="#fff"/><ellipse cx="52" cy="40" rx="3" ry="4" fill="#fff"/>',
+    mouth: '<path d="M37,52 Q42,56 47,52" stroke="#fff" fill="none" stroke-width="2.5" stroke-linecap="round"/>',
+    extra: "",
+  },
+  // 考え中: 右上を見上げる目・すぼめた口・頭の上の「…」
+  thinking: {
+    eyes: '<circle cx="32" cy="40" r="4.5" fill="#fff"/><circle cx="52" cy="40" r="4.5" fill="#fff"/>'
+      + '<circle cx="33.5" cy="37.5" r="2" fill="#2c3e50"/><circle cx="53.5" cy="37.5" r="2" fill="#2c3e50"/>',
+    mouth: '<circle cx="44" cy="54" r="2" fill="#fff"/>',
+    extra: '<g fill="#f1c40f"><circle cx="62" cy="16" r="2.6"/><circle cx="70" cy="11" r="3.2"/><circle cx="79" cy="6" r="3.8"/></g>',
+  },
+  // 話し中: 開いた口
+  speaking: {
+    eyes: '<path d="M28,41 Q32,36 36,41 M48,41 Q52,36 56,41" stroke="#fff" fill="none" stroke-width="3" stroke-linecap="round"/>',
+    mouth: '<ellipse cx="42" cy="54" rx="5" ry="4" fill="#fff"/><ellipse cx="42" cy="55.5" rx="3" ry="2" fill="#c0392b"/>',
+    extra: "",
+  },
+  // 切断: 閉じた目と「z」(眠っている)
+  offline: {
+    eyes: '<path d="M28,41 L36,41 M48,41 L56,41" stroke="#fff" fill="none" stroke-width="3" stroke-linecap="round"/>',
+    mouth: '<path d="M39,54 L45,54" stroke="#fff" fill="none" stroke-width="2.5" stroke-linecap="round"/>',
+    extra: '<g fill="#ecf0f1" font-family="sans-serif" font-weight="bold"><text x="62" y="20" font-size="10">z</text><text x="70" y="12" font-size="13">z</text></g>',
+  },
+});
+
 /** 画像が設定されていないときの内蔵 SVG (data URI) */
 export function mascotSvgDataUri(state) {
   const glow = { thinking: "#f1c40f", speaking: "#2ecc71", offline: "#7f8c8d" }[state] ?? "#9b59b6";
-  const eyes = state === "thinking"
-    ? "M28,38 L36,38 M48,38 L56,38"
-    : state === "offline"
-      ? "M28,40 Q32,44 36,40 M48,40 Q52,44 56,40"
-      : "M32,36 A3,4 0 1,1 32,44 A3,4 0 1,1 32,36 M52,36 A3,4 0 1,1 52,44 A3,4 0 1,1 52,36";
+  const face = FACES[state] ?? FACES.idle;
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 84 84">
     <defs><radialGradient id="g" cx="50%" cy="50%" r="50%">
       <stop offset="0%" stop-color="${glow}" stop-opacity="0.9"/>
@@ -147,8 +174,7 @@ export function mascotSvgDataUri(state) {
     </radialGradient></defs>
     <circle cx="42" cy="44" r="34" fill="url(#g)"/>
     <path d="M16,32 Q42,24 68,32 L46,4 L34,12 Z" fill="#341f97" stroke="#f39c12" stroke-width="2"/>
-    <path d="${eyes}" stroke="#fff" fill="none" stroke-width="3" stroke-linecap="round"/>
-    ${state === "thinking" ? '<rect x="26" y="54" width="32" height="18" rx="3" fill="#e67e22" stroke="#fff" stroke-width="1.5"/>' : ""}
+    ${face.eyes}${face.mouth}${face.extra}
   </svg>`;
   return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
 }

@@ -75,7 +75,7 @@ function sendAiCommand(prompt) {
   }
   console.log("AI GM Bridge | GMの/aiコマンドを検知、送信中:", prompt);
   if (sendToServer({ event: "ai_command", user: game.user.name || "GM", prompt })) {
-    ui.notifications.info("サポートGM (agy) に指示を送信中...");
+    ui.notifications.info("サポートGM アギィ に指示を送信中...");
   }
 }
 
@@ -162,7 +162,7 @@ function findRoomPage(scene, room) {
 }
 
 Hooks.once("ready", async function() {
-  console.log("AI GM Bridge | === チャット双方向 & サポートGM (agy) モジュール ロード完了 ===");
+  console.log("AI GM Bridge | === チャット双方向 & サポートGM アギィ モジュール ロード完了 ===");
   // NPC 会話の「本音を引き出す」判定ボタンはプレイヤーも押す (押した人のキャラクターで振る)
   document.addEventListener("click", onNpcCheckClick);
   // アシスタント DM マスコットは全員の画面に出す。GM の画面での状態が game.socket で配られる

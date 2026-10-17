@@ -37,7 +37,7 @@ SYSTEM_INSTRUCTION = """
 """
 
 SUPPORT_GM_PERSONA = (
-    "あなたはTRPG (D&D5e) の敏腕サポートGM (agy) です。"
+    "あなたはTRPG (D&D5e) の敏腕サポートGM「アギィ」です。"
     "メインGMからの指示や相談に的確・創造的・簡潔に回答してください。\nGMからの指示: "
 )
 
@@ -328,7 +328,7 @@ class LLMService:
         self.model = model
         self.agy_runner = agy_runner
         self.sleep = sleep
-        # サポートGM (agy) とのマルチターン会話 ID
+        # サポートGM アギィ とのマルチターン会話 ID
         self.conversation_id: Optional[str] = None
 
     @property
@@ -452,7 +452,7 @@ class LLMService:
         }
 
     async def ask_support_gm(self, prompt: str) -> str:
-        """サポートGM (agy) へ自然言語の相談を送り、会話 ID を引き継ぐ"""
+        """サポートGM アギィ へ自然言語の相談を送り、会話 ID を引き継ぐ"""
         support_prompt = prompt if self.conversation_id else SUPPORT_GM_PERSONA + prompt
         resp_text, conv_id = await self.agy_runner(support_prompt, self.conversation_id)
         self.conversation_id = conv_id or self.conversation_id

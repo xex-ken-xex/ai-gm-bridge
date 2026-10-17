@@ -76,7 +76,7 @@ def is_dungeon_intent(prompt: str) -> bool:
 def mode_card() -> Dict:
     return protocol.interactive_card(
         title="ダンジョン自動生成",
-        message="サポートGM (agy) です。生成する舞台の種類を選択してください：",
+        message="サポートGM アギィ です。生成する舞台の種類を選択してください：",
         choices=[
             {"label": "地下迷宮 (石壁・扉・隠し扉)", "value": "dungeon_mode:underground"},
             {"label": "地上の廃墟 (崩れた壁・瓦礫越しに見通せる)", "value": "dungeon_mode:ruins"},
@@ -86,7 +86,7 @@ def mode_card() -> Dict:
 
 
 def size_card(mode_label: str = "") -> Dict:
-    lead = f"舞台「{mode_label}」を承りました。" if mode_label else "サポートGM (agy) です。"
+    lead = f"舞台「{mode_label}」を承りました。" if mode_label else "サポートGM アギィ です。"
     return protocol.interactive_card(
         title="ダンジョン自動生成",
         message=f"{lead}生成するマップの規模を選択してください：",

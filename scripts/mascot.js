@@ -1,4 +1,5 @@
-// アシスタント DM マスコット UI (Foundry 依存): GM・プレイヤー全員の画面に出すミニキャラ
+// アシスタント DM マスコット UI (Foundry 依存): GM・プレイヤー全員の画面に出すミニキャラ「アギィ」
+// (チャットの発言者名「サポートGM アギィ」と同じキャラクター)
 //
 // - GM のクライアントでの状態 (待機・考え中・話し中・切断) と台詞を game.socket で全員に配る (module.json の "socket": true)。
 //   GM だけの操作・確認 (ビルダーの下書き・/ai の相談・接続の状態など) は状態も台詞も配らない
@@ -12,6 +13,7 @@ import {
   clampPosition,
   DEFAULT_POSITION,
   MASCOT_NAME,
+  MASCOT_TITLE,
   MascotController,
   mascotForAction,
   mascotForEvent,
@@ -153,9 +155,9 @@ export function initMascot({ openBuilder = null, openBrain = null } = {}) {
     <div class="ai-mascot-avatar"></div>
     <div class="ai-mascot-nameplate"><span class="ai-mascot-dot"></span><span class="ai-mascot-name"></span></div>`;
   widget.querySelector(".ai-mascot-name").textContent = MASCOT_NAME;
-  widget.querySelector(".ai-mascot-nameplate").title = game.user?.isGM
+  widget.querySelector(".ai-mascot-nameplate").title = `${MASCOT_TITLE} ${MASCOT_NAME}\n` + (game.user?.isGM
     ? "ドラッグ: 移動 / ダブルクリック: シナリオビルダー / 右クリック: NPC ブレイン管理 / Shift + ダブルクリック: 位置を戻す"
-    : "ドラッグ: 移動 / Shift + ダブルクリック: 位置を戻す";
+    : "ドラッグ: 移動 / Shift + ダブルクリック: 位置を戻す");
   document.body.appendChild(widget);
   enableDrag(widget);
 
@@ -166,7 +168,7 @@ export function initMascot({ openBuilder = null, openBrain = null } = {}) {
       return;
     }
     if (game.user?.isGM && gmActions.openBuilder) gmActions.openBuilder();
-    else controller?.set({ state: "speaking", text: "私は副マスターのアギィ！冒険のサポートはお任せあれ！", durationMs: 4000 });
+    else controller?.set({ state: "speaking", text: `私は${MASCOT_TITLE}、アギィだよ！冒険のサポートはお任せあれ！`, durationMs: 4000 });
   });
   widget.addEventListener("contextmenu", ev => {
     if (!game.user?.isGM || !gmActions.openBrain) return;
@@ -240,7 +242,7 @@ export function mascotOnAction(data) {
 
 /** サーバーにつなぐ前 (GM の画面だけ)。つながるまで「切断」のままにする */
 export function mascotOnConnecting() {
-  setMascotState("offline", "サーバーにつないでいます… (Python サーバーは起動していますか？)", 6000, { isPublic: false });
+  setMascotState("offline", "サーバーにつないでいるよ…つながらないときは Python サーバーを起動してね！", 6000, { isPublic: false });
 }
 
 /** 接続と切断 */

@@ -5,7 +5,8 @@ import { generatedFlags, isAiAlias, playerMessageToForward } from "../../scripts
 test("isAiAlias は AI GM / サポートGM を検知する", () => {
   assert.ok(isAiAlias("AI GM"));
   assert.ok(isAiAlias("AI GM (判定)"));
-  assert.ok(isAiAlias("サポートGM (agy)"));
+  assert.ok(isAiAlias("サポートGM アギィ"));
+  assert.ok(isAiAlias("サポートGM (agy)")); // 名前をそろえる前のメッセージも
   assert.ok(!isAiAlias("ゴブリン"));
   assert.ok(!isAiAlias(undefined));
 });
