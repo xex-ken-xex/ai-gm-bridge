@@ -3,8 +3,8 @@
 import asyncio
 import contextlib
 
-from gm_server import config
-from gm_server.context import Context, SessionState, websocket_sender
+from gm_server import config, logs
+from gm_server.context import ConnectionHub, Context, SessionState
 from gm_server.llm import LLMService
 from gm_server.router import dispatch, is_immediate
 from gm_server.tts import SpeechSynthesizer
@@ -22,6 +22,8 @@ def create_gemini_client():
 _llm = None
 _tts = None
 _state = SessionState()
+# 送り先の接続 (依頼元が閉じていたら再接続後の GM へ送る)
+_hub = ConnectionHub()
 
 
 def _services():
@@ -37,8 +39,12 @@ async def handler(websocket):
     print("\nFoundry VTT が接続しました！(サポートGM agy 連携モード待機中)")
     print("=" * 65)
     llm, tts = _services()
-    ctx = Context(send_json=websocket_sender(websocket), llm=llm, tts=tts, state=_state)
-    await serve_messages(ctx, websocket)
+    ctx = Context(send_json=_hub.sender_for(websocket), llm=llm, tts=tts, state=_state)
+    await _hub.attach(websocket)
+    try:
+        await serve_messages(ctx, websocket)
+    finally:
+        _hub.detach(websocket)
 
 
 async def serve_messages(ctx, messages) -> None:
@@ -74,10 +80,12 @@ async def serve_messages(ctx, messages) -> None:
 async def main():
     import websockets
 
+    log_handler = logs.setup_logging()
     llm, _ = _services()
     async with websockets.serve(handler, config.HOST, config.PORT, max_size=config.MAX_MESSAGE_SIZE):
         print("=" * 65)
         print(f"  AI GM Bridge サーバー起動完了 (ws://{config.HOST}:{config.PORT})")
         print(f"  AIエンジン: {llm.engine_name}")
+        print(f"  詳細ログ: {log_handler.log_dir}/<日付>/server.log ({log_handler.keep_days} 日分)")
         print("=" * 65)
         await asyncio.Future()

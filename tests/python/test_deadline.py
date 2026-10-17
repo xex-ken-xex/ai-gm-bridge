@@ -120,3 +120,37 @@ async def test_serve_messages_lets_timeout_answer_skip_the_queue(make_ctx, sent,
 
     await asyncio.wait_for(serve_messages(ctx, incoming()), timeout=3)
     assert order == ["start", "late"]
+
+
+async def test_run_with_deadline_reports_status_until_done(make_ctx):
+    ctx = make_ctx()
+    calls = []
+
+    async def on_status(elapsed, remaining, detail):
+        calls.append((round(remaining), detail))
+
+    async def work():
+        await asyncio.sleep(0.05)
+        return "ok"
+
+    result = await deadline.run_with_deadline(ctx, "テスト", work(), limit=100, detail=lambda: "完了 0/1",
+                                              on_status=on_status, status_interval=0.01)
+    assert result == "ok"
+    assert len(calls) >= 2 and calls[0] == (100, "完了 0/1")
+    count = len(calls)
+    await asyncio.sleep(0.03)
+    assert len(calls) == count  # 終わったら止まる
+
+
+async def test_auto_extend_skips_the_card_up_to_the_limit(make_ctx, sent, monkeypatch):
+    monkeypatch.setattr(deadline, "AUTO_EXTEND_MAX", 2)
+    ctx = make_ctx()
+
+    async def work():
+        await asyncio.sleep(0.25)
+        return "ok"
+
+    # 0.1 秒ごとに期限が来るが、2 回までは確認せずに延長する
+    assert await deadline.run_with_deadline(ctx, "テスト", work(), limit=0.1, auto_extend=True,
+                                            notify_interval=100) == "ok"
+    assert not [m for m in sent if m.get("action") == "interactive_card"]

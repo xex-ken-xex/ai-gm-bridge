@@ -9,6 +9,8 @@ import {
   buildStartGoalLights,
   buildWallDocs,
   LIGHT_PRESETS,
+  mergeRoomUpdates,
+  roomIdOf,
   roomRole,
 } from "../../scripts/lib/scene-docs.js";
 
@@ -157,4 +159,26 @@ test("部屋ページの情景テキストはダークテーマでも読める�
   assert.ok(style.includes("color: #f3e9d2"));
   assert.ok(style.includes("background: rgba(30, 24, 20"));
   assert.ok(!html.includes("color: #222"));
+});
+
+test("区画の光源・環境音・ノート・ページには区画 id の flag が付く (後から差し替える目印)", () => {
+  const room = { id: 3, name: "区画3", cx: 10, cy: 20, light_preset: "magic_blue", ambient_sound_src: "a.ogg", grid_w: 2, grid_h: 2 };
+  assert.equal(roomIdOf(buildRoomLights([room])[0]), 3);
+  assert.equal(roomIdOf(buildRoomSounds([room])[0]), 3);
+  assert.equal(roomIdOf(buildNoteDocs([room], "j", [])[0]), 3);
+  assert.equal(roomIdOf(buildJournalPages({ rooms: [room] })[0]), 3);
+  // id の無い区画には flag を付けない
+  assert.equal(buildRoomLights([{ ...room, id: undefined }])[0].flags, undefined);
+  assert.equal(roomIdOf(null), null);
+});
+
+test("mergeRoomUpdates は id で上書きし、並び順を保ち、知らない id は無視する", () => {
+  const rooms = [{ id: 1, name: "区画1", cx: 1 }, { id: 2, name: "区画2", cx: 2 }];
+  const { rooms: merged, changed } = mergeRoomUpdates(rooms, [{ id: 2, name: "崩れた礼拝堂", flavor: "…" }, { id: 9, name: "x" }]);
+  assert.deepEqual(merged.map(r => r.name), ["区画1", "崩れた礼拝堂"]);
+  assert.equal(merged[1].cx, 2);
+  assert.equal(changed.length, 1);
+  assert.equal(changed[0].before.name, "区画2");
+  assert.equal(rooms[1].name, "区画2");
+  assert.deepEqual(mergeRoomUpdates(undefined, undefined), { rooms: [], changed: [] });
 });

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { AI_COMMAND_RGX, cleanCommandPrompt, parseAiCommand } from "../../scripts/lib/commands.js";
+import { AI_COMMAND_RGX, cleanCommandPrompt, isBuilderCommand, parseAiCommand } from "../../scripts/lib/commands.js";
 
 test("parseAiCommand は /ai と /agy の引数を返す", () => {
   assert.equal(parseAiCommand("/ai ダンジョンを作って"), "ダンジョンを作って");
@@ -29,4 +29,9 @@ test("AI_COMMAND_RGX と cleanCommandPrompt", () => {
   assert.equal("/aim x".match(AI_COMMAND_RGX), null);
   // 末尾の $ を誤って文字として扱わない (reference 版の不具合)
   assert.equal(cleanCommandPrompt("価格は100$"), "価格は100$");
+});
+
+test("isBuilderCommand はビルダー画面を開く指示だけを拾う", () => {
+  for (const p of ["ビルダー", "builder", "GUI", " シナリオ ", "シナリオビルダー"]) assert.equal(isBuilderCommand(p), true, p);
+  for (const p of ["", "ダンジョン", "シナリオを作って", "builder2"]) assert.equal(isBuilderCommand(p), false, p);
 });

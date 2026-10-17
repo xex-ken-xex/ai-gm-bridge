@@ -5,9 +5,10 @@
 //   scripts/actions.js   サーバーからの action 処理
 
 import { handleServerAction } from "./scripts/actions.js";
+import { openScenarioBuilder, setBuilderSender } from "./scripts/builder.js";
 import { buildRoomNarrationHtml } from "./scripts/lib/cards.js";
 import { generatedFlags, MODULE_ID, playerMessageToForward } from "./scripts/lib/chat-filter.js";
-import { AI_COMMAND_RGX, cleanCommandPrompt, parseAiCommand } from "./scripts/lib/commands.js";
+import { AI_COMMAND_RGX, cleanCommandPrompt, isBuilderCommand, parseAiCommand } from "./scripts/lib/commands.js";
 import {
   findRoomAt,
   isRoomReached,
@@ -28,6 +29,11 @@ function isPrimaryGM() {
 }
 
 function sendAiCommand(prompt) {
+  // `/ai ビルダー` はシナリオビルダー画面を開くだけ (サーバーへは送らない)
+  if (isBuilderCommand(prompt)) {
+    openScenarioBuilder();
+    return;
+  }
   if (!connection) {
     ui.notifications.warn("AI GM Bridge: Python サーバー (8765) に接続されていません。");
     return;
@@ -138,6 +144,7 @@ Hooks.once("ready", async function() {
     },
   });
   connection.connect();
+  setBuilderSender(payload => connection.send(payload));
 
   // FVTTのチャット投稿を検知してPythonへ転送するフック (通常発言)
   Hooks.on("createChatMessage", (message) => {

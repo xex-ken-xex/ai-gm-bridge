@@ -1,0 +1,41 @@
+/* AI シナリオビルダー画面 (scripts/builder.js)。module.json の styles で読み込む。
+   v13 以降は module レイヤーに入るため、コアの CSS より優先される。セレクタはダイアログのクラス .ai-gm-builder に閉じる */
+.ai-gm-builder .aib { color: #f0f0e0; background: #1a1a20; padding: 10px; border-radius: 6px; font-size: 13px; display: flex; flex-direction: column; gap: 8px; }
+.ai-gm-builder .aib * { box-sizing: border-box; }
+.ai-gm-builder .aib .aib-grid { display: grid; gap: 8px 10px; align-items: start; }
+.ai-gm-builder .aib .aib-settings { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.ai-gm-builder .aib .aib-two { grid-template-columns: 1fr 1fr; }
+.ai-gm-builder .aib .aib-field { display: flex; flex-direction: column; gap: 3px; min-width: 0; margin: 0; }
+.ai-gm-builder .aib .aib-label { color: #f39c12; font-weight: bold; font-size: 12px; line-height: 1.3; }
+.ai-gm-builder .aib input[type=text], .ai-gm-builder .aib textarea, .ai-gm-builder .aib select { width: 100%; max-width: none; min-width: 0; background: #101014; color: #f0f0f0; border: 1px solid #555; border-radius: 4px; padding: 5px 6px; font-family: inherit; font-size: 12px; margin: 0; }
+.ai-gm-builder .aib input[type=text], .ai-gm-builder .aib select { height: 28px; }
+.ai-gm-builder .aib input[type=range] { width: 100%; margin: 4px 0 0 0; }
+.ai-gm-builder .aib textarea { resize: vertical; line-height: 1.5; }
+.ai-gm-builder .aib textarea.aib-tall { height: clamp(110px, calc(100vh - 700px), 360px); min-height: 100px; }
+.ai-gm-builder .aib textarea.aib-short { height: 90px; min-height: 60px; }
+.ai-gm-builder .aib .aib-pub { border-left: 3px solid #2ecc71; padding-left: 6px; }
+.ai-gm-builder .aib .aib-dm { border-left: 3px solid #e74c3c; padding-left: 6px; }
+.ai-gm-builder .aib .aib-canon { border-left: 3px solid #3498db; padding-left: 6px; }
+.ai-gm-builder .aib .aib-tabs { display: flex; flex-direction: row; gap: 4px; border-bottom: 2px solid #e67e22; }
+.ai-gm-builder .aib .aib-tab { flex: 1 1 0; width: auto; margin: 0; padding: 6px; background: #2a2a32; color: #ccc; border: none; border-radius: 4px 4px 0 0; cursor: pointer; font-weight: bold; }
+.ai-gm-builder .aib .aib-tab.active { background: #e67e22; color: #111; }
+.ai-gm-builder .aib .aib-panel { display: none; flex-direction: column; gap: 10px; max-height: max(320px, calc(100vh - 200px)); overflow-y: auto; padding-right: 4px; }
+.ai-gm-builder .aib .aib-panel.active { display: flex; }
+.ai-gm-builder .aib .aib-box { background: #101014; border: 1px solid #333; border-radius: 4px; padding: 4px 8px; }
+.ai-gm-builder .aib .aib-box > summary { cursor: pointer; color: #f39c12; font-weight: bold; font-size: 12px; }
+.ai-gm-builder .aib .aib-checks { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 2px 10px; max-height: 120px; overflow-y: auto; margin-top: 4px; }
+.ai-gm-builder .aib .aib-check { display: flex; flex-direction: row; align-items: center; gap: 4px; margin: 0; color: #f0f0e0; font-weight: normal; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ai-gm-builder .aib .aib-check input { flex: none; width: 14px; height: 14px; margin: 0; }
+.ai-gm-builder .aib .aib-actions { display: flex; flex-direction: row; gap: 6px; padding-top: 8px; border-top: 1px solid #333; flex-wrap: wrap; }
+.ai-gm-builder .aib .aib-actions button { flex: 1 1 160px; width: auto; margin: 0; color: #fff; border: none; padding: 7px; border-radius: 4px; cursor: pointer; font-weight: bold; white-space: normal; }
+.ai-gm-builder .aib .aib-gen { background: #8e44ad; } .ai-gm-builder .aib .aib-save { background: #2980b9; } .ai-gm-builder .aib .aib-build { background: #27ae60; }
+.ai-gm-builder .aib .aib-busy { color: #f1c40f; margin: 0; white-space: pre-line; }
+.ai-gm-builder .aib .aib-top { display: flex; flex-direction: row; align-items: flex-start; gap: 10px; }
+.ai-gm-builder .aib .aib-top > .aib-box { flex: 1 1 0; min-width: 0; }
+.ai-gm-builder .aib .aib-auto-extend { flex: none; width: auto; display: flex; align-items: center; gap: 4px; margin: 0; padding-top: 4px; white-space: nowrap; font-size: 12px; }
+.ai-gm-builder .aib .aib-auto-extend input { margin: 0; }
+/* 閉じるのはウィンドウの × で足りるため、下の「閉じる」ボタンの段を出さない (編集欄の高さに回す) */
+.ai-gm-builder .form-footer, .ai-gm-builder .dialog-buttons { display: none; }
+.ai-gm-builder .aib .aib-build-script { background: #16a085; }
+.ai-gm-builder .aib .aib-actions button:disabled { opacity: 0.45; cursor: not-allowed; }
+.ai-gm-builder .aib .aib-actions button span { white-space: nowrap; display: inline-block; }

@@ -1,0 +1,47 @@
+あなたはファンタジー TRPG (D&D5e / OSR) のダンジョンマスターです。
+遺跡・迷宮『{site_name}』({site_mode_label}) の一部の区画について、情景と GM 向けメモを書いてください。
+全区画の役割はすでに決まっています (下の割り当て)。他の区画は別の担当者が同時に書くので、割り当てを必ず守ってください。
+
+{context_block}
+
+【この遺跡の設定 (編集済みの最新版。これが正)】
+公開情報:
+{site_public}
+DM 情報:
+{site_dm}
+
+【全区画の役割の割り当て】(参考: 担当外の区画も含む)
+{room_plan_overview}
+
+【あなたが書く区画】
+{rooms_json}
+(id=区画番号 (0 始まり), plan=この区画の役割, deg=接続数, depth=入口からの距離, in_cycle=周回路上か,
+ neighbors=直接つながる区画の id, area=面積)
+
+【この段階の設計指針】
+- 建物の元の用途の名残と、今の占拠者による使い回しを区画ごとに 1 つずつ見せる。
+- plan が中目標の区画には、その中目標の仕掛けと達成条件を gm_notes に具体的に書く (判定の DC、必要な物、起きること)。
+- plan が goal の区画は大目標の場所。中目標を果たしたときに何が変わるかを gm_notes に書く。
+- plan が empty / rest の区画は戦闘を置かない。代わりに隣の区画の気配 (音・におい・痕跡) を書いて予兆にする。
+- 集落の手仕事の品や地域の資源は、ふさわしい区画にだけ出す (毎区画に出さない)。
+- tts_narration は区画に入った瞬間に読み上げる五感の描写 (2 文以内・60 文字前後・ネタバレ禁止・記号や括弧なし)。
+  区画ごとに主役の感覚を変え、同じ名詞を 3 区画以上で繰り返さない。
+- light_preset は次のいずれか: {light_presets}
+- icon は次のいずれか: icons/svg/door-steel.svg, icons/svg/skull.svg, icons/svg/sword.svg, icons/svg/chest.svg,
+  icons/svg/temple.svg, icons/svg/campfire.svg, icons/svg/eye.svg, icons/svg/book.svg
+- 共通ルール (下記) のうち 5 (伏線) と 7 (発想カード) はこの段階では使わない。
+
+{rules}
+
+必ず次の JSON 配列だけを、あなたが書く区画の数だけ出力してください:
+[
+  {{
+    "id": 0,
+    "title": "区画の名称",
+    "tts_narration": "入った瞬間の読み上げ",
+    "gm_notes": "GM 専用 (配置・判定 DC・罠・財宝・中目標の仕掛け)",
+    "icon": "icons/svg/door-steel.svg",
+    "light_preset": "torch_warm",
+    "ambient_sound_en": "この区画の環境音を表す英語プロンプト (不要なら null)"
+  }}
+]

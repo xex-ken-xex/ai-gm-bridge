@@ -20,6 +20,14 @@ EXTEND_ANSWER_WAIT = 120.0
 
 # FVTT へ途中経過を送る間隔 (秒)
 NOTIFY_INTERVAL = 30.0
+# 自動延長 (ビルダー画面のチェック) で延長する回数の上限。超えたら GM に確認する (応答しない処理で待ち続けないように)
+AUTO_EXTEND_MAX = 5
+
+# on_status (画面の進捗表示) を呼ぶ間隔 (秒)
+STATUS_INTERVAL = 2.0
+
+# on_status(経過秒, タイムアウトまでの残り秒, detail の文字列)
+StatusCallback = Callable[[float, float, str], Awaitable[None]]
 
 TIMEOUT_CHOICE_PREFIX = "timeout_"
 
@@ -89,16 +97,34 @@ async def run_with_deadline(
     detail: Optional[Callable[[], str]] = None,
     answer_wait: Optional[float] = None,
     notify_interval: Optional[float] = None,
+    on_status: Optional[StatusCallback] = None,
+    status_interval: Optional[float] = None,
+    auto_extend: bool = False,
 ):
     """
     awaitable を limit 秒まで待つ。過ぎたら GM に延長を確認し、延長なら limit 秒ずつ延ばす。
     打ち切りになったら処理をキャンセルして asyncio.TimeoutError を投げる。
+    on_status を渡すと STATUS_INTERVAL 秒ごとに (経過, 残り, detail) で呼ぶ (シナリオビルダーの進捗表示用)。
+    auto_extend なら GM に確認せずに AUTO_EXTEND_MAX 回まで延長する (それ以降は確認する)。
     """
     loop = asyncio.get_running_loop()
     task = asyncio.ensure_future(awaitable)
     start = loop.time()
     deadline = limit
     wait_for_answer = EXTEND_ANSWER_WAIT if answer_wait is None else answer_wait
+    auto_left = AUTO_EXTEND_MAX if auto_extend else 0
+
+    async def status_loop() -> None:
+        while True:
+            elapsed = loop.time() - start
+            try:
+                await on_status(elapsed, deadline - elapsed, detail() if detail else "")
+            except Exception as e:
+                # 進捗の表示に失敗しても本処理は止めない
+                log(f"[{label}] 進捗の送信に失敗しました ({e})")
+            await asyncio.sleep(STATUS_INTERVAL if status_interval is None else status_interval)
+
+    status_task = asyncio.create_task(status_loop()) if on_status else None
     try:
         async with progress(label, limit=lambda: deadline, detail=detail, notify=notifier(ctx),
                             notify_interval=NOTIFY_INTERVAL if notify_interval is None else notify_interval):
@@ -108,7 +134,12 @@ async def run_with_deadline(
                     await asyncio.wait({task}, timeout=remaining)
                 if task.done():
                     return task.result()
-                extend = await _ask_extend(ctx, label, loop.time() - start, limit, task, wait_for_answer)
+                if auto_left > 0:
+                    auto_left -= 1
+                    log(f"[{label}] 自動延長します (残り {auto_left} 回)")
+                    extend = True
+                else:
+                    extend = await _ask_extend(ctx, label, loop.time() - start, limit, task, wait_for_answer)
                 if task.done():
                     return task.result()
                 if not extend:
@@ -116,6 +147,10 @@ async def run_with_deadline(
                 deadline = (loop.time() - start) + limit
                 log(f"[{label}] {int(limit)} 秒延長しました")
     finally:
+        if status_task:
+            status_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await status_task
         if not task.done():
             task.cancel()
             with contextlib.suppress(asyncio.CancelledError, Exception):

@@ -4,12 +4,12 @@ import asyncio
 import os
 import time
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Tuple
+from typing import Awaitable, Callable, Dict, List, Optional, Tuple
 
 from gm_server import protocol
 from gm_server.config import AGY_TIMEOUT, GEMINI_TIMEOUT, LLM_CONCURRENCY, MAPGEN_TIMEOUT, SPEAKER_SUPPORT
 from gm_server.deadline import run_with_deadline
-from gm_server.progress import log
+from gm_server.progress import log, log_detail, log_group, log_step
 from gm_server.tts import voice_filename
 from tools.dungeon_generator import LIGHT_PRESET_KEYS, SCENE_MODES, DungeonGenerator
 from tools.prompt_manager import (
@@ -224,47 +224,102 @@ def _normalize_chunk_ids(items: List[Dict], expected_ids: List[int]) -> List[Dic
     return result
 
 
-async def query_room_flavors(ctx, lore: Dict, topologies: List[Dict], scene_mode: str) -> Optional[List[Dict]]:
+async def query_room_flavors(
+    ctx,
+    lore: Optional[Dict],
+    topologies: List[Dict],
+    scene_mode: str,
+    prompt_for_chunk: Optional[Callable[[List[Dict]], str]] = None,
+    label: str = "部屋の情景",
+    on_status=None,
+    auto_extend: bool = False,
+    on_chunk: Optional[Callable[[List[Dict]], Awaitable[None]]] = None,
+) -> Optional[List[Dict]]:
     """
-    部屋の情景を ROOMS_PER_JOB 部屋ずつのジョブに分け、LLM_CONCURRENCY 本まで並列に問い合わせる。
+    部屋の情景を ROOMS_PER_JOB 部屋ずつのジョブに分け、ctx.llm.concurrency 本まで並列に問い合わせる
+    (Gemini は LLM_CONCURRENCY、agy は AGY_CONCURRENCY。agy の既定は 1 本ずつ)。
     返す id は 0 始まり。全ジョブ失敗なら None (呼び出し側は既定のノートを使う)。
+    prompt_for_chunk を渡すと、1 ジョブ分の部屋からプロンプトを作る処理を差し替えられる (シナリオビルダー用)。
+    label は進捗表示とログに使う名前 (旅路の地点にも使うため)。
+    on_chunk を渡すと、ジョブが 1 つ終わるたびにその結果 (0 始まりの id) で呼ぶ (できた区画から順にシーンへ反映する)。
     """
     selected = prioritize_key_topologies(topologies, max_count=MAX_ROOMS_FOR_AI)
+    if prompt_for_chunk is None:
+        def prompt_for_chunk(chunk: List[Dict]) -> str:
+            return build_rooms_prompt(
+                lore, chunk, max_rooms=len(chunk),
+                scene_mode=scene_mode, light_presets=list(LIGHT_PRESET_KEYS),
+            )
     chunks = [selected[i:i + ROOMS_PER_JOB] for i in range(0, len(selected), ROOMS_PER_JOB)]
     if not chunks:
         return None
-    sem = asyncio.Semaphore(LLM_CONCURRENCY)
+    concurrency = max(1, int(getattr(ctx.llm, "concurrency", LLM_CONCURRENCY)))
+    sem = asyncio.Semaphore(concurrency)
     done = 0
+    # 進捗とログに「区画 3・5・8 の情景を作成中」と出すため、今書いているジョブと書き終えた部屋数を数える
+    unit, what = room_unit_of(label)
+    total_rooms = len(selected)
+    rooms_done = 0
+    working: Dict[int, str] = {}
     # 打ち切りになっても、それまでに終わったジョブの結果は使う
     flavors: List[Dict] = []
 
     async def run(chunk: List[Dict]) -> None:
-        nonlocal done
+        nonlocal done, rooms_done
+        names = room_numbers(chunk)
         async with sem:
+            working[id(chunk)] = names
+            log_detail(f"[{label}] {unit} {names} の{what}を作成中 ({total_rooms} {unit}中 {rooms_done} {unit}済み)")
             try:
-                prompt = build_rooms_prompt(
-                    lore, chunk, max_rooms=len(chunk),
-                    scene_mode=scene_mode, light_presets=list(LIGHT_PRESET_KEYS),
-                )
+                prompt = prompt_for_chunk(chunk)
                 parsed = await ctx.llm.query_json(prompt, unbounded=True)
             except Exception as e:
-                log(f"Roomフレーバー生成失敗 ({e})。この部屋群は既定のノートを使用します。")
+                log_detail(f"[{label}] 生成失敗 ({e})。この部屋群は既定のノートを使用します。")
                 parsed = None
             finally:
                 done += 1
+                rooms_done += len(chunk)
+                working.pop(id(chunk), None)
         items = [r for r in parsed if isinstance(r, dict)] if isinstance(parsed, list) else []
-        flavors.extend(_normalize_chunk_ids(items, [t["id"] for t in chunk]))
+        got = _normalize_chunk_ids(items, [t["id"] for t in chunk])
+        log_detail(f"[{label}] {unit} {names} の{what}を受け取りました ({len(got)}/{len(chunk)} 件)")
+        flavors.extend(got)
+        if on_chunk and got:
+            try:
+                await on_chunk(got)
+            except Exception as e:
+                log_detail(f"[{label}] 途中結果の反映に失敗しました ({e})")
 
     # タイムアウト: 1 ジョブの上限 × 並列で回す段数
-    rounds = -(-len(chunks) // LLM_CONCURRENCY)
+    rounds = -(-len(chunks) // concurrency)
     try:
         await run_with_deadline(
-            ctx, "部屋の情景", asyncio.gather(*(run(c) for c in chunks)),
-            limit=llm_step_limit(ctx) * rounds, detail=lambda: f"完了 {done}/{len(chunks)}",
+            ctx, label, asyncio.gather(*(run(c) for c in chunks)),
+            limit=llm_step_limit(ctx) * rounds, on_status=on_status,
+            detail=lambda: progress_detail(unit, what, list(working.values()), rooms_done, total_rooms),
+            auto_extend=auto_extend,
         )
     except asyncio.TimeoutError:
-        log(f"部屋の情景を打ち切りました (完了 {done}/{len(chunks)})。残りは既定のノートを使用します。")
+        log_step(f"{label}を打ち切りました (完了 {done}/{len(chunks)})。残りは既定のノートを使用します。")
     return sorted(flavors, key=lambda r: r["id"]) or None
+
+
+def room_unit_of(label: str) -> Tuple[str, str]:
+    """進捗の名前 (例: 「区画の情景」「旅路 2/2 地点の描写」) から単位と書く内容を取り出す → ("区画", "情景")"""
+    unit, _, what = label.split()[-1].partition("の")
+    return unit, what or "情景"
+
+
+def room_numbers(chunk: List[Dict]) -> str:
+    """ジョブの部屋番号 (マップのノートと同じ 1 始まり) を「3・5・8」の形にする"""
+    return "・".join(str(t["id"] + 1) for t in chunk)
+
+
+def progress_detail(unit: str, what: str, working: List[str], rooms_done: int, total_rooms: int) -> str:
+    """進捗の行: 「区画 3・5・8 の情景を作成中 (12 区画中 4 区画済み)」"""
+    head = " / ".join(f"{unit} {names}" for names in working)
+    count = f"{total_rooms} {unit}中 {rooms_done} {unit}済み"
+    return f"{head} の{what}を作成中 ({count})" if head else count
 
 
 def llm_step_limit(ctx) -> float:
@@ -295,27 +350,15 @@ async def generate_and_create_dungeon_scene(
     scene_mode = normalize_scene_mode(scene_mode)
     mode_name, default_scene_name = SCENE_MODE_INFO[scene_mode]
     w, h, size_name, cell_size = SIZE_PRESETS.get(size_key, SIZE_PRESETS[DEFAULT_SIZE_KEY])
-    print(f"\n[ダンジョン自動生成開始] モード: {mode_name}, サイズ: {size_name} ({w}x{h}), 密度: {density_label(density)} ({density}), ループ率: {loop_ratio}")
+    log("")
+    log_group(f"ダンジョン自動生成を始めます: モード {mode_name}, サイズ: {size_name} ({w}x{h}), 密度: {density_label(density)} ({density}), ループ率: {loop_ratio}")
 
     # 1-3. 幾何生成・PNG 書き出し・壁抽出 (イベントループを止めないよう別スレッド)
-    ts = int(time.time())
-    png_filename = f"dungeon_{scene_mode}_{w}x{h}_{ts}.png"
-    png_filepath = os.path.join(ctx.data_dir, png_filename)
-    try:
-        gen, walls = await run_with_deadline(
-            ctx, "マップ生成",
-            asyncio.to_thread(_build_geometry, w, h, density, loop_ratio, png_filepath, cell_size, seed, scene_mode),
-            limit=MAPGEN_TIMEOUT,
-        )
-    except asyncio.TimeoutError:
-        # 別スレッドの計算は止められないが、結果は使わずにウィザードを終える
-        log("マップ生成を打ち切りました (上限は AI_GM_MAPGEN_TIMEOUT で変更可)")
-        await ctx.send(protocol.chat(
-            "⚠️ マップ生成を打ち切りました。小さいサイズか低い密度でやり直してください。",
-            speaker=SPEAKER_SUPPORT,
-        ))
+    built = await build_map(ctx, size_key, density, loop_ratio, seed, scene_mode)
+    if built is None:
         return None
-    print(f"壁セグメント抽出完了: {len(walls)} 本 (部屋数: {len(gen.rooms)})")
+    gen, walls, png_filename = built
+    log_step(f"マップを作りました: 壁 {len(walls)} 本、部屋 {len(gen.rooms)}")
 
     # 4. ワールド設定の読み込み
     world_info = get_active_world_info()
@@ -360,30 +403,73 @@ async def generate_and_create_dungeon_scene(
     # 7. 各部屋フレーバーの統合 (id は query_room_flavors で 0 始まりに正規化済み)
     rooms = gen.get_room_flavor_notes(grid_size=100, custom_flavors=custom_flavors, id_base=0)
 
-    # 8. FVTTへシーン作成コマンド送信
+    # 8. FVTTへシーン作成コマンド送信 & 9. 音声報告
     scene_title = f"{lore_data.get('dungeon_name', default_scene_name)} - {lore_data.get('floor_title', f'第1層 ({size_name})')}"
+    speech_text = f"{mode_name}『{lore_data.get('dungeon_name', default_scene_name)}』のシーンを生成しました。全{len(gen.rooms)}部屋に生態系と情景ノートを設定しました。"
+    scene_msg = await send_scene(ctx, scene_title, scene_mode, png_filename, gen, walls, lore_data, rooms, density, speech_text)
+    log_group("ダンジョンシーンの構築指示を送りました")
+    return scene_msg
+
+
+async def build_map(
+    ctx, size_key: str, density: float, loop_ratio: float, seed: Optional[int], scene_mode: str,
+    on_status=None, auto_extend: bool = False,
+) -> Optional[Tuple[DungeonGenerator, List[list], str]]:
+    """幾何生成・PNG 書き出し・壁抽出。打ち切られたら GM に知らせて None"""
+    w, h, _, cell_size = SIZE_PRESETS.get(size_key, SIZE_PRESETS[DEFAULT_SIZE_KEY])
+    ts = int(time.time())
+    png_filename = f"dungeon_{scene_mode}_{w}x{h}_{ts}.png"
+    png_filepath = os.path.join(ctx.data_dir, png_filename)
+    try:
+        gen, walls = await run_with_deadline(
+            ctx, "マップ生成",
+            asyncio.to_thread(_build_geometry, w, h, density, loop_ratio, png_filepath, cell_size, seed, scene_mode),
+            limit=MAPGEN_TIMEOUT, on_status=on_status, auto_extend=auto_extend,
+        )
+    except asyncio.TimeoutError:
+        # 別スレッドの計算は止められないが、結果は使わずに終える
+        log_step("マップ生成を打ち切りました (上限は AI_GM_MAPGEN_TIMEOUT で変更可)")
+        await ctx.send(protocol.chat(
+            "⚠️ マップ生成を打ち切りました。小さいサイズか低い密度でやり直してください。",
+            speaker=SPEAKER_SUPPORT,
+        ))
+        return None
+    return gen, walls, png_filename
+
+
+async def send_scene(
+    ctx, name: str, scene_mode: str, png_filename: str, gen: DungeonGenerator, walls: List[list],
+    lore: Dict, rooms: List[Dict], density: float, speech_text: Optional[str], scene_key: Optional[str] = None,
+) -> Dict:
+    """
+    FVTT へ create_dungeon_scene を送り、完了を音声で報告する (speech_text が None なら報告しない)。
+    scene_key を付けると、あとから update_dungeon_rooms で区画を書き換えられる
+    """
     scene_msg = {
         "action": "create_dungeon_scene",
-        "name": scene_title,
+        "name": name,
         "scene_mode": scene_mode,
         "background_src": png_filename,
-        "grid_width": w,
-        "grid_height": h,
+        "grid_width": gen.width,
+        "grid_height": gen.height,
         "grid_size": 100,
         "room_count": len(gen.rooms),
-        "lore": lore_data,
+        "lore": lore,
         "rooms": rooms,
         "density": density,
         "start_pos": list(gen.start_pos) if gen.start_pos else None,
         "goal_pos": list(gen.goal_pos) if gen.goal_pos else None,
         "walls": walls,
     }
+    if scene_key:
+        scene_msg["scene_key"] = scene_key
     await ctx.send(scene_msg)
+    log_step(f"『{name}』のシーンを FVTT に送りました (区画 {len(rooms)}、壁 {len(walls)} 本"
+        f"{'、区画はあとから差し替え' if scene_key else ''})")
+    if speech_text is None:
+        return scene_msg
 
-    # 9. 音声報告
-    speech_text = f"{mode_name}『{lore_data.get('dungeon_name', default_scene_name)}』のシーンを生成しました。全{len(gen.rooms)}部屋に生態系と情景ノートを設定しました。"
     file_name = voice_filename("voice_dungeon")
     if await ctx.tts.synthesize(speech_text, file_name):
         await ctx.send(protocol.play_sound(file_name, 1.0, subtitle=speech_text))
-    print("ダンジョンシーン構築指示送信完了！")
     return scene_msg

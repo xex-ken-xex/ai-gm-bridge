@@ -1,0 +1,71 @@
+あなたはファンタジー TRPG (D&D5e / OSR) のシナリオディレクターです。
+これまでの地域・集落・旅路の上に、冒険の目的地となる「遺跡・迷宮」の前提と、3 階層の目標構造を設計してください。
+
+{context_block}
+
+【参加 PC (物語の主役)】
+{pc_profiles}
+
+【関わる NPC】
+{npc_profiles}
+
+【舞台の仕様】
+空間の種類: {site_mode_label}
+規模: {size_name} (およそ {room_count} 区画)
+
+{rules}
+
+【この段階の設計指針】
+- 建物の元の用途 (発想カード) と、それが建てられた時代 (地域の歴史の層から 1 つ選ぶ) を決め、era に書く。
+  今の占拠者がその元の用途の設備をどう使い回しているかを書く。
+- ミッションの型は発想カードに従う。戦闘で倒す以外の解決 (交渉・回避・仕掛け) も成り立つようにする。
+- 大目標: 入口に立った PC がすぐ理解できるクリア条件 (1〜2 文)。
+- 中目標は 2〜3 個。袋小路 (deg=1) かハブ (deg>=3) の区画で達成できるものにし、
+  それぞれを集落の手仕事の品・NPC の望み・PC の経歴のどれかに結びつける。
+- catharsis_payoff: 中目標を果たしてから最深部に挑んだとき、相手の優位が崩れてプレイヤーの探索が報われる展開。
+  何をしたから何が崩れるのかの因果をはっきり書く。
+- 主な敵の動機 (発想カード) を factions の status に反映する。単なる悪役にしない。
+- PC の経歴は勝手に書き換えない。足すのは「この場所との接点」だけ。
+
+必ず次の JSON だけを出力してください:
+{{
+  "site_name": "遺跡・迷宮の名称",
+  "mission_archetype": "ミッションの型",
+  "era": "建てられた時代 (地域の歴史の層の呼び名)",
+  "original_purpose": "元の用途",
+  "public_lore": {{
+    "exterior_and_history": "外から見た姿、元の用途、今の佇まい (2〜3 文)",
+    "clear_main_goal": "大目標 (1〜2 文)",
+    "pc_narrative_hook": "PC の経歴や集落の悲しみが入口でどう響くか (2 文)",
+    "sensory_ambience": {{
+      "visual": "建材の風化、主な光源の色、床や壁の痕跡",
+      "auditory": "音",
+      "olfactory": "におい",
+      "air": "温度・湿度・空気の重さ"
+    }}
+  }},
+  "dm_secrets": {{
+    "true_situation": "ここで進行している危機の全体像と、集落の悲しみとの答え合わせ (2〜3 文)",
+    "sub_objectives": [
+      {{
+        "title": "中目標の名称",
+        "target_topology": "dead_end か hub",
+        "connection_to_town_or_pc": "集落の手仕事・NPC・PC の経歴との関わり",
+        "effect": "達成すると最深部で何が有利になるか"
+      }}
+    ],
+    "catharsis_payoff": "逆転の展開 (2〜3 文)",
+    "factions": [
+      {{"name": "勢力名", "territory": "縄張り (浅層・中層・深層)", "status": "動機と今の行動、内部の隙"}}
+    ]
+  }},
+  "audio_prompts": {{
+    "exploration_bgm_en": "探索 BGM の英語プロンプト",
+    "catharsis_boss_bgm_en": "最深部の決戦 BGM の英語プロンプト"
+  }},
+  "canon": ["種別: 内容"],
+  "open_threads": ["遺跡の中で回収する伏線"],
+  "resolved_threads": ["回収・発展させた上位の伏線 (原文のまま)"],
+  "design_notes": ["発想カードをどう使ったか"],
+  "consistency_notes": ""
+}}

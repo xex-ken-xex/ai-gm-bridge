@@ -75,3 +75,11 @@ def make_ctx(tmp_path, sent):
         )
 
     return _make
+
+
+@pytest.fixture(autouse=True)
+def agy_workdir(tmp_path, monkeypatch):
+    """テストで ~/ai-gm-logs に agy の作業フォルダを作らない"""
+    from gm_server import llm
+
+    monkeypatch.setattr(llm, "AGY_WORKDIR", str(tmp_path / "agy-workspace"))

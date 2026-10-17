@@ -37,3 +37,50 @@ def interactive_card(title: str, message: str, choices: List[Dict], speaker: str
         "speaker": speaker,
         "choices": [{"label": c["label"], "value": c["value"]} for c in choices],
     }
+
+
+def builder_stage_result(
+    stage: str,
+    result: Dict,
+    cards: Optional[List[Dict]] = None,
+    seed: Optional[int] = None,
+    fallback: bool = False,
+    map_info: Optional[Dict] = None,
+) -> Dict:
+    """シナリオビルダーの段階ごとの下書き。cards / seed は地図帳ジャーナルに保存され、次回の抽選の除外と再現に使う"""
+    msg = {
+        "action": "builder_stage_result",
+        "stage": stage,
+        "result": result,
+        "cards": cards or [],
+        "seed": seed,
+        "fallback": fallback,
+    }
+    if map_info:
+        msg["map"] = map_info
+    return msg
+
+
+def builder_progress(stage: str, step: int, steps: int, step_label: str, elapsed: float, remaining: float,
+                     detail: str = "", kind: str = "draft", finished: bool = False) -> Dict:
+    """
+    シナリオビルダーの進捗 (画面の「作成中」の行に出す)。remaining はタイムアウトまでの残り秒。
+    kind: draft (下書き作成) / build (シーン構築)。finished: シーン構築が終わった (画面の「構築中」を消す)
+    """
+    return {
+        "action": "builder_progress",
+        "kind": kind,
+        "finished": finished,
+        "stage": stage,
+        "step": step,
+        "steps": steps,
+        "step_label": step_label,
+        "detail": detail,
+        "elapsed": int(elapsed),
+        "remaining": max(0, int(remaining)),
+    }
+
+
+def update_dungeon_rooms(scene_key: str, rooms: List[Dict]) -> Dict:
+    """create_dungeon_scene (scene_key 付き) で作ったシーンの区画を書き換える (AI の情景ができた区画から順に)"""
+    return {"action": "update_dungeon_rooms", "scene_key": scene_key, "rooms": rooms}

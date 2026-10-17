@@ -18,6 +18,22 @@ def log(message: str) -> None:
     print(("\n" if _live_line else "") + message)
 
 
+# ログの 3 段のグループ分け: ■ 全体の処理 → ▶ 工程 → ・細かい作業
+def log_group(message: str) -> None:
+    """全体の処理の始まり・終わり (例: ■ 遺跡『塔』のシーン構築を始めます)"""
+    log(f"■ {message}")
+
+
+def log_step(message: str) -> None:
+    """全体の中の工程 (例: ▶ [2/2 区画の情景] AI に問い合わせます)"""
+    log(f"  ▶ {message}")
+
+
+def log_detail(message: str) -> None:
+    """工程の中の細かい作業 (例: ・区画 3・5・8 の情景を作成中)"""
+    log(f"    ・{message}")
+
+
 def format_progress(label: str, elapsed: float, limit: Optional[float] = None, detail: str = "") -> str:
     """`[label] 完了 1/3 / 経過 12秒 / タイムアウトまで残り 288秒`。残りは処理の見込みではなくタイムアウトまでの時間"""
     text = f"[{label}] " + (f"{detail} / " if detail else "") + f"経過 {int(elapsed)}秒"

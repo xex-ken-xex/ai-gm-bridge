@@ -4,6 +4,34 @@
 import { escapeHtml, textToHtml } from "./html.js";
 
 export const DEFAULT_LEVEL_ID = "defaultLevel0000";
+export const MODULE_ID = "ai-gm-bridge";
+
+/** 区画の id を flags に付ける (区画を後から差し替えるとき、光源・環境音・ノート・ページを探す目印) */
+export function roomFlags(r) {
+  return r?.id == null ? {} : { flags: { [MODULE_ID]: { room_id: r.id } } };
+}
+
+/** ドキュメント (またはそのデータ) に付いた区画の id。無ければ null */
+export function roomIdOf(doc) {
+  return doc?.flags?.[MODULE_ID]?.room_id ?? null;
+}
+
+/**
+ * 既存の区画一覧に、AI の情景ができた区画を id で上書きする (update_dungeon_rooms)。
+ * 返り値: rooms = 上書き後の一覧 (並び順は元のまま)、changed = [{ before, room }] (一覧に無い id は無視)
+ */
+export function mergeRoomUpdates(rooms, updates) {
+  const byId = new Map((updates || []).filter(u => u?.id != null).map(u => [u.id, u]));
+  const changed = [];
+  const merged = (rooms || []).map(before => {
+    const update = byId.get(before.id);
+    if (!update) return before;
+    const room = { ...before, ...update };
+    changed.push({ before, room });
+    return room;
+  });
+  return { rooms: merged, changed };
+}
 
 /** v14.368 の CONST 値 (CONST が無い環境でのフォールバック) */
 export const FALLBACK_CONSTS = {
@@ -130,7 +158,7 @@ export function buildRoomLights(rooms, { offsetX = 0, offsetY = 0 } = {}) {
     const key = r.light_preset || (r.safe_rest ? "bonfire_bright" : null);
     const preset = key ? LIGHT_PRESETS[key] : null;
     if (!preset) continue;
-    lights.push({ x: r.cx + offsetX, y: r.cy + offsetY, config: structuredClone(preset) });
+    lights.push({ x: r.cx + offsetX, y: r.cy + offsetY, config: structuredClone(preset), ...roomFlags(r) });
   }
   return lights;
 }
@@ -153,6 +181,7 @@ export function buildRoomSounds(rooms, { offsetX = 0, offsetY = 0 } = {}, gridDi
       volume: 0.65,
       walls: true,
       easing: true,
+      ...roomFlags(r),
     });
   }
   return sounds;
@@ -178,6 +207,7 @@ export function buildLorePage(lore, consts) {
         </h2>
         <p style="margin-bottom: 10px;"><strong>【歴史の地層】:</strong> ${textToHtml(lore.history_summary)}</p>
         <p style="margin-bottom: 12px;"><strong>【フロアの成り立ち】:</strong> ${textToHtml(lore.floor_origin)}</p>
+        ${lore.dm_secrets ? `<div style="margin-bottom: 12px; background: #fff8e7; border-left: 4px solid #f39c12; padding: 6px 10px; color: #7f5200;"><strong>🔒 DM 専用情報:</strong><br>${textToHtml(lore.dm_secrets)}</div>` : ""}
 
         <h3 style="color: #2c3e50; border-bottom: 1px solid #ddd; padding-bottom: 2px; margin-top: 14px;">⚔️ 勢力関係・縄張り (Factions)</h3>
         <ul style="padding-left: 20px; margin-bottom: 12px;">${factionsHtml}</ul>
@@ -236,6 +266,7 @@ export function buildRoomPage(r, consts) {
       `,
       format: html,
     },
+    ...roomFlags(r),
   };
 }
 
@@ -261,5 +292,6 @@ export function buildNoteDocs(rooms, journalId, createdPages, { offsetX = 0, off
     texture: { src: r.icon || "icons/svg/book.svg" },
     iconSize: 36,
     fontSize: 16,
+    ...roomFlags(r),
   }));
 }

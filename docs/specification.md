@@ -97,6 +97,84 @@ flowchart TD
 #### エラーハンドリング & レジリエンス
 - **HTML クリーニング**: FVTT チャットに含まれる `<p>...</p>` などの HTML タグを正規表現で事前除去。
 - **API 再試行 (Exponential Backoff)**: Gemini API が 503 過負荷を返した場合、最大 3 回まで指数関数的待機時間（2秒、4秒）を設けて自動再試行。
+- **agy の呼び出し**: `agy -p <プロンプト> --output-format json` に、`--model` (`AI_GM_AGY_MODEL`、既定 `gemini-3.8-flash-medium`。空文字にすると付けない)、`AI_GM_AGY_EFFORT` があれば `--effort` を付ける。
+  agy は同時に複数起動すると応答が返らなくなることがあるため、同時実行は `AI_GM_AGY_CONCURRENCY` (既定 1) 本まで。分割した問い合わせも 1 本ずつ順番に投げる。
+  - agy は空の作業フォルダ (`AI_GM_AGY_WORKDIR`、既定 `~/ai-gm-logs/agy-workspace`) で動かす。agy はエージェントなので、モジュールのソースがあるフォルダで動かすとファイルを読み回ることがある。
+  - stdin はつながない (確認の入力を待ってサーバーの端末を読みに行かないように)。
+  - agy は結果を出し終えたあと、プロセスが終了せずに残ることがある。標準出力に結果の JSON がそろった時点で受け取り、3 秒待っても終わらなければ止める。
+  - 応答が止まったときの調査用に、agy 自身の動作ログを `--log-file` で今日のログフォルダ (`agy-<時刻>-<番号>.log`) に残す (`AI_GM_AGY_LOG=0` で止める)。
+    実行中は 30 秒ごとにプロセスの状態・CPU 時間・子プロセスと出力の量を、標準エラー出力は届いた行ごとに詳細ログへ書く。打ち切ったときはそれまでの出力も残す。
+- **詳細ログ**: 下の「ログ」を参照。
+- **再接続をまたぐ送信**: 処理中に依頼元の接続が閉じたら (FVTT の再読み込みなど)、いま繋がっている接続へ送る。
+  どこにも繋がっていなければ最大 20 件まで溜め、次の接続時に送る (`progress` は溜めない)。`gm_server/context.py` の `ConnectionHub`。
+
+#### ログ
+
+サーバーの動きはコンソールと詳細ログファイルの両方に出します (`gm_server/logs.py`・`gm_server/progress.py`)。
+
+**置き場所と残し方**
+
+```text
+~/ai-gm-logs/                      # AI_GM_LOG_DIR。FVTT はモジュールフォルダを Web で配信するため Data フォルダの外に置く
+├── 2026-10-17/                    # 日付フォルダ。日付が変わると新しいフォルダに切り替える
+│   ├── server.log                 # 詳細ログ (20MB を超えたら server.log.1 … server.log.20 に回す)
+│   └── agy-002510-0001.log        # agy 自身の動作ログ (agy-<時刻>-<番号>.log。AI_GM_AGY_LOG=0 で出さない)
+└── agy-workspace/                 # agy を動かす空のフォルダ (ログではない)
+```
+
+- 今日を含めて 10 日 (`AI_GM_LOG_DAYS`) より古い日付フォルダは、起動時と日付が変わったときに削除する。
+- 各行に「日時 レベル」(INFO / WARNING / ERROR) を付ける。コンソールも同じ形。
+- `GEMINI_API_KEY` と、名前に KEY / TOKEN / SECRET / PASSWORD を含む環境変数の値、Google API キーの形の文字列は `***` に伏せる (ファイルにもコンソールにも出さない)。
+
+**グループ分け (全体 → 工程 → 細かい作業)**
+
+時間のかかる処理は 3 段に分けて出します。
+
+| 印 | 段 | 例 |
+| :--- | :--- | :--- |
+| `■` | 全体の処理の始まりと終わり | `■ シナリオビルダー: 地下迷宮『塔』のシーンを構築します (AI、small、seed=8)` / `■ … シーン構築を終えました (95秒)` |
+| `  ▶` | 全体の中の工程 | `  ▶ [1/2 マップ生成] マップを作りました (24 区画、壁 310 本、画像 …)` / `  ▶ [ビルダー: 集落 1/2 骨組み] AI に問い合わせます (プロンプト 5200 文字、上限 300秒)` |
+| `    ・` | 工程の中の細かい作業 | `    ・[区画の情景] 区画 3・5・8・12 の情景を作成中 (12 区画中 4 区画済み)` / `    ・区画 3・5・8・12 の情景をシーンに反映しました (8/12 区画)` |
+
+待ちの長い工程の間は、コンソールの最後の行を 1 秒ごとに書き換えて `[ラベル] いまの作業 / 経過 / タイムアウトまで残り` を出します (詳細ログには書かない)。
+FVTT のビルダー画面にも同じ内容を 2 行で出します (`builder_progress`。1 行目が全体、2 行目がいまの作業)。
+
+**詳細ログだけに書くもの**
+
+- AI への問い合わせ: エンジン・モデル・agy のコマンド・プロンプト全文。`[AI #番号]` を付け、応答と突き合わせられるようにする。
+- AI の応答: 全文・所要時間・終了コード。失敗・打ち切りのときはそれまでの出力。
+- agy の様子: 標準エラー出力の各行と、30 秒ごとのプロセスの状態 (CPU 時間・子プロセス・出力の量)。結果を出したのに終わらないときは「終了しないため止めました」。
+- FVTT との送受信 (「受信」「送信」。4000 文字まで。`builder_progress` と `progress` は書かない)。
+
+**困ったときの見方**
+
+1. コンソールで `■` の行を探し、どの処理で止まったかを見る。
+2. その下の `▶` と `・` で、どの工程・どの区画までできたかを見る。
+3. AI の問題なら、`server.log` で同じ `[AI #番号]` の問い合わせと応答を見る。agy なら同じ時刻の `agy-*.log` も見る。
+
+#### 環境変数
+
+すべて省略できます (既定値で動きます)。定義は `gm_server/config.py`。サーバーを起動する端末で `export 名前=値` してから `python3 ai_gm_server.py` を実行します。
+
+| 環境変数 | 既定値 | 内容 |
+| :--- | :--- | :--- |
+| `GEMINI_API_KEY` | (なし) | Gemini API のキー。設定すると Gemini を直接使い、無ければ agy CLI を使う。ログには `***` で伏せて書く |
+| `AI_GM_GEMINI_MODEL` | `gemini-3.8-flash` | Gemini を直接使うときのモデル |
+| `AI_GM_GEMINI_TIMEOUT` | `120` | Gemini の 1 回の問い合わせの待ち上限 (秒) |
+| `AI_GM_LLM_CONCURRENCY` | `3` | Gemini に同時に投げる問い合わせの数 (部屋の情景などの分割分) |
+| `AI_GM_AGY_MODEL` | `gemini-3.8-flash-medium` | agy に `--model` で渡すモデル (`agy models` で一覧)。空文字にすると `--model` を付けず agy 自身の既定を使う |
+| `AI_GM_AGY_EFFORT` | (なし) | agy に `--effort` で渡す推論の深さ (low / medium / high / xhigh / max) |
+| `AI_GM_AGY_TIMEOUT` | `300` | agy の 1 回の問い合わせの待ち上限 (秒)。過ぎると延長の確認カードを出す |
+| `AI_GM_AGY_CONCURRENCY` | `1` | agy を同時に動かす数。2 以上にすると応答が返らなくなることがある |
+| `AI_GM_AGY_WORKDIR` | `~/ai-gm-logs/agy-workspace` | agy を動かす空のフォルダ |
+| `AI_GM_AGY_LOG` | `1` | `0` で agy 自身の動作ログ (`agy-<時刻>-<番号>.log`) を残さない |
+| `AI_GM_MAPGEN_TIMEOUT` | `300` | マップ生成の待ち上限 (秒) |
+| `AI_GM_DATA_DIR` | `~/foundrydata/Data` | FVTT の Data フォルダ。マップ画像と音声をここに書き出す |
+| `AI_GM_HOST` | `0.0.0.0` | WebSocket サーバーの待ち受けアドレス |
+| `AI_GM_PORT` | `8765` | WebSocket サーバーのポート |
+| `AI_GM_LOG_DIR` | `~/ai-gm-logs` | 詳細ログの出力先 (日付フォルダを作る) |
+| `AI_GM_LOG_DAYS` | `10` | 詳細ログを残す日数 (今日を含む) |
+| `AI_GM_LOG_MAX_BYTES` | `20971520` (20MB) | 1 日分のログファイルの上限。超えたら `server.log.1` … に回す |
 
 ---
 
@@ -137,6 +215,41 @@ GM が対話型チャットカード上の選択肢ボタンをクリックし�
   "label": "string (選択肢の表示名。例: '小 (100x100マス)')"
 }
 ```
+
+#### シナリオビルダー (`builder_generate_stage` / `builder_build_scene`)
+`/ai ビルダー` で開く画面から送信します。詳細は [scenario_builder_spec.md](scenario_builder_spec.md)。
+
+```json
+{
+  "event": "builder_generate_stage",
+  "stage": "region | settlement | wilderness | site_lore",
+  "user_prompt": "GM 指示",
+  "fixed_name": "GM が付けた名前 (無ければ空)",
+  "world": { "title": "…", "description": "…", "references": [{ "name": "参照ジャーナル", "text": "…" }] },
+  "parents": [{ "category": "region", "name": "…", "public_lore": "…", "dm_secrets": "…", "canon": ["…"], "open_threads": ["…"] }],
+  "atlas_index": [{ "category": "settlement", "name": "…", "canon": ["…"] }],
+  "actor_names": ["…"],
+  "recent_cards": ["region.terrain.salt_flat"],
+  "settlement_scale": "(settlement のみ)",
+  "site_mode": "(site_lore のみ) ruins | underground", "size_key": "small | medium",
+  "actors_context": { "pcs": [{ "name": "…", "info": "…", "bio": "…" }], "npcs": [] }
+}
+```
+
+`builder_build_scene` は上記の文脈に加えて `scene_mode`, `name`, `public_lore`, `dm_secrets` を送ります。
+旅路は `map` (`{"seed": …}`) と `landmarks`、遺跡は `size_key` (small / medium)・`density`・`loop_ratio`・`sub_objectives` を送ります。
+サーバーは `create_dungeon_scene` で応答します。
+遺跡は、ジェネレータ (`tools/dungeon_generator.py`) で地図・壁・区画を作った時点で仮の区画名のまま `scene_key` 付きの `create_dungeon_scene` を送り、
+AI が区画の情景を書き終えたものから `update_dungeon_rooms` で差し替えます (AI の応答を待たずにシーンを開けます)。
+
+`builder_build_scene` の `use_ai` (bool、既定 true) が false なら「スクリプト」で構築します。AI には問い合わせず、ジェネレータの地図と仮の区画名のままシーンを作って終えます
+(旅路は下書きのランドマークも使いません。区画の文面は DM が探索録に書きます)。
+
+`builder_generate_stage` と `builder_build_scene` は `auto_extend` (bool。ビルダー画面の「⏱️ タイムアウトしたら自動で延長する」、既定 false) を送ります。
+true のときはタイムアウトしても GM に確認せず、同じ秒数だけ自動で延長します (最大 5 回。それ以降は通常どおりカードで確認します)。
+
+集落と旅路の下書きは、AI の応答が長くタイムアウトしやすいため 2 回に分けて問い合わせます
+(集落: 骨組み → 人物と秘密、旅路: 骨組みと地点の一覧 → 地点の描写を 5 地点ずつ。Gemini は並列、agy は 1 本ずつ)。FVTT に返す `builder_stage_result` の形は 1 回のときと同じです。
 
 ---
 
@@ -230,6 +343,47 @@ PC のトークン (プレイヤー所有、または所有者未設定の `char
 - `walls[i][4]` (壁タイプ): `normal` / `door` / `secret_door` / `low_wall`・`rubble` (移動のみ遮り、視線・光・音は通す)。省略時は `normal`。
 - `rooms[i].light_preset`: `torch_warm` / `bonfire_bright` / `magic_blue` / `acid_green` / `moonlight_dim` / `dark` / `null`。`null` で安全な休憩所なら焚き火を置きます。
 - `rooms[i].ambient_sound_src`: 部屋の中心に置く環境音 (Data フォルダからの相対パス)。半径は部屋の長辺のマス数 × 1 マスの距離 × 0.85。
+- `scene_key` (任意): 後から届く `update_dungeon_rooms` の宛先の目印。シーンの flag (`scene_key`, `journal_id`) に記録します。
+  区画の光源・環境音・ノート・探索録のページには flag `room_id` (区画の `id`) を付けます。
+
+#### 5-2. 区画の差し替え (`update_dungeon_rooms`)
+
+```json
+{ "action": "update_dungeon_rooms", "scene_key": "builder-1234-ab12cd34",
+  "rooms": [{ "id": 3, "name": "区画 3: 崩れた礼拝堂", "flavor": "…", "gm_notes": "…", "icon": "icons/svg/temple.svg", "light_preset": "magic_blue", "cx": 350, "cy": 450 }] }
+```
+
+`scene_key` の flag を持つシーンを探し、`rooms[i].id` が同じ区画について、探索録のページ (名前と本文)・マップノート (名前とアイコン)・光源と環境音 (作り直し)・シーンの `rooms` flag を書き換えます。
+シーンが見つからなければ何もしません (コンソールに警告)。
+
+#### 6. シナリオビルダーの下書き (`builder_stage_result`)
+
+```json
+{
+  "action": "builder_stage_result",
+  "stage": "wilderness",
+  "result": { "wilderness_title": "…", "public_lore": {}, "dm_secrets": {}, "landmarks": [{ "id": 0, "title": "…" }], "canon": [], "open_threads": [] },
+  "cards": [{ "id": "wilderness.road.pilgrim", "axis": "道の性格", "text": "…" }],
+  "seed": 1234,
+  "fallback": false,
+  "map": { "seed": 1234, "size_key": "small", "density": 0.4, "loop_ratio": 0.3, "points": 9 }
+}
+```
+
+`map` は旅路のみ。`landmarks[i].id` は地点グラフの 0 始まりの id です。`fallback: true` は AI 応答が使えず骨組みを返したことを示します。
+`create_dungeon_scene.lore.dm_secrets` があれば、探索録の伝承ページに DM 専用情報として表示します。
+
+#### 7. シナリオビルダーの進捗 (`builder_progress`)
+下書きの作成中とシーン構築中に、2 秒ごとに送ります。ビルダー画面の「⏳ AI が下書きを作成中です…」(`kind: "draft"`) /
+「⏳ シーンを構築中です…」(`kind: "build"`) の行に、工程・完了数・経過・タイムアウトまでの残り秒を出します
+(次の進捗が届くまでは画面側で 1 秒ずつ数え進めます。残りが 0 になったら、延長確認のカードを選ぶよう案内します。自動延長のときは「自動で延長します」)。
+作業中は「AI で下書き」「シーン構築」のボタンを押せなくします。
+シーン構築の最後 (失敗しても) に `finished: true` を送り、画面の「構築中」の行を消します。下書きは `builder_stage_result` が届いた時点で消します。
+
+```json
+{ "action": "builder_progress", "kind": "build", "finished": false, "stage": "site_lore", "step": 2, "steps": 2,
+  "step_label": "区画の情景", "detail": "完了 1/2", "elapsed": 40, "remaining": 260 }
+```
 
 ---
 
