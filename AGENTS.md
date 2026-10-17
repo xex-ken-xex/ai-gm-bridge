@@ -25,10 +25,11 @@ ai-gm-bridge/
 ├── bridge.js            # FVTT 側 ESModule エントリーポイント (フック登録)
 ├── scripts/             # FVTT 側の実装 (bridge.js から import)
 │   ├── actions.js       # サーバーからの action 処理 (Foundry 依存)
+│   ├── builder.js       # シナリオビルダー画面 (DialogV2) と地図帳ジャーナル (Foundry 依存)
 │   ├── net/connection.js # WebSocket 接続・自動再接続・受信の直列処理
-│   └── lib/             # Foundry 非依存の純粋関数 (html / commands / chat-filter / rooms / scene-docs / cards)
+│   └── lib/             # Foundry 非依存の純粋関数 (html / commands / chat-filter / rooms / scene-docs / cards / atlas)
 ├── ai_gm_server.py      # サーバー起動スクリプト (実装は gm_server/)
-├── gm_server/           # バックエンド実装 (config / text / protocol / tts / llm / progress / deadline / dungeon_scene / handlers / router / app)
+├── gm_server/           # バックエンド実装 (config / text / protocol / tts / llm / progress / deadline / dungeon_scene / builder / handlers / router / app)
 ├── tests/
 │   ├── python/          # pytest (python3 -m pytest)
 │   └── js/              # node:test (npm test)
@@ -36,10 +37,14 @@ ai-gm-bridge/
 ├── pytest.ini / requirements-dev.txt
 ├── prompts/             # プロンプトテンプレート (キャッシュ保持)
 │   ├── dungeon_lore_prompt.txt   # ダンジョン伝承・生態系生成用
-│   └── dungeon_rooms_prompt.txt  # 部屋トポロジー・情景補完用
+│   ├── dungeon_rooms_prompt.txt  # 部屋トポロジー・情景補完用
+│   ├── builder_rules.txt         # シナリオビルダー共通ルール (整合性・マンネリ防止・自己点検)
+│   └── builder_*_prompt.txt      # シナリオビルダー各段階 (region / settlement / wilderness / site_lore / site_rooms)
 ├── tools/
 │   ├── prompt_manager.py    # プロンプト補完・ワールド情報取得
 │   ├── dungeon_generator.py # ダンジョン自動生成ツール (幾何学/壁/グラフ)
+│   ├── scenario_decks.py    # シナリオビルダーの発想カード (マンネリ防止の抽選)
+│   ├── scenario_prompts.py  # シナリオビルダーのプロンプト組み立て・遺跡区画の役割割り当て
 │   ├── test_send.py         # チャット & ダイス音送信の単体疎通テスト用スクリプト
 │   └── test_voice.py        # 音声生成 & 再生指示の単体疎通テスト用スクリプト
 └── docs/
@@ -49,7 +54,8 @@ ai-gm-bridge/
     ├── dungeon_generator_spec.md # ダンジョン自動生成ツール仕様書
     ├── reference_porting_review.md # reference/ 移植レビュー (問題点リスト・移植フェーズ)
     ├── dungeon_math_investigation.md # ダンジョン生成の数学的モデリング調査・仕様化検討レポート
-    └── ai_dungeon_flavor_spec.md # AI ダンジョン階層フレーバー生成仕様 & DMノウハウ調査レポート
+    ├── ai_dungeon_flavor_spec.md # AI ダンジョン階層フレーバー生成仕様 & DMノウハウ調査レポート
+    └── scenario_builder_spec.md  # 4 段階シナリオビルダー仕様 (整合性とマンネリ防止のしくみ)
 ```
 
 ### 各ファイルの役割

@@ -1,0 +1,578 @@
+// 4 段階シナリオビルダー画面 (地域 → 集落 → 旅路 → 遺跡・迷宮) と地図帳ジャーナル (Foundry 依存)
+//
+// - 各段階の下書きはサーバー (builder_generate_stage) が作り、builder_stage_result で返ってくる
+// - 下書きは GM が画面で直してから【AI World Atlas】ジャーナルに保存し、次の段階の文脈として使う
+// - 確定事項・伏線・カード・旅路の seed とランドマークは atlas_meta flag に保存する (L11: リロードで消えない)
+// 純粋関数は scripts/lib/atlas.js (tests/js/atlas.test.js)
+
+import { escapeHtml } from "./lib/html.js";
+import {
+  ATLAS_CATEGORIES,
+  ATLAS_ROOT_FOLDER,
+  actorsContext,
+  atlasEntryContext,
+  atlasIndex,
+  buildAtlasPages,
+  formatStageDraft,
+  htmlToText,
+  joinLines,
+  recentCardIds,
+  resolveParentIds,
+  splitLines,
+  STAGE_CATEGORY,
+} from "./lib/atlas.js";
+
+const MODULE_ID = "ai-gm-bridge";
+const REFERENCE_FLAG = "builder_reference_ids";
+const MAX_REFERENCE_TEXT = 1500;
+
+const TABS = [
+  { id: "region", stage: "region", label: "🌍 1. 地域", defaultName: "新しい地域" },
+  { id: "settlement", stage: "settlement", label: "🏘️ 2. 集落", defaultName: "新しい集落" },
+  { id: "wilderness", stage: "wilderness", label: "🌲 3. 旅路", defaultName: "新しい旅路" },
+  { id: "site", stage: "site_lore", label: "🏰 4. 遺跡・迷宮", defaultName: "新しい遺跡" },
+];
+const SETTLEMENT_SCALES = ["辺境の開拓村・小村", "街道の宿場町・交易町", "鉱山街・職人街", "城塞都市・港町"];
+
+const state = {
+  send: null,
+  app: null,
+  root: null,
+  activeTab: "region",
+  // tab -> { name, prompt, public, dm, canon, threads, ...選択値 }
+  drafts: {},
+  // tab -> 下書きに付随する構造化データ (cards, seed, map, landmarks, sub_objectives, audio_prompts ...)
+  extras: {},
+  // tab -> 今開いている (保存先の) 地図帳エントリ id
+  openIds: {},
+  // この画面で引いたカード (保存前でも次の抽選で避ける)
+  sessionCards: [],
+  pending: {},
+};
+
+/** bridge.js から WebSocket 送信関数を受け取る */
+export function setBuilderSender(send) {
+  state.send = send;
+}
+
+// -------------------------------------------------------------------------
+// 地図帳ジャーナル
+// -------------------------------------------------------------------------
+function atlasMeta(doc) {
+  return doc?.getFlag?.(MODULE_ID, "atlas_meta") ?? doc?.flags?.[MODULE_ID]?.atlas_meta ?? null;
+}
+
+function atlasEntries(categoryKey = null) {
+  const subFolders = new Set(Object.values(ATLAS_CATEGORIES));
+  return (game.journal?.contents ?? [])
+    .map(doc => ({ id: doc.id, name: doc.name, meta: atlasMeta(doc), doc }))
+    .filter(e => (e.meta?.categoryKey ? true : subFolders.has(e.doc.folder?.name)))
+    .map(e => ({ ...e, meta: e.meta ?? { categoryKey: categoryOfFolder(e.doc.folder?.name) } }))
+    .filter(e => !categoryKey || e.meta.categoryKey === categoryKey);
+}
+
+function categoryOfFolder(folderName) {
+  return Object.entries(ATLAS_CATEGORIES).find(([, name]) => name === folderName)?.[0] ?? null;
+}
+
+function entryPlain(doc) {
+  if (!doc) return null;
+  return {
+    id: doc.id,
+    name: doc.name,
+    meta: atlasMeta(doc) ?? {},
+    pages: (doc.pages?.contents ?? []).map(p => ({
+      kind: p.flags?.[MODULE_ID]?.atlas_page ?? null,
+      name: p.name,
+      content: p.text?.content ?? "",
+      ownershipDefault: p.ownership?.default,
+    })),
+  };
+}
+
+async function getOrCreateFolder(name, parentId = null) {
+  let folder = game.folders.find(f => f.type === "JournalEntry" && f.name === name && (f.folder?.id ?? null) === parentId);
+  if (!folder) {
+    folder = await Folder.create({ name, type: "JournalEntry", folder: parentId, color: "#782e22" });
+  }
+  return folder;
+}
+
+async function saveAtlasEntry(categoryKey, title, fields, meta, existingId) {
+  const root = await getOrCreateFolder(ATLAS_ROOT_FOLDER);
+  const sub = await getOrCreateFolder(ATLAS_CATEGORIES[categoryKey], root.id);
+  const levels = CONST.DOCUMENT_OWNERSHIP_LEVELS ?? {};
+  const pages = buildAtlasPages(fields, {
+    ownership: { NONE: levels.NONE ?? 0, OBSERVER: levels.OBSERVER ?? 2 },
+    html: CONST.JOURNAL_ENTRY_PAGE_FORMATS?.HTML ?? 1,
+  }, MODULE_ID);
+  const flagData = { ...meta, categoryKey, updatedAt: Date.now() };
+
+  let entry = existingId ? game.journal.get(existingId) : null;
+  entry ??= game.journal.find(j => j.name === title && j.folder?.id === sub.id) ?? null;
+  if (entry) {
+    const oldIds = entry.pages.contents.map(p => p.id);
+    if (oldIds.length) await entry.deleteEmbeddedDocuments("JournalEntryPage", oldIds);
+    await entry.update({ name: title, folder: sub.id });
+    await entry.createEmbeddedDocuments("JournalEntryPage", pages);
+    await entry.setFlag(MODULE_ID, "atlas_meta", flagData);
+  } else {
+    entry = await JournalEntry.create({
+      name: title,
+      folder: sub.id,
+      pages,
+      ownership: { default: levels.OBSERVER ?? 2 },
+      flags: { [MODULE_ID]: { atlas_meta: flagData } },
+    });
+  }
+  ui.notifications.info(`地図帳『${title}』を【${ATLAS_CATEGORIES[categoryKey]}】に保存しました。`);
+  return entry;
+}
+
+// -------------------------------------------------------------------------
+// プロンプトの文脈 (ワールド資料・上位段階・目次・固有名詞)
+// -------------------------------------------------------------------------
+function referenceIds() {
+  return game.user?.getFlag?.(MODULE_ID, REFERENCE_FLAG) ?? [];
+}
+
+function worldContext() {
+  const references = referenceIds()
+    .map(id => game.journal?.get(id))
+    .filter(Boolean)
+    .map(doc => ({
+      name: doc.name,
+      text: (doc.pages?.contents ?? []).map(p => htmlToText(p.text?.content)).join("\n").slice(0, MAX_REFERENCE_TEXT),
+    }));
+  return {
+    title: game.world?.title ?? "",
+    description: htmlToText(game.world?.description ?? ""),
+    references,
+  };
+}
+
+function lookupEntry(id) {
+  const doc = id ? game.journal?.get(id) : null;
+  return doc ? { id, meta: atlasMeta(doc) } : null;
+}
+
+function stageContext(parentIds, selfId = null) {
+  const entries = atlasEntries();
+  return {
+    world: worldContext(),
+    parents: parentIds.map(id => atlasEntryContext(entryPlain(game.journal.get(id)))).filter(Boolean),
+    atlas_index: atlasIndex(entries, [...parentIds, selfId]),
+    actor_names: (game.actors?.contents ?? []).map(a => a.name).slice(0, 60),
+    recent_cards: recentCardIds(entries, state.sessionCards),
+  };
+}
+
+function parentPicks(tabId) {
+  const d = state.drafts[tabId] ?? {};
+  if (tabId === "settlement") return { region: d.parentRegion };
+  if (tabId === "wilderness") return { region: d.parentRegion, settlement: d.parentSettlement };
+  if (tabId === "site") return { settlement: d.parentSettlement, wilderness: d.parentWilderness };
+  return {};
+}
+
+function selectedActors(ids) {
+  const actors = (game.actors?.contents ?? []).filter(a => ids.includes(a.id));
+  return actorsContext(actors.map(a => ({
+    name: a.name,
+    type: a.type,
+    hasPlayerOwner: a.hasPlayerOwner,
+    bio: a.system?.details?.biography?.value ?? "",
+    race: a.system?.details?.race?.name ?? a.system?.details?.race ?? "",
+    background: a.system?.details?.background?.name ?? a.system?.details?.background ?? "",
+    role: a.system?.details?.type?.value ?? "",
+  })));
+}
+
+// -------------------------------------------------------------------------
+// 画面
+// -------------------------------------------------------------------------
+function options(entries, selectedId, emptyLabel) {
+  const head = `<option value="">${escapeHtml(emptyLabel)}</option>`;
+  return head + entries.map(e => `<option value="${escapeHtml(e.id)}" ${e.id === selectedId ? "selected" : ""}>${escapeHtml(e.name)}</option>`).join("");
+}
+
+function textFields(tab, d, labels) {
+  return `
+    <div class="aib-row">
+      <label>名前<input type="text" data-field="name" value="${escapeHtml(d.name)}" placeholder="空欄なら AI の案を使います"></label>
+      <label>GM 指示 (最優先)<input type="text" data-field="prompt" value="${escapeHtml(d.prompt)}" placeholder="${escapeHtml(labels.prompt)}"></label>
+    </div>
+    <div class="aib-split">
+      <label class="aib-pub">📖 プレイヤー公開情報<textarea data-field="public" rows="9">${escapeHtml(d.public)}</textarea></label>
+      <label class="aib-dm">🔒 DM 専用情報<textarea data-field="dm" rows="9">${escapeHtml(d.dm)}</textarea></label>
+    </div>
+    <div class="aib-split">
+      <label class="aib-canon">📌 確定事項 (後の段階で変更しない。1 行 1 件・編集可)<textarea data-field="canon" rows="4">${escapeHtml(d.canon)}</textarea></label>
+      <label class="aib-canon">🧵 未回収の伏線 (次の段階が回収する。1 行 1 件)<textarea data-field="threads" rows="4">${escapeHtml(d.threads)}</textarea></label>
+    </div>`;
+}
+
+function panelHtml(tab) {
+  const d = state.drafts[tab.id] ?? {};
+  const openSelect = `
+    <label>既存の地図帳を開く<select data-field="open">${options(atlasEntries(STAGE_CATEGORY[tab.stage]), state.openIds[tab.id], "(新規作成)")}</select></label>`;
+  let extra = "";
+  let labels = { prompt: "雰囲気・地形・テーマなど" };
+  let buttons = `
+    <button type="button" class="aib-gen" data-action="generate">🤖 AI で下書き</button>
+    <button type="button" class="aib-save" data-action="save">💾 地図帳に保存</button>`;
+
+  if (tab.id === "settlement") {
+    extra = `
+      <label>上位の地域<select data-field="parentRegion">${options(atlasEntries("region"), d.parentRegion, "(なし: ワールド資料のみ)")}</select></label>
+      <label>規模<select data-field="scale">${SETTLEMENT_SCALES.map(s => `<option ${s === d.scale ? "selected" : ""}>${escapeHtml(s)}</option>`).join("")}</select></label>`;
+    labels = { prompt: "生業・雰囲気など (空欄なら地域の資源から)" };
+  } else if (tab.id === "wilderness") {
+    extra = `
+      <label>上位の地域<select data-field="parentRegion">${options(atlasEntries("region"), d.parentRegion, "(集落の地域を使う)")}</select></label>
+      <label>出発地の集落<select data-field="parentSettlement">${options(atlasEntries("settlement"), d.parentSettlement, "(なし)")}</select></label>`;
+    labels = { prompt: "道中の地形や中継地のイメージ" };
+    buttons += `<button type="button" class="aib-build" data-action="build">🌲 保存して旅路シーンを構築</button>`;
+  } else if (tab.id === "site") {
+    const actors = game.actors?.contents ?? [];
+    const pcs = actors.filter(a => a.type === "character" || a.hasPlayerOwner);
+    const npcs = actors.filter(a => a.type === "npc").slice(0, 12);
+    const checked = new Set(d.actorIds ?? pcs.map(a => a.id));
+    const actorChecks = [
+      ...pcs.map(a => ({ a, mark: "👤", kind: "PC" })),
+      ...npcs.map(a => ({ a, mark: "🎭", kind: "NPC" })),
+    ].map(({ a, mark, kind }) => `<label class="aib-check"><input type="checkbox" data-actor="${escapeHtml(a.id)}" ${checked.has(a.id) ? "checked" : ""}> ${mark}${escapeHtml(a.name)} (${kind})</label>`).join("");
+    extra = `
+      <label>上位の集落<select data-field="parentSettlement">${options(atlasEntries("settlement"), d.parentSettlement, "(なし)")}</select></label>
+      <label>道中の旅路<select data-field="parentWilderness">${options(atlasEntries("wilderness"), d.parentWilderness, "(なし)")}</select></label>
+      <label>空間の種類<select data-field="siteMode">
+        <option value="ruins" ${d.siteMode !== "underground" ? "selected" : ""}>⛰️ 地上の廃墟 (崩れた壁越しに見通せる)</option>
+        <option value="underground" ${d.siteMode === "underground" ? "selected" : ""}>🕳️ 地下迷宮 (閉鎖空間)</option>
+      </select></label>
+      <label>規模<select data-field="size">
+        <option value="small" ${d.size !== "medium" ? "selected" : ""}>小 (100x100マス)</option>
+        <option value="medium" ${d.size === "medium" ? "selected" : ""}>中 (500x500マス・重い)</option>
+      </select></label>
+      <label>部屋密度 <input type="range" data-field="density" min="0.2" max="1.0" step="0.1" value="${escapeHtml(d.density ?? "0.5")}"></label>
+      <label>周回路 <input type="range" data-field="loop" min="0" max="0.5" step="0.05" value="${escapeHtml(d.loop ?? "0.25")}"></label>
+      <div class="aib-actors"><span>🎯 物語に絡める PC / NPC</span>${actorChecks || "Actor がいません"}</div>`;
+    labels = { prompt: "シチュエーションや仕掛けの要望" };
+    buttons += `<button type="button" class="aib-build" data-action="build">🏰 保存して全区画を配置・シーン構築</button>`;
+  }
+
+  const busy = state.pending[tab.id] ? `<p class="aib-busy">⏳ AI が下書きを作成中です…</p>` : "";
+  return `
+    <section class="aib-panel ${state.activeTab === tab.id ? "active" : ""}" data-tab="${tab.id}">
+      <div class="aib-row">${openSelect}${extra}</div>
+      ${textFields(tab, d, labels)}
+      ${busy}
+      <div class="aib-actions">${buttons}</div>
+    </section>`;
+}
+
+function dialogHtml() {
+  const refs = new Set(referenceIds());
+  const atlasIds = new Set(atlasEntries().map(e => e.id));
+  const refChecks = (game.journal?.contents ?? [])
+    .filter(j => !atlasIds.has(j.id) && !j.name.startsWith("【探索録】"))
+    .slice(0, 40)
+    .map(j => `<label class="aib-check"><input type="checkbox" data-reference="${escapeHtml(j.id)}" ${refs.has(j.id) ? "checked" : ""}> ${escapeHtml(j.name)}</label>`)
+    .join("");
+  return `
+  <style>
+    .aib { color: #f0f0e0; background: #1a1a20; padding: 10px; border-radius: 6px; font-size: 12px; }
+    .aib label { display: flex; flex-direction: column; gap: 3px; flex: 1; color: #f39c12; font-weight: bold; }
+    .aib input[type=text], .aib textarea, .aib select { background: #101014; color: #f0f0f0; border: 1px solid #555; border-radius: 4px; padding: 5px; font-family: inherit; font-size: 12px; font-weight: normal; }
+    .aib .aib-tabs { display: flex; gap: 4px; border-bottom: 2px solid #e67e22; margin-bottom: 8px; }
+    .aib .aib-tab { flex: 1; padding: 6px; background: #2a2a32; color: #ccc; border: none; border-radius: 4px 4px 0 0; cursor: pointer; font-weight: bold; }
+    .aib .aib-tab.active { background: #e67e22; color: #111; }
+    .aib .aib-panel { display: none; flex-direction: column; gap: 8px; max-height: 600px; overflow-y: auto; }
+    .aib .aib-panel.active { display: flex; }
+    .aib .aib-row { display: flex; gap: 8px; flex-wrap: wrap; }
+    .aib .aib-split { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .aib .aib-pub { border-left: 3px solid #2ecc71; padding-left: 6px; }
+    .aib .aib-dm { border-left: 3px solid #e74c3c; padding-left: 6px; }
+    .aib .aib-canon { border-left: 3px solid #3498db; padding-left: 6px; }
+    .aib .aib-check { display: inline-flex; flex-direction: row; align-items: center; gap: 3px; margin-right: 8px; color: #f0f0e0; font-weight: normal; }
+    .aib .aib-refs, .aib .aib-actors { background: #101014; padding: 5px 8px; border-radius: 4px; border: 1px solid #333; max-height: 64px; overflow-y: auto; width: 100%; }
+    .aib .aib-refs > span, .aib .aib-actors > span { color: #f39c12; font-weight: bold; margin-right: 8px; }
+    .aib .aib-actions { display: flex; gap: 6px; padding-top: 8px; border-top: 1px solid #333; }
+    .aib .aib-actions button { flex: 1; color: #fff; border: none; padding: 7px; border-radius: 4px; cursor: pointer; font-weight: bold; }
+    .aib .aib-gen { background: #8e44ad; } .aib .aib-save { background: #2980b9; } .aib .aib-build { background: #27ae60; flex: 1.5; }
+    .aib .aib-busy { color: #f1c40f; margin: 0; }
+  </style>
+  <div class="aib">
+    <div class="aib-refs"><span>📚 ワールド資料として参照するジャーナル (全段階で矛盾しないよう AI に渡します)</span>${refChecks || "ジャーナルがありません"}</div>
+    <div class="aib-tabs">
+      ${TABS.map(t => `<button type="button" class="aib-tab ${state.activeTab === t.id ? "active" : ""}" data-target="${t.id}">${t.label}</button>`).join("")}
+    </div>
+    ${TABS.map(panelHtml).join("")}
+  </div>`;
+}
+
+function panel(tabId) {
+  return state.root?.querySelector?.(`.aib-panel[data-tab="${tabId}"]`) ?? null;
+}
+
+/** 画面の入力値を state.drafts に取り込む (再描画しても入力が消えないように) */
+function captureDrafts() {
+  if (!state.root?.isConnected) return;
+  for (const tab of TABS) {
+    const p = panel(tab.id);
+    if (!p) continue;
+    const d = { ...(state.drafts[tab.id] ?? {}) };
+    p.querySelectorAll("[data-field]").forEach(el => {
+      if (el.dataset.field !== "open") d[el.dataset.field] = el.value;
+    });
+    if (tab.id === "site") {
+      d.actorIds = [...p.querySelectorAll("[data-actor]")].filter(el => el.checked).map(el => el.dataset.actor);
+    }
+    state.drafts[tab.id] = d;
+  }
+}
+
+async function openDialog(content) {
+  const title = "🧙 AI シナリオビルダー (地域 → 集落 → 旅路 → 遺跡)";
+  const DialogV2 = foundry?.applications?.api?.DialogV2;
+  if (DialogV2) {
+    const app = new DialogV2({
+      window: { title, resizable: true },
+      position: { width: 860, height: "auto" },
+      content,
+      buttons: [{ action: "close", label: "閉じる", default: true }],
+    });
+    await app.render({ force: true });
+    return { app, root: app.element };
+  }
+  // v11: 旧 Dialog
+  return new Promise(resolve => {
+    const app = new Dialog({
+      title,
+      content,
+      buttons: { close: { label: "閉じる" } },
+      render: html => resolve({ app, root: html instanceof HTMLElement ? html : html[0] }),
+    }, { width: 860, height: "auto", resizable: true });
+    app.render(true);
+  });
+}
+
+/**
+ * シナリオビルダー画面を開く (開いていれば描き直す)。
+ * capture: 描き直す前に今の入力値を取り込むか (下書きや保存済みエントリで入力値を置き換えた直後は false)
+ */
+export async function openScenarioBuilder(tabId = null, { capture = true } = {}) {
+  if (capture) captureDrafts();
+  if (tabId) state.activeTab = tabId;
+  const old = state.app;
+  state.app = null;
+  state.root = null;
+  if (old) await old.close?.();
+  const { app, root } = await openDialog(dialogHtml());
+  state.app = app;
+  state.root = root;
+  bindEvents(root);
+}
+
+function bindEvents(root) {
+  // DialogV2 は内容を <form> で包むため、入力欄の Enter で画面が閉じないようにする
+  root.addEventListener("keydown", ev => {
+    if (ev.key === "Enter" && ev.target?.tagName === "INPUT") ev.preventDefault();
+  });
+  root.querySelectorAll(".aib-tab").forEach(btn => btn.addEventListener("click", () => {
+    state.activeTab = btn.dataset.target;
+    root.querySelectorAll(".aib-tab").forEach(b => b.classList.toggle("active", b === btn));
+    root.querySelectorAll(".aib-panel").forEach(p => p.classList.toggle("active", p.dataset.tab === state.activeTab));
+  }));
+  root.querySelectorAll("[data-reference]").forEach(el => el.addEventListener("change", async () => {
+    const ids = [...root.querySelectorAll("[data-reference]")].filter(c => c.checked).map(c => c.dataset.reference);
+    await game.user?.setFlag?.(MODULE_ID, REFERENCE_FLAG, ids);
+  }));
+  for (const tab of TABS) {
+    const p = panel(tab.id);
+    p?.querySelector('[data-field="open"]')?.addEventListener("change", ev => loadEntry(tab, ev.target.value));
+    p?.querySelectorAll("[data-action]").forEach(btn => btn.addEventListener("click", () => {
+      captureDrafts();
+      const action = btn.dataset.action;
+      if (action === "generate") requestDraft(tab);
+      else if (action === "save") saveTab(tab).then(() => openScenarioBuilder(tab.id));
+      else if (action === "build") buildScene(tab);
+    }));
+  }
+}
+
+// -------------------------------------------------------------------------
+// 操作
+// -------------------------------------------------------------------------
+function loadEntry(tab, id) {
+  captureDrafts();
+  const doc = id ? game.journal.get(id) : null;
+  if (!doc) {
+    delete state.openIds[tab.id];
+    return;
+  }
+  const plain = entryPlain(doc);
+  const meta = plain.meta;
+  const text = kind => plain.pages.filter(p => (p.kind ?? (p.ownershipDefault === 0 ? "dm" : "public")) === kind).map(p => htmlToText(p.content)).join("\n\n");
+  state.openIds[tab.id] = id;
+  state.drafts[tab.id] = {
+    ...(state.drafts[tab.id] ?? {}),
+    name: doc.name,
+    public: text("public"),
+    dm: text("dm"),
+    canon: joinLines(meta.canon),
+    threads: joinLines(meta.open_threads),
+    parentRegion: meta.parent_ids?.region ?? "",
+    parentSettlement: meta.parent_ids?.settlement ?? "",
+    parentWilderness: meta.parent_ids?.wilderness ?? "",
+    siteMode: meta.site_mode ?? state.drafts[tab.id]?.siteMode,
+  };
+  state.extras[tab.id] = {
+    cards: meta.cards ?? [],
+    seed: meta.seed ?? null,
+    map: meta.map ?? null,
+    landmarks: meta.landmarks ?? [],
+    sub_objectives: meta.sub_objectives ?? [],
+    audio_prompts: meta.audio_prompts ?? {},
+  };
+  openScenarioBuilder(tab.id, { capture: false });
+}
+
+function gmTypedName(tabId) {
+  const name = state.drafts[tabId]?.name?.trim() ?? "";
+  return name && name !== state.extras[tabId]?.aiName ? name : "";
+}
+
+function requestDraft(tab) {
+  if (!state.send) {
+    ui.notifications.warn("AI GM Bridge: Python サーバー (8765) に接続されていません。");
+    return;
+  }
+  const d = state.drafts[tab.id] ?? {};
+  const parentIds = resolveParentIds(parentPicks(tab.id), lookupEntry);
+  const payload = {
+    event: "builder_generate_stage",
+    stage: tab.stage,
+    user_prompt: d.prompt ?? "",
+    // GM が自分で付けた名前は AI にもそのまま使わせる (AI が前回付けた名前は付け直してよい)
+    fixed_name: gmTypedName(tab.id),
+    ...stageContext(parentIds, state.openIds[tab.id]),
+  };
+  if (tab.id === "settlement") payload.settlement_scale = d.scale || SETTLEMENT_SCALES[0];
+  if (tab.id === "site") {
+    payload.site_mode = d.siteMode || "ruins";
+    payload.size_key = d.size || "small";
+    payload.actors_context = selectedActors(d.actorIds ?? []);
+  }
+  if (state.send(payload)) {
+    state.pending[tab.id] = true;
+    ui.notifications.info(`AI GM Bridge: ${tab.label.replace(/^\S+\s*\d+\.\s*/, "")}の下書きを依頼しました。`);
+    openScenarioBuilder(tab.id);
+  }
+}
+
+/** サーバーから届いた下書きを画面に反映する (画面が閉じていれば開き直す) */
+export async function handleBuilderStageResult(data) {
+  const tab = TABS.find(t => t.stage === data.stage);
+  if (!tab) return;
+  state.pending[tab.id] = false;
+  const res = data.result ?? {};
+  const draft = formatStageDraft(data.stage, res);
+  const cardIds = (data.cards ?? []).map(c => c.id).filter(Boolean);
+  state.sessionCards.push(...cardIds);
+  captureDrafts();
+  const prev = state.drafts[tab.id] ?? {};
+  const typedName = gmTypedName(tab.id);
+  state.drafts[tab.id] = {
+    ...prev,
+    name: typedName || draft.name,
+    public: draft.publicText,
+    dm: draft.dmText,
+    canon: draft.canonText,
+    threads: draft.threadsText,
+  };
+  state.extras[tab.id] = {
+    cards: cardIds,
+    seed: data.seed ?? null,
+    map: data.map ?? null,
+    landmarks: res.landmarks ?? [],
+    sub_objectives: res.dm_secrets?.sub_objectives ?? [],
+    audio_prompts: res.audio_prompts ?? {},
+    resolved_threads: res.resolved_threads ?? [],
+    aiName: draft.name,
+  };
+  if (data.fallback) ui.notifications.warn("AI GM Bridge: AI の下書きを受け取れなかったため、骨組みを入れました。");
+  else ui.notifications.info("AI GM Bridge: 下書きができました。確認・修正してから保存してください。");
+  if (res.consistency_notes) ui.notifications.warn(`整合性メモ: ${res.consistency_notes}`);
+  await openScenarioBuilder(tab.id, { capture: false });
+}
+
+function tabMeta(tab) {
+  const d = state.drafts[tab.id] ?? {};
+  const x = state.extras[tab.id] ?? {};
+  const picks = parentPicks(tab.id);
+  const parentIds = resolveParentIds(picks, lookupEntry);
+  const byCategory = Object.fromEntries(parentIds.map(id => [atlasMeta(game.journal.get(id))?.categoryKey, id]));
+  return {
+    parent_ids: { region: byCategory.region ?? null, settlement: byCategory.settlement ?? null, wilderness: byCategory.wilderness ?? null },
+    canon: splitLines(d.canon),
+    open_threads: splitLines(d.threads),
+    cards: x.cards ?? [],
+    seed: x.seed ?? null,
+    map: x.map ?? null,
+    landmarks: x.landmarks ?? [],
+    sub_objectives: x.sub_objectives ?? [],
+    audio_prompts: x.audio_prompts ?? {},
+    site_mode: tab.id === "site" ? (d.siteMode || "ruins") : undefined,
+  };
+}
+
+async function saveTab(tab) {
+  const d = state.drafts[tab.id] ?? {};
+  const title = d.name?.trim() || tab.defaultName;
+  const meta = tabMeta(tab);
+  const entry = await saveAtlasEntry(STAGE_CATEGORY[tab.stage], title, {
+    publicText: d.public ?? "",
+    dmText: d.dm ?? "",
+    canon: meta.canon,
+    openThreads: meta.open_threads,
+  }, meta, state.openIds[tab.id]);
+  state.openIds[tab.id] = entry.id;
+  state.drafts[tab.id] = { ...d, name: title };
+  return { entry, meta };
+}
+
+async function buildScene(tab) {
+  if (!state.send) {
+    ui.notifications.warn("AI GM Bridge: Python サーバー (8765) に接続されていません。");
+    return;
+  }
+  const { entry, meta } = await saveTab(tab);
+  const d = state.drafts[tab.id] ?? {};
+  const parentIds = Object.values(meta.parent_ids).filter(Boolean);
+  const ctx = stageContext(parentIds, entry.id);
+  // 遺跡自身の確定事項も、区画の情景を書くときの前提にする
+  ctx.parents.push({ category: STAGE_CATEGORY[tab.stage], name: entry.name, canon: meta.canon, open_threads: meta.open_threads });
+  const payload = {
+    event: "builder_build_scene",
+    name: entry.name,
+    user_prompt: d.prompt ?? "",
+    public_lore: d.public ?? "",
+    dm_secrets: d.dm ?? "",
+    ...ctx,
+  };
+  if (tab.id === "wilderness") {
+    Object.assign(payload, { scene_mode: "wilderness", map: meta.map, landmarks: meta.landmarks });
+  } else {
+    Object.assign(payload, {
+      scene_mode: d.siteMode || "ruins",
+      size_key: d.size || "small",
+      density: Number(d.density ?? 0.5),
+      loop_ratio: Number(d.loop ?? 0.25),
+      sub_objectives: meta.sub_objectives,
+    });
+  }
+  if (state.send(payload)) {
+    ui.notifications.info(`AI GM Bridge: 『${entry.name}』のシーン構築を依頼しました。`);
+  }
+  await openScenarioBuilder(tab.id);
+}

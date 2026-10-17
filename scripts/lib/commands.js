@@ -37,3 +37,8 @@ export function parseAiCommand(text) {
   }
   return null;
 }
+
+/** `/ai ビルダー` など、シナリオビルダー画面を開く指示か (サーバーには送らない) */
+export function isBuilderCommand(prompt) {
+  return /^(gui|builder|ビルダー|シナリオ(ビルダー)?|シナリオビルド)$/i.test(String(prompt ?? "").trim());
+}

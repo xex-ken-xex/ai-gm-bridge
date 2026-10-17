@@ -37,3 +37,25 @@ def interactive_card(title: str, message: str, choices: List[Dict], speaker: str
         "speaker": speaker,
         "choices": [{"label": c["label"], "value": c["value"]} for c in choices],
     }
+
+
+def builder_stage_result(
+    stage: str,
+    result: Dict,
+    cards: Optional[List[Dict]] = None,
+    seed: Optional[int] = None,
+    fallback: bool = False,
+    map_info: Optional[Dict] = None,
+) -> Dict:
+    """シナリオビルダーの段階ごとの下書き。cards / seed は地図帳ジャーナルに保存され、次回の抽選の除外と再現に使う"""
+    msg = {
+        "action": "builder_stage_result",
+        "stage": stage,
+        "result": result,
+        "cards": cards or [],
+        "seed": seed,
+        "fallback": fallback,
+    }
+    if map_info:
+        msg["map"] = map_info
+    return msg

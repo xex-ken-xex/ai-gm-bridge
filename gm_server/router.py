@@ -5,6 +5,7 @@ import traceback
 from typing import Awaitable, Callable, Dict
 
 from gm_server.deadline import is_timeout_choice
+from gm_server import builder
 from gm_server.handlers import ai_command, player_message, room_entered
 
 Handler = Callable[[object, dict], Awaitable[None]]
@@ -14,6 +15,8 @@ HANDLERS: Dict[str, Handler] = {
     "ai_choice": ai_command.handle_choice,
     "room_entered": room_entered.handle,
     "player_message": player_message.handle,
+    "builder_generate_stage": builder.handle_generate_stage,
+    "builder_build_scene": builder.handle_build_scene,
 }
 
 

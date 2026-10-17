@@ -1,0 +1,165 @@
+import json
+
+import pytest
+
+from gm_server import builder
+from gm_server.router import HANDLERS, dispatch
+from conftest import FakeLLM
+
+
+@pytest.fixture(autouse=True)
+def fixed_world(monkeypatch):
+    monkeypatch.setattr(builder, "get_active_world_info", lambda: {"title": "W", "description": "D"})
+
+
+def actions(sent):
+    return [m["action"] for m in sent]
+
+
+def region_result(**extra):
+    return {
+        "region_name": "白塩の野",
+        "public_lore": {"terrain_and_climate": "塩の平原"},
+        "dm_secrets": {"hidden_threat": "墓"},
+        "canon": ["資源: 岩塩", "", 3],
+        "open_threads": "文字列は捨てる",
+        **extra,
+    }
+
+
+def test_builder_events_are_registered():
+    assert HANDLERS["builder_generate_stage"] is builder.handle_generate_stage
+    assert HANDLERS["builder_build_scene"] is builder.handle_build_scene
+
+
+def test_normalize_stage_result():
+    assert builder.normalize_stage_result("region", None) is None
+    assert builder.normalize_stage_result("region", {"region_name": "", "public_lore": {}}) is None
+    assert builder.normalize_stage_result("region", {"region_name": "x", "public_lore": "text"}) is None
+    assert builder.normalize_stage_result("unknown", region_result()) is None
+    r = builder.normalize_stage_result("region", region_result(dm_secrets="x"))
+    assert r["canon"] == ["資源: 岩塩", "3"]
+    assert r["open_threads"] == [] and r["dm_secrets"] == {} and r["consistency_notes"] == ""
+
+
+@pytest.mark.parametrize("stage", ["region", "settlement", "wilderness", "site_lore"])
+def test_fallbacks_are_valid_results(stage):
+    assert builder.normalize_stage_result(stage, builder.fallback_stage_result(stage)) is not None
+
+
+def test_builder_size_key_limits_large_maps():
+    """M12: ビルダーでは小・中だけ"""
+    assert builder.builder_size_key("medium") == "medium"
+    assert builder.builder_size_key("xlarge") == "small"
+    assert builder.builder_size_key(None) == "small"
+
+
+def test_parse_seed():
+    assert builder.parse_seed("12") == 12
+    assert builder.parse_seed(0) is None and builder.parse_seed("x") is None
+
+
+async def test_generate_region_sends_draft_with_cards_and_seed(make_ctx, sent):
+    llm = FakeLLM(json_responses=[region_result()])
+    ctx = make_ctx(llm)
+    payload = {"event": "builder_generate_stage", "stage": "region", "seed": 77, "user_prompt": "塩",
+               "world": {"title": "アンティキティラ", "description": "黒竜"}}
+    assert await dispatch(ctx, json.dumps(payload))
+    assert actions(sent) == ["builder_stage_result"]
+    msg = sent[0]
+    assert msg["stage"] == "region" and msg["seed"] == 77 and msg["fallback"] is False
+    assert msg["result"]["region_name"] == "白塩の野"
+    assert [c["axis"] for c in msg["cards"]] == [axis for _, axis, _ in builder.draw_cards.__globals__["DECKS"]["region"]]
+    prompt = llm.prompts[0][1]
+    assert "アンティキティラ" in prompt and "黒竜" in prompt
+    assert all(c["text"] in prompt for c in msg["cards"])
+
+
+async def test_same_seed_draws_same_cards(make_ctx, sent):
+    ctx = make_ctx(FakeLLM(json_responses=[region_result(), region_result()]))
+    for _ in range(2):
+        await builder.handle_generate_stage(ctx, {"stage": "region", "seed": 5})
+    assert sent[0]["cards"] == sent[1]["cards"]
+
+
+async def test_generate_falls_back_when_ai_fails(make_ctx, sent):
+    ctx = make_ctx(FakeLLM(json_responses=[{"broken": True}]))
+    await builder.handle_generate_stage(ctx, {"stage": "settlement"})
+    assert actions(sent) == ["chat", "builder_stage_result"]
+    assert sent[1]["fallback"] is True
+    assert sent[1]["result"]["settlement_name"]
+
+
+async def test_unknown_stage_is_ignored(make_ctx, sent):
+    await builder.handle_generate_stage(make_ctx(), {"stage": "dungeon"})
+    assert sent == []
+
+
+async def test_wilderness_draft_returns_map_and_zero_based_landmarks(make_ctx, sent):
+    topos = builder.make_wilderness_generator(99).get_room_topologies()
+    # AI が 1 始まりで返しても地点グラフの id にそろう
+    landmarks = [{"id": t["id"] + 1, "title": f"地点{t['id']}", "safe_rest": t["id"] == 1} for t in topos]
+    result = {"wilderness_title": "塩の道", "public_lore": {"route_overview": "道"}, "landmarks": landmarks}
+    llm = FakeLLM(json_responses=[result])
+    await builder.handle_generate_stage(make_ctx(llm), {"stage": "wilderness", "seed": 99})
+    msg = sent[-1]
+    assert msg["map"]["seed"] == 99 and msg["map"]["points"] == builder.WILDERNESS_POINT_COUNT
+    lms = msg["result"]["landmarks"]
+    assert [lm["id"] for lm in lms] == [t["id"] for t in topos]
+    assert lms[0]["title"] == "地点0"
+    assert {lm["role"] for lm in lms} >= {"start", "goal"}
+    assert lms[1]["safe_rest"] is True
+    assert '"neighbors"' in llm.prompts[0][1]
+
+
+async def test_build_wilderness_regenerates_the_same_points(make_ctx, sent, tmp_path):
+    topos = builder.make_wilderness_generator(1234).get_room_topologies()
+    landmarks = [{"id": t["id"], "title": f"地点{t['id']}", "tts_narration": f"風{t['id']}"} for t in topos]
+    ctx = make_ctx()
+    await builder.handle_build_scene(ctx, {
+        "scene_mode": "wilderness", "name": "塩の道", "public_lore": "道", "dm_secrets": "見張り",
+        "map": {"seed": 1234}, "landmarks": landmarks,
+    })
+    assert actions(sent) == ["create_dungeon_scene", "play_sound"]
+    scene = sent[0]
+    assert scene["scene_mode"] == "wilderness" and scene["room_count"] == len(topos)
+    assert [r["title"] for r in scene["rooms"]] == [f"地点{t['id']}" for t in topos]
+    assert scene["lore"]["dm_secrets"] == "見張り"
+    json.dumps(scene)
+
+
+async def test_build_wilderness_without_seed_drops_landmarks(make_ctx, sent):
+    ctx = make_ctx()
+    await builder.handle_build_scene(ctx, {"scene_mode": "wilderness", "landmarks": [{"id": 0, "title": "古い下書き"}]})
+    assert actions(sent) == ["chat", "create_dungeon_scene", "play_sound"]
+    assert "seed" in sent[0]["content"]
+    assert all(r["title"] != "古い下書き" for r in sent[1]["rooms"])
+
+
+async def test_build_site_assigns_roles_before_asking_ai(make_ctx, sent):
+    llm = FakeLLM()
+    ctx = make_ctx(llm)
+    subs = [{"title": "閂を外す", "target_topology": "dead_end"}, {"title": "副官と取引", "target_topology": "hub"}]
+    await builder.handle_build_scene(ctx, {
+        "scene_mode": "ruins", "name": "見張り塔", "size_key": "xlarge", "density": 0.5, "loop_ratio": 0.2, "seed": 8,
+        "public_lore": "大目標: 荷を取り返す", "dm_secrets": "頭目は孤立している", "sub_objectives": subs,
+        "parents": [{"category": "settlement", "name": "グレン", "canon": ["手仕事: 香木の鈴"]}],
+    })
+    assert actions(sent) == ["chat", "create_dungeon_scene", "play_sound"]
+    scene = sent[1]
+    assert scene["grid_width"] == 100  # xlarge は small に丸める (M12)
+    prompts = [p for kind, p in llm.prompts if kind == "json"]
+    assert prompts and all("頭目は孤立している" in p and "香木の鈴" in p for p in prompts)
+    assert all("中目標「閂を外す」の場所" in p for p in prompts)
+    sub_rooms = [r for r in scene["rooms"] if r["role"] == "sub_goal"]
+    assert len(sub_rooms) == 2  # AI の情景が無くても中目標のバッジは付く
+    assert scene["lore"]["history_summary"] == "大目標: 荷を取り返す"
+
+
+def test_apply_room_plan_overrides_ai_roles():
+    plan = {0: {"role": "start", "label": "入口"}, 1: {"role": "empty", "label": "空室"}, 2: {"role": "sub_goal", "label": "中目標「鍵」"}}
+    flavors = [{"id": 0, "role": "boss"}, {"id": 1, "role": "treasure", "title": "倉"}]
+    result = {r["id"]: r for r in builder.apply_room_plan(flavors, plan)}
+    assert result[0]["role"] == "start" and result[0]["safe_rest"] is True
+    assert result[1]["role"] == "empty" and result[1]["is_empty"] is True and result[1]["title"] == "倉"
+    assert result[2]["role"] == "sub_goal" and "鍵" in result[2]["gm_notes"]

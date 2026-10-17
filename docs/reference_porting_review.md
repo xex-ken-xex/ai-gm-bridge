@@ -80,13 +80,13 @@ npm test                   # FVTT 側の純粋関数 (tests/js, Node 18+ の nod
 | R1 | 高 | `ai_gm_server.py` 324, 472 | `DungeonGenerator(scene_mode=...)` を呼ぶが、本番の生成器に `scene_mode` 引数は無く `TypeError` で落ちる。壁タイプ (`door` 等) を返す `extract_walls` も無い | ✅ Phase 1: 生成器に `scene_mode`・壁タイプ付き `extract_walls` を実装 (builder は Phase 2) |
 | R2 | 高 | `ai_gm_server.py` 771, 781, 421 | 発言者名を `アギィ (AI GM)` `アギィ (Agy)` に変更しているが、本番 bridge のループ検知は `AI GM` / `サポートGM` の前方一致。そのまま統合すると AI の発言が再送されて無限ループ | ✅ bridge 側は AI 生成フラグ (`flags["ai-gm-bridge"].generated`) でも判定するようにした。名前変更は 📝 |
 | R3 | 高 | `ai_gm_server.py` 194, 215 | モデルが `gemini-2.5-flash` にハードコード (本番は `gemini-3.8-flash`) | ✅ `AI_GM_GEMINI_MODEL` に一本化 |
-| R4 | 中 | `prompt_manager.py` `build_settlement_stage_prompt` ほか | `region_ctx.get("public_lore")` は dict だが `str.format` にそのまま渡すため Python の repr (`{'climate': ...}`) がプロンプトに入る | 🔜 `json.dumps(..., ensure_ascii=False)` で渡す |
+| R4 | 中 | `prompt_manager.py` `build_settlement_stage_prompt` ほか | `region_ctx.get("public_lore")` は dict だが `str.format` にそのまま渡すため Python の repr (`{'climate': ...}`) がプロンプトに入る | ✅ Phase 2: 文脈は `tools/scenario_prompts.py` で JSON / テキストにしてから埋め込む |
 | R5 | 中 | `prompt_manager.py` `build_site_rooms_stage_prompt` | `neighbors` だけ +1 して id は 0 始まりのまま。AI から見ると隣接番号と id がずれる | ✅ Phase 1: 部屋プロンプトに `neighbors` / `in_cycle` を id と同じ 0 始まりで渡す |
 | R6 | 中 | `ai_gm_server.py` 全体 | 1 メッセージずつ `await` するため、シーン構築中は NPC 手番・会話がすべて止まる | 🔜 NPC 系 event はタスク化 (`asyncio.create_task`) し、シーン構築だけ直列にする |
 | R7 | 中 | `ai_gm_server.py` 57-61 | `agy_session` (会話 ID・ワイルダネス生成器) がモジュールグローバルで、接続をまたいで共有・リロードで消える | 🔜 `SessionState` に移す |
 | R8 | 中 | `ai_gm_server.py` 716 | agy の応答を `\n→<br>` 変換だけしてチャットへ流す (HTML 注入) | 🔜 `html.escape` してから `<br>` 化 |
-| R9 | 低 | `prompt_manager.py` `load_cached_prompt` | 内蔵テンプレートを使ったときはキャッシュしない。ファイルとの差分に気付きにくい | 🔜 |
-| R10 | 低 | `ai_gm_server.py` 351 | `size_label` に `xlarge` が無い | 🔜 `SIZE_PRESETS` を共用 |
+| R9 | 低 | `prompt_manager.py` `load_cached_prompt` | 内蔵テンプレートを使ったときはキャッシュしない。ファイルとの差分に気付きにくい | ✅ Phase 2: 本番は内蔵テンプレートを持たず、`prompts/` のファイルだけを使う (無ければ FileNotFoundError) |
+| R10 | 低 | `ai_gm_server.py` 351 | `size_label` に `xlarge` が無い | ✅ Phase 2: `SIZE_PRESETS` を共用 |
 | R11 | 低 | `tools/dungeon_generator.py` `get_room_topologies` | `in_cycle` は「追加辺の端点」かどうかで、実際に閉路上にあるかではない | ✅ Phase 1: Tarjan の橋判定で「橋でない辺を 1 本以上持つ部屋」を `in_cycle` にした |
 
 ---
@@ -130,7 +130,7 @@ npm test                   # FVTT 側の純粋関数 (tests/js, Node 18+ の nod
 | M8 | 中 | 1181-1187 + 1144-1151 | 重要度 4 以上の記憶が長期記憶に二重登録される | 🔜 `scripts/lib/memory.js` でテスト付きで実装 |
 | M9 | 中 | 1156-1157 | 鮮明度を毎回 0.01 単位に丸めるため、減衰量が 0.005 未満だと永久に変化しない。下限 0.1 の直後に 0.15 未満を削除しており下限が無意味 | 🔜 内部値は丸めない |
 | M10 | 中 | 1176-1191 | `setFlag` を連続 2 回、読み書きに排他なし。並行応答で記憶が消える | 🔜 1 回の更新にまとめ、actor ごとに直列化 |
-| M12 | 中 | 1993-1996 | medium 以上のシーンが 50,000〜200,000px になる (grid 100px 固定) | 📝 grid_size 可変化かサイズ上限 |
+| M12 | 中 | 1993-1996 | medium 以上のシーンが 50,000〜200,000px になる (grid 100px 固定) | ✅ Phase 2 (暫定): ビルダーは小・中のみ (`BUILDER_SIZE_KEYS`)。`/ai ダンジョン` の大・特大と grid_size 可変化は 📝 |
 | M14 | 中 | 2240-2283 | ボタンの押下状態が DOM にしか残らず、再描画で戻る | 🔜 `message.setFlag` で保存 (本番もまだ未対応) |
 | L1 | 低 | 1736 | `/["'“”」]+\$/` が `$` 文字にマッチ (本番版は修正済み) | ✅ 本番版を採用 |
 | L2 | 低 | 1721-1758 | `/ai` を 2 系統で登録し、正規表現の判定がずれている | 🔜 一本化 |
@@ -142,7 +142,7 @@ npm test                   # FVTT 側の純粋関数 (tests/js, Node 18+ の nod
 | L8 | 低 | 1210 | 発言者不在時に全 NPC を 10ft 扱い。発言者 NPC 自身も聴き手に入る | 🔜 |
 | L9 | 低 | 1275 | `leave_scene` が `alpha: 0.3` だけでトークンが残る | 🔜 `hidden: true` |
 | L10 | 低 | 106, 276 | `localStorage` の JSON.parse 例外未処理、吹き出しタイマー未解除 | 🔜 |
-| L11 | 低 | 1854, 1033 | ランドマークを `window` に置いておりリロードで消える | 🔜 journal flag を参照 |
+| L11 | 低 | 1854, 1033 | ランドマークを `window` に置いておりリロードで消える | ✅ Phase 2: 旅路の seed とランドマークを地図帳の `atlas_meta` flag に保存し、構築時に seed から地点グラフを再生成 |
 | L13 | 低 | 56-57 | 照明アニメーション `type: "none"` は存在しないキー (⚠️ 未確認) | ✅ Phase 1: `null` |
 
 ### 3.3 プロトコルの不整合 (reference の bridge ⇄ server)
@@ -166,8 +166,8 @@ npm test                   # FVTT 側の純粋関数 (tests/js, Node 18+ の nod
 | Phase | 内容 | 主な対象 | 前提 |
 |---|---|---|---|
 | **0 (完了)** | モジュール分割・テスト基盤・本番の不具合修正・Reference のユーティリティ移植 (TTS 声色・JSON 取得) | §2.1, §3.1 | — |
-| **1 (PR 済み)** | 生成器の拡張: `scene_mode` (underground / ruins / wilderness)・壁タイプ (扉・隠し扉・低い壁)・照明プリセット・部屋データへの `light_preset` / `ambient_sound_src` | R1, R5, R11, H5, M1, M2, L13 | — |
-| 2 | 4 段階シナリオビルダー (サーバー: `builder_generate_stage` / `builder_build_scene`、FVTT: アトラスジャーナル、DialogV2 化) | R4, R9, R10, M12, L11 | Phase 1 |
+| **1 (完了)** | 生成器の拡張: `scene_mode` (underground / ruins / wilderness)・壁タイプ (扉・隠し扉・低い壁)・照明プリセット・部屋データへの `light_preset` / `ambient_sound_src` | R1, R5, R11, H5, M1, M2, L13 | — |
+| **2 (PR 済み)** | 4 段階シナリオビルダー (サーバー: `builder_generate_stage` / `builder_build_scene`、FVTT: アトラスジャーナル、DialogV2 化) | R4, R9, R10, M12, L11 | Phase 1 |
 | 3 | NPC 会話システム (聴取範囲・記憶と忘却) | H1-H4, H7, M4, M8-M10, L4-L8 | — |
 | 4 | NPC 自律戦闘 | M3, M5-M7 | Phase 3 の知覚処理 |
 | 5 | 集落 BGM (別 WSL オーディオ生成) と環境音 | — | Phase 1 |

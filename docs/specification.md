@@ -138,6 +138,30 @@ GM が対話型チャットカード上の選択肢ボタンをクリックし�
 }
 ```
 
+#### シナリオビルダー (`builder_generate_stage` / `builder_build_scene`)
+`/ai ビルダー` で開く画面から送信します。詳細は [scenario_builder_spec.md](scenario_builder_spec.md)。
+
+```json
+{
+  "event": "builder_generate_stage",
+  "stage": "region | settlement | wilderness | site_lore",
+  "user_prompt": "GM 指示",
+  "fixed_name": "GM が付けた名前 (無ければ空)",
+  "world": { "title": "…", "description": "…", "references": [{ "name": "参照ジャーナル", "text": "…" }] },
+  "parents": [{ "category": "region", "name": "…", "public_lore": "…", "dm_secrets": "…", "canon": ["…"], "open_threads": ["…"] }],
+  "atlas_index": [{ "category": "settlement", "name": "…", "canon": ["…"] }],
+  "actor_names": ["…"],
+  "recent_cards": ["region.terrain.salt_flat"],
+  "settlement_scale": "(settlement のみ)",
+  "site_mode": "(site_lore のみ) ruins | underground", "size_key": "small | medium",
+  "actors_context": { "pcs": [{ "name": "…", "info": "…", "bio": "…" }], "npcs": [] }
+}
+```
+
+`builder_build_scene` は上記の文脈に加えて `scene_mode`, `name`, `public_lore`, `dm_secrets` を送ります。
+旅路は `map` (`{"seed": …}`) と `landmarks`、遺跡は `size_key` (small / medium)・`density`・`loop_ratio`・`sub_objectives` を送ります。
+サーバーは `create_dungeon_scene` で応答します。
+
 ---
 
 ### 4.2 Python サーバー → FVTT
@@ -230,6 +254,23 @@ PC のトークン (プレイヤー所有、または所有者未設定の `char
 - `walls[i][4]` (壁タイプ): `normal` / `door` / `secret_door` / `low_wall`・`rubble` (移動のみ遮り、視線・光・音は通す)。省略時は `normal`。
 - `rooms[i].light_preset`: `torch_warm` / `bonfire_bright` / `magic_blue` / `acid_green` / `moonlight_dim` / `dark` / `null`。`null` で安全な休憩所なら焚き火を置きます。
 - `rooms[i].ambient_sound_src`: 部屋の中心に置く環境音 (Data フォルダからの相対パス)。半径は部屋の長辺のマス数 × 1 マスの距離 × 0.85。
+
+#### 6. シナリオビルダーの下書き (`builder_stage_result`)
+
+```json
+{
+  "action": "builder_stage_result",
+  "stage": "wilderness",
+  "result": { "wilderness_title": "…", "public_lore": {}, "dm_secrets": {}, "landmarks": [{ "id": 0, "title": "…" }], "canon": [], "open_threads": [] },
+  "cards": [{ "id": "wilderness.road.pilgrim", "axis": "道の性格", "text": "…" }],
+  "seed": 1234,
+  "fallback": false,
+  "map": { "seed": 1234, "size_key": "small", "density": 0.4, "loop_ratio": 0.3, "points": 9 }
+}
+```
+
+`map` は旅路のみ。`landmarks[i].id` は地点グラフの 0 始まりの id です。`fallback: true` は AI 応答が使えず骨組みを返したことを示します。
+`create_dungeon_scene.lore.dm_secrets` があれば、探索録の伝承ページに DM 専用情報として表示します。
 
 ---
 

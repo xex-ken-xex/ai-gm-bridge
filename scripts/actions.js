@@ -1,6 +1,7 @@
 // サーバー → FVTT の action ごとの処理 (Foundry 依存)
 // プロトコルを変更する場合は gm_server/protocol.py も同時に更新すること
 
+import { handleBuilderStageResult } from "./builder.js";
 import { generatedFlags } from "./lib/chat-filter.js";
 import { buildChoiceCardHtml, buildSceneSuccessCardHtml } from "./lib/cards.js";
 import {
@@ -141,6 +142,7 @@ export const ACTION_HANDLERS = {
   interactive_card: showInteractiveCard,
   progress: showProgress,
   create_dungeon_scene: createDungeonScene,
+  builder_stage_result: handleBuilderStageResult,
 };
 
 export async function handleServerAction(data) {

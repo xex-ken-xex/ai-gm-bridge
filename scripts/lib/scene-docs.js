@@ -178,6 +178,7 @@ export function buildLorePage(lore, consts) {
         </h2>
         <p style="margin-bottom: 10px;"><strong>【歴史の地層】:</strong> ${textToHtml(lore.history_summary)}</p>
         <p style="margin-bottom: 12px;"><strong>【フロアの成り立ち】:</strong> ${textToHtml(lore.floor_origin)}</p>
+        ${lore.dm_secrets ? `<div style="margin-bottom: 12px; background: #fff8e7; border-left: 4px solid #f39c12; padding: 6px 10px; color: #7f5200;"><strong>🔒 DM 専用情報:</strong><br>${textToHtml(lore.dm_secrets)}</div>` : ""}
 
         <h3 style="color: #2c3e50; border-bottom: 1px solid #ddd; padding-bottom: 2px; margin-top: 14px;">⚔️ 勢力関係・縄張り (Factions)</h3>
         <ul style="padding-left: 20px; margin-bottom: 12px;">${factionsHtml}</ul>
