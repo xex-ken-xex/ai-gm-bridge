@@ -52,8 +52,12 @@ IRODORI_MODEL = os.environ.get("AI_GM_IRODORI_MODEL", "irodori-tts").strip()
 IRODORI_VOICE = os.environ.get("AI_GM_IRODORI_VOICE", "none").strip() or "none"
 # Irodori-TTS-Server を IRODORI_API_KEY 付きで起動したときだけ設定する
 IRODORI_API_KEY = os.environ.get("AI_GM_IRODORI_API_KEY", "").strip()
-# 1 回の音声生成の待ち上限 (秒)。初回はモデルの読み込みで時間がかかる
-IRODORI_TIMEOUT = float(os.environ.get("AI_GM_IRODORI_TIMEOUT", "120"))
+# 1 回の音声生成の待ち上限 (秒)。描写のチャットは音声ができてから送るため、固まったサーバーで長く止まらないよう短めにする
+IRODORI_TIMEOUT = float(os.environ.get("AI_GM_IRODORI_TIMEOUT", "20"))
+# 最初の 1 回の待ち上限 (秒)。Irodori-TTS-Server は最初の音声生成でモデルを読み込むため時間がかかる
+IRODORI_FIRST_TIMEOUT = float(os.environ.get("AI_GM_IRODORI_FIRST_TIMEOUT", "180"))
+# 起動時に /health を確かめるときの待ち上限 (秒)
+IRODORI_HEALTH_TIMEOUT = float(os.environ.get("AI_GM_IRODORI_HEALTH_TIMEOUT", "5"))
 # Irodori に失敗したあと、edge-tts だけを使う時間 (秒)。毎回待たされないようにする
 IRODORI_RETRY_AFTER = float(os.environ.get("AI_GM_IRODORI_RETRY_AFTER", "60"))
 # 声の説明文 (VoiceDesign) の既定。edge-tts のボイス名ごとに使い分ける (ナレーションは Nanami)

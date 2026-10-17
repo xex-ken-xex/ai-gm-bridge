@@ -7,7 +7,7 @@ import os
 import time
 import urllib.error
 import urllib.request
-from typing import Callable, Optional
+from typing import Awaitable, Callable, Optional
 
 from gm_server import config
 from gm_server.config import DATA_DIR, DEFAULT_VOICE
@@ -70,6 +70,15 @@ def _post_json(url: str, body: dict, headers: dict, timeout: float) -> bytes:
         raise RuntimeError(f"HTTP {e.code}: {detail}") from e
 
 
+def _get(url: str, headers: dict, timeout: float) -> bytes:
+    request = urllib.request.Request(url, headers=headers, method="GET")
+    try:
+        with _NO_PROXY_OPENER.open(request, timeout=timeout) as response:
+            return response.read()
+    except urllib.error.HTTPError as e:
+        raise RuntimeError(f"HTTP {e.code}") from e
+
+
 class IrodoriClient:
     """Irodori-TTS-Server (OpenAI 互換 API の /v1/audio/speech)。post はテスト時に差し替え可能"""
 
@@ -80,14 +89,29 @@ class IrodoriClient:
         voice: str = config.IRODORI_VOICE,
         api_key: str = config.IRODORI_API_KEY,
         timeout: float = config.IRODORI_TIMEOUT,
+        first_timeout: float = config.IRODORI_FIRST_TIMEOUT,
+        health_timeout: float = config.IRODORI_HEALTH_TIMEOUT,
         post: Optional[Callable[[str, dict, dict, float], bytes]] = None,
+        get: Optional[Callable[[str, dict, float], bytes]] = None,
     ):
         self.url = url.rstrip("/")
         self.model = model
         self.voice = voice
         self.api_key = api_key
         self.timeout = timeout
+        # 最初の 1 回だけはモデルの読み込みを待つため長めに待つ (固まったサーバーで何度も長く待たないよう 2 回目からは timeout)
+        self.first_timeout = max(first_timeout, timeout)
+        self.health_timeout = health_timeout
+        self.attempted = False
         self._post = post or _post_json
+        self._get = get or _get
+
+    def _headers(self) -> dict:
+        return {"Authorization": f"Bearer {self.api_key}"} if self.api_key else {}
+
+    async def health(self) -> None:
+        """/health に繋がるか確かめる。繋がらなければ例外"""
+        await asyncio.to_thread(self._get, f"{self.url}/health", self._headers(), self.health_timeout)
 
     def request_body(self, text: str, caption: str = "", speed: float = 1.0, voice: Optional[str] = None) -> dict:
         body = {
@@ -103,9 +127,10 @@ class IrodoriClient:
 
     async def speech(self, text: str, caption: str = "", speed: float = 1.0, voice: Optional[str] = None) -> bytes:
         """mp3 のバイト列を返す。失敗したら例外"""
-        headers = {"Authorization": f"Bearer {self.api_key}"} if self.api_key else {}
         body = self.request_body(text, caption, speed, voice)
-        audio = await asyncio.to_thread(self._post, f"{self.url}/v1/audio/speech", body, headers, self.timeout)
+        timeout = self.timeout if self.attempted else self.first_timeout
+        self.attempted = True
+        audio = await asyncio.to_thread(self._post, f"{self.url}/v1/audio/speech", body, self._headers(), timeout)
         if not audio:
             raise RuntimeError("音声が空でした")
         return audio
@@ -141,12 +166,25 @@ class SpeechSynthesizer:
         self.retry_after = retry_after
         self._clock = clock
         self._irodori_paused_until = 0.0
+        # edge-tts に切り替わったことを GM の画面に知らせる (app が設定する。切り替わった最初の 1 回だけ)
+        self.notify: Optional[Callable[[str], Awaitable]] = None
+        self._fallback_notified = False
         if communicate_factory is None:
             import edge_tts
 
             patch_edge_tts_endpoint()
             communicate_factory = edge_tts.Communicate
         self._communicate_factory = communicate_factory
+
+    async def check_irodori(self) -> Optional[str]:
+        """起動時の確認。Irodori を使わないなら None、繋がれば空文字、繋がらなければ理由"""
+        if self.engine != "irodori":
+            return None
+        try:
+            await self.irodori.health()
+            return ""
+        except Exception as e:
+            return str(e) or e.__class__.__name__
 
     @property
     def engine_name(self) -> str:
@@ -185,12 +223,23 @@ class SpeechSynthesizer:
                 f.write(audio)
             if self.settle_delay:
                 await asyncio.sleep(self.settle_delay)
+            self._fallback_notified = False
             return True
         except Exception as e:
             self._irodori_paused_until = self._clock() + self.retry_after
             log(f"Irodori-TTS で音声を作れませんでした ({e} / {self._clock() - started:.1f}秒)。"
                 f"edge-tts で作り、{int(self.retry_after)}秒は edge-tts を使います")
+            await self._notify_fallback()
             return False
+
+    async def _notify_fallback(self) -> None:
+        if self._fallback_notified or self.notify is None:
+            return
+        self._fallback_notified = True
+        try:
+            await self.notify("Irodori-TTS に繋がらないため、edge-tts で読み上げています (サーバーのログに理由があります)")
+        except Exception as e:
+            log(f"edge-tts への切り替えを GM に知らせられませんでした ({e})")
 
     async def _synthesize_edge(self, text, file_name, voice, rate, pitch) -> bool:
         try:

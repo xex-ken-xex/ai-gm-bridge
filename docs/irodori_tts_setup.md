@@ -6,6 +6,8 @@ Irodori-TTS は、声の説明文 (VoiceDesign) から声を作れる日本語�
 
 AI GM のサーバー (`ai_gm_server.py`) は、Irodori-TTS-Server に繋がらないときや音声の作成に失敗したときは、edge-tts で作り直します。
 失敗したあと 60 秒 (`AI_GM_IRODORI_RETRY_AFTER`) は edge-tts だけを使い、そのあとまた Irodori を試します。
+切り替わった最初の 1 回だけ、GM の画面に「edge-tts で読み上げています」と通知が出ます。
+描写のチャットは音声ができてから送るため、Irodori の待ち上限は普段 20 秒 (`AI_GM_IRODORI_TIMEOUT`) と短めです。最初の 1 回だけはモデルの読み込みを待つため 180 秒 (`AI_GM_IRODORI_FIRST_TIMEOUT`) 待ちます。
 
 ## 1. 必要なもの
 
@@ -77,7 +79,7 @@ export AI_GM_TTS_ENGINE=irodori
 python3 ai_gm_server.py
 ```
 
-起動時に `音声エンジン: Irodori-TTS (http://127.0.0.1:8088。繋がらないときは edge-tts)` と出れば切り替わっています。
+起動時に `音声エンジン: Irodori-TTS (http://127.0.0.1:8088。繋がらないときは edge-tts)` に続けて `Irodori-TTS に繋がりました` と出れば切り替わっています。`※ Irodori-TTS に繋がりません` と出たら、Irodori-TTS-Server が起動しているか確かめてください (繋がるまでは edge-tts で読み上げます)。
 `~/.bashrc` に `export AI_GM_TTS_ENGINE=irodori` を書いておくと毎回の指定は要りません。edge-tts に戻すときは `AI_GM_TTS_ENGINE=edge` にします。
 
 - 声の説明文は、ナレーションと女性の NPC が `AI_GM_IRODORI_CAPTION_FEMALE`、男性の NPC (ボイスが Keita) が `AI_GM_IRODORI_CAPTION_MALE` です。NPC の声の高さが ±10Hz 以上ずれていれば「やや高めの声」「やや低めの声」を足します。
@@ -90,6 +92,6 @@ python3 ai_gm_server.py
 | :--- | :--- |
 | AI GM のログに「Irodori-TTS で音声を作れませんでした (Connection refused …)」 | Irodori-TTS-Server が起動しているか、ポートが `AI_GM_IRODORI_URL` と同じか |
 | 「HTTP 4xx / 5xx」 | Irodori-TTS-Server の端末に出るエラー。mp3 の変換で失敗しているなら FFmpeg が入っているか |
-| 「timed out」 | 初回のモデル読み込みに時間がかかっている。`IRODORI_PRELOAD=true` にするか、`AI_GM_IRODORI_TIMEOUT` を延ばす |
+| 「timed out」 | 最初の音声ならモデルの読み込みに時間がかかっている (`IRODORI_PRELOAD=true` にするか `AI_GM_IRODORI_FIRST_TIMEOUT` を延ばす)。2 回目以降なら GPU が遅い・長い文 (`AI_GM_IRODORI_TIMEOUT` を延ばす) |
 | GPU のメモリ不足 (CUDA out of memory) | 量子化版のモデルにする。他に GPU を使うソフトを閉じる |
 | `IRODORI_API_KEY` を設定した | AI GM 側にも同じ値を `AI_GM_IRODORI_API_KEY` に設定する |

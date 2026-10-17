@@ -3,7 +3,7 @@
 import asyncio
 import contextlib
 
-from gm_server import config, logs
+from gm_server import config, logs, protocol
 from gm_server.context import ConnectionHub, Context, SessionState
 from gm_server.llm import LLMService
 from gm_server.router import dispatch, is_immediate
@@ -32,6 +32,8 @@ def _services():
         _llm = LLMService(gemini_client=create_gemini_client())
     if _tts is None:
         _tts = SpeechSynthesizer()
+        # edge-tts に切り替わったときの通知は、そのとき繋がっている GM に送る
+        _tts.notify = lambda message: _hub.send(protocol.progress(message))
     return _llm, _tts
 
 
@@ -87,6 +89,11 @@ async def main():
         print(f"  AI GM Bridge サーバー起動完了 (ws://{config.HOST}:{config.PORT})")
         print(f"  AIエンジン: {llm.engine_name}")
         print(f"  音声エンジン: {tts.engine_name}")
+        irodori_error = await tts.check_irodori()
+        if irodori_error:
+            print(f"  ※ Irodori-TTS に繋がりません ({irodori_error})。繋がるまで edge-tts で読み上げます")
+        elif irodori_error == "":
+            print("  Irodori-TTS に繋がりました")
         print(f"  詳細ログ: {log_handler.log_dir}/<日付>/server.log ({log_handler.keep_days} 日分)")
         print("=" * 65)
         await asyncio.Future()

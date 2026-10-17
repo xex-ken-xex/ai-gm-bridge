@@ -101,7 +101,7 @@ flowchart TD
 #### 使用技術・ライブラリ
 - **WebSocket**: `websockets` (ポート: `8765`, ホスト: `0.0.0.0`)
 - **LLM**: `google-genai` (モデル: `gemini-3.8-flash`)
-- **TTS**: `edge-tts` (ボイスモデル: `ja-JP-NanamiNeural`)。`AI_GM_TTS_ENGINE=irodori` で Irodori-TTS-Server (OpenAI 互換 API) に切り替えられる。Irodori で作れないときは edge-tts で作り直し、その後 `AI_GM_IRODORI_RETRY_AFTER` 秒は edge-tts だけを使う。入れ方は [`irodori_tts_setup.md`](irodori_tts_setup.md)
+- **TTS**: `edge-tts` (ボイスモデル: `ja-JP-NanamiNeural`)。`AI_GM_TTS_ENGINE=irodori` で Irodori-TTS-Server (OpenAI 互換 API) に切り替えられる。Irodori で作れないときは edge-tts で作り直し、その後 `AI_GM_IRODORI_RETRY_AFTER` 秒は edge-tts だけを使う (切り替わった最初の 1 回だけ GM の画面に `progress` で知らせる)。起動時に `/health` で繋がるかを確かめて表示する。入れ方は [`irodori_tts_setup.md`](irodori_tts_setup.md)
 
 #### エラーハンドリング & レジリエンス
 - **HTML クリーニング**: FVTT チャットに含まれる `<p>...</p>` などの HTML タグを正規表現で事前除去。
@@ -184,7 +184,9 @@ FVTT のビルダー画面にも同じ内容を 2 行で出します (`builder_p
 | `AI_GM_IRODORI_MODEL` | `irodori-tts` | `/v1/audio/speech` に渡すモデル名 (サーバーの `IRODORI_MODEL_NAME`) |
 | `AI_GM_IRODORI_VOICE` | `none` | 参照音声の ID (サーバーの voices フォルダのファイル名)。`none` なら声の説明文だけで作る |
 | `AI_GM_IRODORI_API_KEY` | (なし) | Irodori-TTS-Server を `IRODORI_API_KEY` 付きで起動したときの同じ値。ログには `***` で伏せて書く |
-| `AI_GM_IRODORI_TIMEOUT` | `120` | Irodori の 1 回の音声生成の待ち上限 (秒) |
+| `AI_GM_IRODORI_TIMEOUT` | `20` | Irodori の 1 回の音声生成の待ち上限 (秒)。描写のチャットは音声ができてから送るため短めにする |
+| `AI_GM_IRODORI_FIRST_TIMEOUT` | `180` | 最初の 1 回の待ち上限 (秒)。最初の音声生成でモデルを読み込むため長めにする |
+| `AI_GM_IRODORI_HEALTH_TIMEOUT` | `5` | 起動時に `/health` を確かめるときの待ち上限 (秒) |
 | `AI_GM_IRODORI_RETRY_AFTER` | `60` | Irodori に失敗したあと edge-tts だけを使う時間 (秒) |
 | `AI_GM_IRODORI_CAPTION_FEMALE` | 落ち着いた大人の女性の声。… | ナレーションと女性の NPC (ボイスが Keita 以外) の声の説明文 (VoiceDesign) |
 | `AI_GM_IRODORI_CAPTION_MALE` | 落ち着いた大人の男性の声。… | 男性の NPC (ボイスが Keita) の声の説明文 |
