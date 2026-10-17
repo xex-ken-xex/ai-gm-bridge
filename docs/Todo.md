@@ -95,6 +95,12 @@
   - セッション終了時または起動時に古い `voice_*.mp3` を自動削除
 - [ ] **BGM / 環境音の連動操作**
   - シーンの雰囲気に合わせた FVTT プレイリスト (Playlist) の自動再生・切替指示
+- [ ] **ローカル TTS (Irodori-TTS) への切り替え**
+  - Edge TTS は外部仕様変更で 403 になるリスクがあるため、ローカル GPU (RTX 4070 Ti) で動く日本語 TTS を導入する
+  - 候補: [Irodori-TTS](https://github.com/Aratako/Irodori-TTS) v4.1-Small (MIT・約766M・絵文字で囁き/笑い等を指定可)。1回の生成は30秒までなので長文は分割
+  - [ ] [Irodori-TTS-Server](https://github.com/Aratako/Irodori-TTS-Server) (OpenAI 互換 API) を WSL に導入する手順を `docs/` に追加 (uv / CUDA extra / 起動・常駐方法)
+  - [ ] `gm_server/tts.py` に TTS バックエンド切り替え設定を追加 (`edge` / `irodori`、環境変数でサーバー URL・声を指定。接続できない場合は edge-tts にフォールバック)
+  - [ ] `Setup.sh` / README / AGENTS.md の音声まわりの記述を更新
 
 ---
 
@@ -125,5 +131,5 @@
 - [ ] **ログ・デバッグ機能**
   - 対話ログ・ダイス履歴のエクスポート機能 (Markdown / JSON)
 - [x] 自動テスト (pytest / node:test) の整備（`tests/`。※`tools/test_*.py` は手動疎通検証用）
-- [ ] CI/CD の整備
+- [x] CI の整備（`.github/workflows/test.yml`。main は PR 必須・`test` 必須で保護）
 - [ ] **reference/ 統合版の移植**（[`reference_porting_review.md`](reference_porting_review.md) の Phase 1〜6）
