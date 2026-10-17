@@ -20,6 +20,7 @@ FVTT API との互換性は [`reference/foundry_vtt_api_spec.md`](../reference/f
 | `protocol.py` | FVTT へ送る action メッセージの組み立て | `test_handlers.py` |
 | `tts.py` | edge-tts 音声合成 (`SpeechSynthesizer`、声色指定対応) | `test_handlers.py` |
 | `llm.py` | Gemini (リトライ付き) / agy CLI 問い合わせ (`LLMService`) | `test_llm.py` |
+| `deadline.py` | タイムアウト付きの待ち (上限を過ぎたら FVTT の GM に延長を確認) | `test_deadline.py` |
 | `progress.py` | 待ち時間の表示 (経過時間とタイムアウトまでの残り時間を同じ行に上書き) | `test_progress.py` |
 | `dungeon_scene.py` | ダンジョン生成ウィザード・シーン構築命令 | `test_handlers.py` |
 | `handlers/*.py` | event ごとの処理 (`player_message`, `ai_command`, `ai_choice`, `room_entered`) | `test_handlers.py` |

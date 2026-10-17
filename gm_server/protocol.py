@@ -24,6 +24,11 @@ def play_sound(src: str, volume: float = 1.0, subtitle: Optional[str] = None) ->
     return msg
 
 
+def progress(message: str) -> Dict:
+    """待ち時間の長い処理の途中経過 (GM の画面に通知として出す。チャットには残さない)"""
+    return {"action": "progress", "message": message}
+
+
 def interactive_card(title: str, message: str, choices: List[Dict], speaker: str = SPEAKER_SUPPORT) -> Dict:
     return {
         "action": "interactive_card",

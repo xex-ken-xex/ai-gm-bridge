@@ -670,7 +670,7 @@ class DungeonGenerator:
             lines.append("".join(self.grid[y][start_x : start_x + width]))
         return "\n".join(lines)
 
-    def _index_custom_flavors(self, custom_flavors: Optional[List[Dict]]) -> Dict[int, Dict]:
+    def _index_custom_flavors(self, custom_flavors: Optional[List[Dict]], id_base: Optional[int] = None) -> Dict[int, Dict]:
         """
         AI生成フレーバーを部屋インデックス (0始まり) で引ける辞書に変換。
         プロンプトは 0 始まりの id を渡すが、AI が 1 始まりで返すこともあるため、
@@ -692,17 +692,20 @@ class DungeonGenerator:
         num_rooms = len(self.rooms)
         # スタート部屋 (id 0) は prioritize_key_topologies で必ずプロンプトに含まれるため、
         # id 0 が無ければ AI は 1 始まりで返したと判断できる
-        offset = 0 if 0 in by_id else 1
+        # id_base を指定された場合 (呼び出し側で 0 始まりに正規化済み等) は判定しない
+        offset = id_base if id_base is not None else (0 if 0 in by_id else 1)
         return {cid - offset: cf for cid, cf in by_id.items() if 0 <= cid - offset < num_rooms}
 
-    def get_room_flavor_notes(self, grid_size: int = 100, custom_flavors: Optional[List[Dict]] = None) -> List[Dict]:
+    def get_room_flavor_notes(
+        self, grid_size: int = 100, custom_flavors: Optional[List[Dict]] = None, id_base: Optional[int] = None
+    ) -> List[Dict]:
         """各部屋のフレーバーノート（名前・情景描写・アイコン・座標）を生成。AI生成カスタムフレーバーにも対応"""
         num_rooms = len(self.rooms)
         if num_rooms == 0:
             return []
 
         # custom_flavors が提供されている場合、部屋インデックス (0始まり) による辞書化
-        cf_map = self._index_custom_flavors(custom_flavors)
+        cf_map = self._index_custom_flavors(custom_flavors, id_base=id_base)
 
         themes = [
             {

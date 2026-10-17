@@ -1,6 +1,6 @@
 """A. GMからの /ai 指示コマンド (agy 連携) と B. チャット内ボタン選択結果 (ai_choice)"""
 
-from gm_server import dungeon_scene, protocol
+from gm_server import deadline, dungeon_scene, protocol
 from gm_server.config import SPEAKER_SUPPORT
 from gm_server.text import newlines_to_br
 
@@ -30,6 +30,11 @@ async def handle_choice(ctx, data: dict) -> None:
     value = data.get("value", "")
     label = data.get("label", "")
     print(f"\n[FVTT GM選択] {label} ({value})")
+
+    # タイムアウト延長確認カードの回答 (router が受信キューを待たずに渡してくる)
+    if deadline.is_timeout_choice(value):
+        deadline.resolve_timeout_choice(ctx, value)
+        return
 
     choice = dungeon_scene.parse_dungeon_choice(value)
     if choice is None:

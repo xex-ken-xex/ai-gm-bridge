@@ -7,11 +7,17 @@ from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
 
 from gm_server import protocol
-from gm_server.config import MAPGEN_TIMEOUT, SPEAKER_SUPPORT
-from gm_server.progress import progress
+from gm_server.config import AGY_TIMEOUT, GEMINI_TIMEOUT, LLM_CONCURRENCY, MAPGEN_TIMEOUT, SPEAKER_SUPPORT
+from gm_server.deadline import run_with_deadline
+from gm_server.progress import log
 from gm_server.tts import voice_filename
 from tools.dungeon_generator import LIGHT_PRESET_KEYS, SCENE_MODES, DungeonGenerator
-from tools.prompt_manager import build_lore_prompt, build_rooms_prompt, get_active_world_info
+from tools.prompt_manager import (
+    build_lore_prompt,
+    build_rooms_prompt,
+    get_active_world_info,
+    prioritize_key_topologies,
+)
 
 # size_key -> (幅, 高さ, 表示名, PNG 1マスあたりのピクセル数)
 SIZE_PRESETS: Dict[str, Tuple[int, int, str, int]] = {
@@ -37,6 +43,8 @@ WILDERNESS_POINT_COUNT = 9
 # FVTT のパフォーマンス保護のための壁本数上限
 MAX_WALLS = 3000
 MAX_ROOMS_FOR_AI = 15
+# 部屋の情景は 1 回の問い合わせを小さくするため、この部屋数ずつに分けて並列に問い合わせる
+ROOMS_PER_JOB = 5
 
 # GM が明示的にテーマを指定していないとみなすプロンプト
 GENERIC_DUNGEON_PROMPTS = ("ダンジョン", "ダンジョン生成", "マップ", "迷宮")
@@ -194,6 +202,76 @@ def select_walls(gen: DungeonGenerator, max_walls: int = MAX_WALLS) -> List[list
     return walls
 
 
+def _normalize_chunk_ids(items: List[Dict], expected_ids: List[int]) -> List[Dict]:
+    """
+    1 ジョブ分の応答 id を 0 始まりにそろえ、そのジョブで頼んだ部屋だけ残す。
+    AI が 1 始まりで返すこともあるため、0 / 1 始まりのどちらがより多く一致するかで判定する。
+    """
+    expected = set(expected_ids)
+    ids = []
+    for item in items:
+        try:
+            ids.append(int(item.get("id")))
+        except (TypeError, ValueError):
+            ids.append(None)
+    hits0 = sum(1 for i in ids if i in expected)
+    hits1 = sum(1 for i in ids if i is not None and i - 1 in expected)
+    offset = 1 if hits1 > hits0 else 0
+    result = []
+    for item, cid in zip(items, ids):
+        if cid is not None and cid - offset in expected:
+            result.append({**item, "id": cid - offset})
+    return result
+
+
+async def query_room_flavors(ctx, lore: Dict, topologies: List[Dict], scene_mode: str) -> Optional[List[Dict]]:
+    """
+    部屋の情景を ROOMS_PER_JOB 部屋ずつのジョブに分け、LLM_CONCURRENCY 本まで並列に問い合わせる。
+    返す id は 0 始まり。全ジョブ失敗なら None (呼び出し側は既定のノートを使う)。
+    """
+    selected = prioritize_key_topologies(topologies, max_count=MAX_ROOMS_FOR_AI)
+    chunks = [selected[i:i + ROOMS_PER_JOB] for i in range(0, len(selected), ROOMS_PER_JOB)]
+    if not chunks:
+        return None
+    sem = asyncio.Semaphore(LLM_CONCURRENCY)
+    done = 0
+    # 打ち切りになっても、それまでに終わったジョブの結果は使う
+    flavors: List[Dict] = []
+
+    async def run(chunk: List[Dict]) -> None:
+        nonlocal done
+        async with sem:
+            try:
+                prompt = build_rooms_prompt(
+                    lore, chunk, max_rooms=len(chunk),
+                    scene_mode=scene_mode, light_presets=list(LIGHT_PRESET_KEYS),
+                )
+                parsed = await ctx.llm.query_json(prompt, unbounded=True)
+            except Exception as e:
+                log(f"Roomフレーバー生成失敗 ({e})。この部屋群は既定のノートを使用します。")
+                parsed = None
+            finally:
+                done += 1
+        items = [r for r in parsed if isinstance(r, dict)] if isinstance(parsed, list) else []
+        flavors.extend(_normalize_chunk_ids(items, [t["id"] for t in chunk]))
+
+    # タイムアウト: 1 ジョブの上限 × 並列で回す段数
+    rounds = -(-len(chunks) // LLM_CONCURRENCY)
+    try:
+        await run_with_deadline(
+            ctx, "部屋の情景", asyncio.gather(*(run(c) for c in chunks)),
+            limit=llm_step_limit(ctx) * rounds, detail=lambda: f"完了 {done}/{len(chunks)}",
+        )
+    except asyncio.TimeoutError:
+        log(f"部屋の情景を打ち切りました (完了 {done}/{len(chunks)})。残りは既定のノートを使用します。")
+    return sorted(flavors, key=lambda r: r["id"]) or None
+
+
+def llm_step_limit(ctx) -> float:
+    """AI 問い合わせ 1 回の待ち上限 (Gemini があれば Gemini、無ければ agy の上限)"""
+    return GEMINI_TIMEOUT if getattr(ctx.llm, "client", None) else AGY_TIMEOUT
+
+
 def _build_geometry(w: int, h: int, density: float, loop_ratio: float, png_path: str, cell_size: int,
                     seed: Optional[int], scene_mode: str = DEFAULT_SCENE_MODE):
     """CPU 負荷の高い幾何生成と PNG 書き出し (別スレッドで実行)"""
@@ -224,18 +302,16 @@ async def generate_and_create_dungeon_scene(
     png_filename = f"dungeon_{scene_mode}_{w}x{h}_{ts}.png"
     png_filepath = os.path.join(ctx.data_dir, png_filename)
     try:
-        async with progress("マップ生成", limit=MAPGEN_TIMEOUT):
-            gen, walls = await asyncio.wait_for(
-                asyncio.to_thread(
-                    _build_geometry, w, h, density, loop_ratio, png_filepath, cell_size, seed, scene_mode
-                ),
-                timeout=MAPGEN_TIMEOUT,
-            )
+        gen, walls = await run_with_deadline(
+            ctx, "マップ生成",
+            asyncio.to_thread(_build_geometry, w, h, density, loop_ratio, png_filepath, cell_size, seed, scene_mode),
+            limit=MAPGEN_TIMEOUT,
+        )
     except asyncio.TimeoutError:
         # 別スレッドの計算は止められないが、結果は使わずにウィザードを終える
-        print(f"マップ生成が {MAPGEN_TIMEOUT:.0f} 秒以内に終わらなかったため中止しました (AI_GM_MAPGEN_TIMEOUT で変更可)")
+        log("マップ生成を打ち切りました (上限は AI_GM_MAPGEN_TIMEOUT で変更可)")
         await ctx.send(protocol.chat(
-            f"⚠️ マップ生成が {MAPGEN_TIMEOUT:.0f} 秒以内に終わらなかったため中止しました。小さいサイズか低い密度でやり直してください。",
+            "⚠️ マップ生成を打ち切りました。小さいサイズか低い密度でやり直してください。",
             speaker=SPEAKER_SUPPORT,
         ))
         return None
@@ -265,7 +341,9 @@ async def generate_and_create_dungeon_scene(
     )
     lore_data = None
     try:
-        lore_data = await ctx.llm.query_json(lore_prompt)
+        lore_data = await run_with_deadline(
+            ctx, "伝承", ctx.llm.query_json(lore_prompt, unbounded=True), limit=llm_step_limit(ctx)
+        )
     except Exception as e:
         print(f"Lore生成失敗 ({e})。フォールバック伝承を使用します。")
     if not isinstance(lore_data, dict) or "floor_title" not in lore_data:
@@ -277,20 +355,10 @@ async def generate_and_create_dungeon_scene(
     ))
 
     # 6. Tier 3: トポロジーに基づく部屋フレーバー補完
-    custom_flavors = None
-    try:
-        rooms_prompt = build_rooms_prompt(
-            lore_data, gen.get_room_topologies(), max_rooms=MAX_ROOMS_FOR_AI,
-            scene_mode=scene_mode, light_presets=list(LIGHT_PRESET_KEYS),
-        )
-        parsed_rooms = await ctx.llm.query_json(rooms_prompt)
-        if isinstance(parsed_rooms, list):
-            custom_flavors = [r for r in parsed_rooms if isinstance(r, dict)]
-    except Exception as e:
-        print(f"Roomフレーバー生成失敗 ({e})。ベースプロシージャルノートを使用します。")
+    custom_flavors = await query_room_flavors(ctx, lore_data, gen.get_room_topologies(), scene_mode)
 
-    # 7. 各部屋フレーバーの統合
-    rooms = gen.get_room_flavor_notes(grid_size=100, custom_flavors=custom_flavors)
+    # 7. 各部屋フレーバーの統合 (id は query_room_flavors で 0 始まりに正規化済み)
+    rooms = gen.get_room_flavor_notes(grid_size=100, custom_flavors=custom_flavors, id_base=0)
 
     # 8. FVTTへシーン作成コマンド送信
     scene_title = f"{lore_data.get('dungeon_name', default_scene_name)} - {lore_data.get('floor_title', f'第1層 ({size_name})')}"

@@ -39,7 +39,7 @@ class FakeLLM:
         self.prompts.append(("gm", player_input))
         return self.gm_responses.pop(0) if self.gm_responses else {"narrative": "", "speech": "", "dice": None}
 
-    async def query_json(self, prompt):
+    async def query_json(self, prompt, unbounded=False):
         self.prompts.append(("json", prompt))
         return self.json_responses.pop(0) if self.json_responses else None
 

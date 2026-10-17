@@ -47,6 +47,11 @@ async function playSound(data) {
   }, true);
 }
 
+// 待ち時間の長い処理の途中経過。GM の画面にだけ通知し、チャットには残さない
+async function showProgress(data) {
+  ui.notifications.info(`AI GM Bridge: ${data.message ?? ""}`);
+}
+
 async function showInteractiveCard(data) {
   await ChatMessage.create({
     speaker: { alias: data.speaker || "サポートGM (agy)" },
@@ -134,6 +139,7 @@ export const ACTION_HANDLERS = {
   roll: rollDice,
   play_sound: playSound,
   interactive_card: showInteractiveCard,
+  progress: showProgress,
   create_dungeon_scene: createDungeonScene,
 };
 

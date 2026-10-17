@@ -1,3 +1,4 @@
+import asyncio
 import json
 import os
 
@@ -216,12 +217,65 @@ async def test_room_flavor_prompt_carries_mode_and_light_presets(make_ctx, sent,
     assert any(w[4] in ("low_wall", "rubble") for w in scene["walls"])
 
 
-async def test_map_generation_timeout_reports_to_gm(make_ctx, sent, monkeypatch):
+async def test_map_generation_timeout_without_answer_aborts(make_ctx, sent, monkeypatch):
     import time
 
+    from gm_server import deadline
+
     monkeypatch.setattr(dungeon_scene, "MAPGEN_TIMEOUT", 0.05)
-    monkeypatch.setattr(dungeon_scene, "_build_geometry", lambda *a: time.sleep(0.3))
+    monkeypatch.setattr(deadline, "EXTEND_ANSWER_WAIT", 0.05)
+    monkeypatch.setattr(dungeon_scene, "_build_geometry", lambda *a: time.sleep(0.5))
     ctx = make_ctx()
     assert await dungeon_scene.generate_and_create_dungeon_scene(ctx, "small", 0.2) is None
-    assert actions(sent) == ["chat"]
-    assert "中止しました" in sent[0]["content"]
+    assert actions(sent) == ["interactive_card", "chat", "chat"]
+    assert sent[0]["title"] == "タイムアウト確認"
+    assert "打ち切りました" in sent[-1]["content"]
+    assert ctx.state.timeout_requests == {}
+
+
+def test_normalize_chunk_ids_handles_zero_and_one_based():
+    zero = [{"id": 5, "title": "a"}, {"id": 6, "title": "b"}, {"id": 99, "title": "他の部屋"}]
+    assert [r["id"] for r in dungeon_scene._normalize_chunk_ids(zero, [5, 6, 7])] == [5, 6]
+    one = [{"id": 6, "title": "a"}, {"id": 7, "title": "b"}, {"id": 8, "title": "c"}]
+    assert [r["id"] for r in dungeon_scene._normalize_chunk_ids(one, [5, 6, 7])] == [5, 6, 7]
+    assert dungeon_scene._normalize_chunk_ids([{"id": "x"}], [0]) == []
+
+
+async def test_room_flavors_are_split_into_jobs(make_ctx, sent, monkeypatch):
+    monkeypatch.setattr(dungeon_scene, "get_active_world_info", lambda: {"title": "W", "description": "D"})
+    # 1 つ目のジョブ (入口を含む) は失敗、2 つ目は 1 始まりで返す
+    llm = FakeLLM(json_responses=[None, None, None, None])
+    ctx = make_ctx(llm)
+    gen = dungeon_scene.DungeonGenerator(width=100, height=100, seed=3, density=0.5, loop_ratio=0.2)
+    gen.generate()
+    topos = gen.get_room_topologies()
+    selected = dungeon_scene.prioritize_key_topologies(topos, max_count=dungeon_scene.MAX_ROOMS_FOR_AI)
+    second_ids = [t["id"] for t in selected[dungeon_scene.ROOMS_PER_JOB:2 * dungeon_scene.ROOMS_PER_JOB]]
+    llm.json_responses = [None, [{"id": i + 1, "title": f"T{i}"} for i in second_ids]]
+    flavors = await dungeon_scene.query_room_flavors(ctx, {}, topos, "underground")
+    expected_jobs = -(-len(selected) // dungeon_scene.ROOMS_PER_JOB)
+    assert len([p for p in llm.prompts if p[0] == "json"]) == expected_jobs
+    assert [f["id"] for f in flavors] == second_ids
+    notes = gen.get_room_flavor_notes(custom_flavors=flavors, id_base=0)
+    assert notes[second_ids[0]]["title"] == f"T{second_ids[0]}"
+    assert notes[0]["type"] == "start"
+
+
+async def test_long_steps_send_progress_to_fvtt(make_ctx, sent, monkeypatch):
+    from gm_server import deadline
+
+    monkeypatch.setattr(dungeon_scene, "get_active_world_info", lambda: {"title": "W", "description": "D"})
+    monkeypatch.setattr(deadline, "NOTIFY_INTERVAL", 0.01)
+
+    class SlowLLM(FakeLLM):
+        async def query_json(self, prompt, unbounded=False):
+            assert unbounded  # 上限と延長確認は run_with_deadline が管理する
+            await asyncio.sleep(0.05)
+            return None
+
+    ctx = make_ctx(SlowLLM())
+    await dungeon_scene.generate_and_create_dungeon_scene(ctx, "small", 0.2, seed=1)
+    progress_msgs = [m["message"] for m in sent if m["action"] == "progress"]
+    assert any(m.startswith("[伝承]") for m in progress_msgs)
+    assert any(m.startswith("[部屋の情景] 完了") for m in progress_msgs)
+    assert "create_dungeon_scene" in actions(sent)

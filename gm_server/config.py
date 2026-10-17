@@ -15,6 +15,8 @@ AGY_TIMEOUT = float(os.environ.get("AI_GM_AGY_TIMEOUT", "300"))
 GEMINI_TIMEOUT = float(os.environ.get("AI_GM_GEMINI_TIMEOUT", "120"))
 # ダンジョンの幾何生成と PNG 書き出しの待ち上限 (秒)
 MAPGEN_TIMEOUT = float(os.environ.get("AI_GM_MAPGEN_TIMEOUT", "300"))
+# 部屋の情景を分割して問い合わせるときの同時実行数
+LLM_CONCURRENCY = max(1, int(os.environ.get("AI_GM_LLM_CONCURRENCY", "3")))
 
 # WebSocket サーバー
 HOST = os.environ.get("AI_GM_HOST", "0.0.0.0")

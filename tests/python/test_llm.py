@@ -29,7 +29,7 @@ class FakeClient:
 def make_agy(responses):
     calls = []
 
-    async def runner(prompt, conversation_id):
+    async def runner(prompt, conversation_id, timeout=None):
         calls.append((prompt, conversation_id))
         return responses.pop(0) if responses else ("", conversation_id or "")
 
