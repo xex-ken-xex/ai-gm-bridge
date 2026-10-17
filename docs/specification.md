@@ -82,6 +82,14 @@ flowchart TD
   35ft 以内で、壁で音が遮られていない NPC (character 以外・プレイヤー非所有・非表示でない) がいれば `npc_dialogue_request`、
   いなければ `player_message` を送る。どちらか 1 経路だけ (二重応答を防ぐ)。発言者のトークンが分からないときは `player_message`。
 
+#### アシスタント DM マスコット (`scripts/mascot.js`)
+- GM・プレイヤー全員の画面に、ドラッグで動かせるミニキャラ「アギィ」を出す。位置はブラウザごとに `localStorage` (`ai-gm-mascot-pos`) に保存し、読めなければ既定の位置。
+- 状態は 待機 (idle) / 考え中 (thinking) / 話し中 (speaking) / 切断 (offline)。サーバーへの送信・サーバーからの受信・接続と切断で切り替わり、表示時間が過ぎたら待機に戻る (切断は再接続まで戻らない)。
+- GM の画面での状態を `game.socket` (`module.ai-gm-bridge`、`sync_mascot`) で全員に配る。`module.json` の `"socket": true` が必要 (変更後は Foundry の再起動が要る)。
+  ビルダーの下書き・途中経過・GM への確認など、プレイヤーに見せない台詞は状態だけを配る。受信側は GM からのものだけを受け付け、台詞は `textContent` で表示する。
+- GM はダブルクリックでシナリオビルダー、右クリックで NPC ブレイン管理を開く。
+- 設定: 「マスコットを表示」(ユーザーごと)、「マスコットの画像」(ワールド。空欄なら内蔵の SVG)。
+
 #### フック処理 (`combatTurnChange` / `updateCombat`)
 - **NPC の自律戦闘**: 戦闘トラッカーで手番が NPC (character 以外・プレイヤー非所有・非表示でない・HP 0 や戦闘不能・行動不能の状態でない) に
   回ったら、その NPC の知覚を集めて `npc_turn_request` を送る。同じ手番には 1 回だけ (v12 以降の `combatTurnChange` と v11 の `updateCombat` の両方で拾う)。

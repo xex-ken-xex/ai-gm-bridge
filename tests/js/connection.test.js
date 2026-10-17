@@ -77,3 +77,14 @@ test("切断されたら再接続し、close() 後は再接続しない", () => 
   c.close();
   assert.equal(timers.length, 1);
 });
+
+test("onStatus は接続と切断を 1 回ずつ知らせる (再接続の失敗が続いても切断は 1 回)", () => {
+  const status = [];
+  const c = new BridgeConnection({ WebSocketImpl: FakeWebSocket, logger: silent, onStatus: open => status.push(open), setTimeoutImpl: () => {} });
+  const ws = c.connect();
+  ws.open();
+  ws.close();
+  const retry = c.connect();
+  retry.close();
+  assert.deepEqual(status, [true, false]);
+});
