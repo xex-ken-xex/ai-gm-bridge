@@ -16,6 +16,7 @@
 }
 #ai-gm-mascot-widget[data-state="thinking"] .ai-mascot-avatar { animation: ai-mascot-think 1.2s ease-in-out infinite; }
 #ai-gm-mascot-widget[data-state="speaking"] .ai-mascot-avatar { animation: ai-mascot-talk 0.35s ease-in-out infinite; filter: drop-shadow(0 0 14px #2ecc71); }
+#ai-gm-mascot-widget[data-state="listening"] .ai-mascot-avatar { animation: ai-mascot-float 4s ease-in-out infinite; filter: drop-shadow(0 0 10px #3498db); }
 #ai-gm-mascot-widget[data-state="offline"] .ai-mascot-avatar { animation: none; opacity: 0.6; filter: grayscale(0.7); }
 
 #ai-gm-mascot-widget .ai-mascot-nameplate {
@@ -24,6 +25,7 @@
 }
 #ai-gm-mascot-widget .ai-mascot-dot { width: 7px; height: 7px; border-radius: 50%; background: #2ecc71; }
 #ai-gm-mascot-widget[data-state="thinking"] .ai-mascot-dot { background: #f1c40f; }
+#ai-gm-mascot-widget[data-state="listening"] .ai-mascot-dot { background: #3498db; }
 #ai-gm-mascot-widget[data-state="offline"] .ai-mascot-dot { background: #7f8c8d; }
 
 #ai-gm-mascot-widget .ai-mascot-bubble {

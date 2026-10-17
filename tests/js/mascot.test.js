@@ -95,3 +95,13 @@ test("内蔵の顔: 考え中は「…」、切断は「z」、話し中だけ�
   assert.ok(svg("speaking").includes("#c0392b"));
   assert.ok(!svg("idle").includes("#c0392b"));
 });
+
+test("口を開けて話すのはアギィ自身の発言だけ。ナレーション・NPC の声は聞いている", () => {
+  assert.equal(mascotForAction({ action: "chat", speaker: "サポートGM アギィ" }).state, "speaking");
+  assert.equal(mascotForAction({ action: "chat", speaker: "AI GM" }).state, "listening");
+  assert.equal(mascotForAction({ action: "chat" }).state, "listening");
+  assert.equal(mascotForAction({ action: "play_sound" }).state, "listening");
+  assert.equal(mascotForAction({ action: "npc_dialogue_response", result: {} }).state, "listening");
+  assert.equal(mascotForAction({ action: "execute_npc_turn" }).state, "listening");
+  assert.equal(normalizeMascotState({ state: "listening" }).state, "listening");
+});

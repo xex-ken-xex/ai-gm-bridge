@@ -5,7 +5,10 @@
 // 呼び名は 1 つにそろえる: チャットの発言者名は「サポートGM アギィ」(gm_server/config.py の SPEAKER_SUPPORT)、名札は「アギィ」
 export const MASCOT_NAME = "アギィ";
 export const MASCOT_TITLE = "星詠みのサポートGM";
-export const MASCOT_STATES = Object.freeze(["idle", "thinking", "speaking", "offline"]);
+// listening: ほかの役 (AI GM のナレーション・NPC) が話している間。アギィは口を動かさずに聞いている
+export const MASCOT_STATES = Object.freeze(["idle", "thinking", "speaking", "listening", "offline"]);
+// アギィ自身の発言の発言者名 (gm_server/config.py の SPEAKER_SUPPORT。前方一致)
+export const SUPPORT_SPEAKER_PREFIX = "サポートGM";
 export const DEFAULT_POSITION = Object.freeze({ left: 110, top: 90 });
 // ウィジェットの大きさ (画面の外に出さないための目安)
 export const WIDGET_SIZE = Object.freeze({ width: 90, height: 110 });
@@ -73,12 +76,17 @@ export function mascotForEvent(payload = {}) {
 export function mascotForAction(data = {}) {
   switch (data.action) {
     case "chat":
+      // 「話し中」(口を開ける) はアギィ自身の発言だけ。AI GM のナレーションなどは聞いている
+      return String(data.speaker ?? "").startsWith(SUPPORT_SPEAKER_PREFIX)
+        ? { state: "speaking", text: "", durationMs: 4000, public: true }
+        : { state: "listening", text: "", durationMs: 6000, public: true };
     case "play_sound":
-      return { state: "speaking", text: "", durationMs: 4000, public: true };
+      // 声はナレーションか NPC (アギィは声を持たない)
+      return { state: "listening", text: "", durationMs: 8000, public: true };
     case "npc_dialogue_response":
-      return { state: "speaking", text: `💬 ${data.result?.primary_npc_name ?? "NPC"}が反応したよ！`, durationMs: 5000, public: true };
+      return { state: "listening", text: `👀 ${data.result?.primary_npc_name ?? "NPC"}が答えるみたい…`, durationMs: 5000, public: true };
     case "execute_npc_turn":
-      return { state: "speaking", text: "⚔️ NPC の行動！", durationMs: 5000, public: true };
+      return { state: "listening", text: "⚔️ 敵が動くよ、気をつけて！", durationMs: 5000, public: true };
     case "builder_stage_result":
       return { state: "speaking", text: "下書きができたよ！内容を確認・修正してみてね。", durationMs: 6000, public: false };
     case "create_dungeon_scene":
@@ -154,6 +162,13 @@ const FACES = Object.freeze({
     mouth: '<ellipse cx="42" cy="54" rx="5" ry="4" fill="#fff"/><ellipse cx="42" cy="55.5" rx="3" ry="2" fill="#c0392b"/>',
     extra: "",
   },
+  // 聞いている: 横を向いた目・閉じた口 (ほかの役が話している間)
+  listening: {
+    eyes: '<circle cx="32" cy="40" r="4.5" fill="#fff"/><circle cx="52" cy="40" r="4.5" fill="#fff"/>'
+      + '<circle cx="30" cy="41" r="2" fill="#2c3e50"/><circle cx="50" cy="41" r="2" fill="#2c3e50"/>',
+    mouth: '<path d="M38,54 Q42,55.5 46,54" stroke="#fff" fill="none" stroke-width="2.5" stroke-linecap="round"/>',
+    extra: "",
+  },
   // 切断: 閉じた目と「z」(眠っている)
   offline: {
     eyes: '<path d="M28,41 L36,41 M48,41 L56,41" stroke="#fff" fill="none" stroke-width="3" stroke-linecap="round"/>',
@@ -164,7 +179,7 @@ const FACES = Object.freeze({
 
 /** 画像が設定されていないときの内蔵 SVG (data URI) */
 export function mascotSvgDataUri(state) {
-  const glow = { thinking: "#f1c40f", speaking: "#2ecc71", offline: "#7f8c8d" }[state] ?? "#9b59b6";
+  const glow = { thinking: "#f1c40f", speaking: "#2ecc71", listening: "#3498db", offline: "#7f8c8d" }[state] ?? "#9b59b6";
   const face = FACES[state] ?? FACES.idle;
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 84 84">
     <defs><radialGradient id="g" cx="50%" cy="50%" r="50%">
