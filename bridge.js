@@ -8,7 +8,7 @@ import { handleServerAction } from "./scripts/actions.js";
 import { buildRoomNarrationHtml } from "./scripts/lib/cards.js";
 import { generatedFlags, MODULE_ID, playerMessageToForward } from "./scripts/lib/chat-filter.js";
 import { AI_COMMAND_RGX, cleanCommandPrompt, parseAiCommand } from "./scripts/lib/commands.js";
-import { findRoomAt, RoomVisitTracker, tokenCenter } from "./scripts/lib/rooms.js";
+import { findRoomAt, RoomVisitTracker, shouldNarrateToken, tokenCenter } from "./scripts/lib/rooms.js";
 import { BridgeConnection } from "./scripts/net/connection.js";
 
 let connection = null;
@@ -147,8 +147,12 @@ Hooks.once("ready", async function() {
   const visits = new RoomVisitTracker();
   Hooks.on("updateToken", async (tokenDoc, change) => {
     if (change.x === undefined && change.y === undefined) return;
-    // NPC や非表示トークン (AI の NPC 移動など) ではナレーションしない
-    if (tokenDoc.hidden || !tokenDoc.actor?.hasPlayerOwner) return;
+    // NPC や非表示トークン (AI の NPC 移動など) ではナレーションしない。PC は所有者未設定でも対象
+    if (!shouldNarrateToken({
+      hidden: tokenDoc.hidden,
+      hasPlayerOwner: tokenDoc.actor?.hasPlayerOwner,
+      actorType: tokenDoc.actor?.type,
+    })) return;
 
     const scene = tokenDoc.parent;
     const rooms = scene?.getFlag?.(MODULE_ID, "rooms");

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { findRoomAt, RoomVisitTracker, tokenCenter } from "../../scripts/lib/rooms.js";
+import { findRoomAt, RoomVisitTracker, tokenCenter, shouldNarrateToken } from "../../scripts/lib/rooms.js";
 
 const rooms = [
   { id: 1, name: "部屋 1", grid_x: 2, grid_y: 2, grid_w: 4, grid_h: 3 },
@@ -30,4 +30,13 @@ test("RoomVisitTracker は同じ部屋・訪問済みの部屋を再通知しな
   assert.equal(t.enter("s", "tokB", 1), false);
   assert.equal(t.enter("s", "tokA", 2), true);
   assert.equal(t.enter("other-scene", "tokA", 1), true);
+});
+
+test("shouldNarrateToken はプレイヤー所有か PC のトークンだけを対象にする", () => {
+  assert.equal(shouldNarrateToken({ hasPlayerOwner: true, actorType: "npc" }), true);
+  // GM が 1 人で動かす所有者未設定の PC
+  assert.equal(shouldNarrateToken({ hasPlayerOwner: false, actorType: "character" }), true);
+  assert.equal(shouldNarrateToken({ hasPlayerOwner: false, actorType: "npc" }), false);
+  assert.equal(shouldNarrateToken({ hidden: true, hasPlayerOwner: true, actorType: "character" }), false);
+  assert.equal(shouldNarrateToken({}), false);
 });

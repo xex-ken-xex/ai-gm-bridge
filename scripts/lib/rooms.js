@@ -15,6 +15,17 @@ export function findRoomAt(rooms, x, y, { gridSize = 100, offsetX = 0, offsetY =
   }) ?? null;
 }
 
+/**
+ * 部屋進入ナレーションの対象トークンか。
+ * プレイヤーが所有するトークンに加え、所有者未設定の PC (actor.type === "character") も対象にする
+ * (GM が 1 人でテストするときや、PC をまだプレイヤーに割り当てていないとき)。
+ * 非表示トークンと NPC (AI の NPC 移動など) は対象外。
+ */
+export function shouldNarrateToken({ hidden = false, hasPlayerOwner = false, actorType = null } = {}) {
+  if (hidden) return false;
+  return Boolean(hasPlayerOwner) || actorType === "character";
+}
+
 /** トークン左上座標とマス数から中心座標を求める */
 export function tokenCenter({ x, y, width = 1, height = 1 }, gridSize = 100) {
   return { x: x + (width * gridSize) / 2, y: y + (height * gridSize) / 2 };
