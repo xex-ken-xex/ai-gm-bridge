@@ -43,6 +43,26 @@ LOG_MAX_BYTES = int(os.environ.get("AI_GM_LOG_MAX_BYTES", str(20 * 1024 * 1024))
 
 # 音声
 DEFAULT_VOICE = "ja-JP-NanamiNeural"
+# 音声合成エンジン: edge (edge-tts) / irodori (Irodori-TTS-Server。繋がらないときは edge-tts に戻す)
+TTS_ENGINE = os.environ.get("AI_GM_TTS_ENGINE", "edge").strip().lower()
+# Irodori-TTS-Server (OpenAI 互換 API) の URL と設定
+IRODORI_URL = os.environ.get("AI_GM_IRODORI_URL", "http://127.0.0.1:8088").strip().rstrip("/")
+IRODORI_MODEL = os.environ.get("AI_GM_IRODORI_MODEL", "irodori-tts").strip()
+# 参照音声の ID (サーバーの voices フォルダのファイル名)。none なら参照音声なしで、声の説明文 (VoiceDesign) だけで作る
+IRODORI_VOICE = os.environ.get("AI_GM_IRODORI_VOICE", "none").strip() or "none"
+# Irodori-TTS-Server を IRODORI_API_KEY 付きで起動したときだけ設定する
+IRODORI_API_KEY = os.environ.get("AI_GM_IRODORI_API_KEY", "").strip()
+# 1 回の音声生成の待ち上限 (秒)。初回はモデルの読み込みで時間がかかる
+IRODORI_TIMEOUT = float(os.environ.get("AI_GM_IRODORI_TIMEOUT", "120"))
+# Irodori に失敗したあと、edge-tts だけを使う時間 (秒)。毎回待たされないようにする
+IRODORI_RETRY_AFTER = float(os.environ.get("AI_GM_IRODORI_RETRY_AFTER", "60"))
+# 声の説明文 (VoiceDesign) の既定。edge-tts のボイス名ごとに使い分ける (ナレーションは Nanami)
+IRODORI_CAPTION_FEMALE = os.environ.get(
+    "AI_GM_IRODORI_CAPTION_FEMALE", "落ち着いた大人の女性の声。物語を語り聞かせるように、穏やかで聞き取りやすい話し方。"
+).strip()
+IRODORI_CAPTION_MALE = os.environ.get(
+    "AI_GM_IRODORI_CAPTION_MALE", "落ち着いた大人の男性の声。低めで、はっきりと聞き取りやすい話し方。"
+).strip()
 
 # 発言者名 (bridge.js のループ検知 `AI GM` / `サポートGM` 前方一致と揃えること)
 SPEAKER_GM = "AI GM"

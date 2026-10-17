@@ -64,7 +64,7 @@ def make_ctx(tmp_path, sent):
             sent.append(msg)
 
         FakeCommunicate.calls = []
-        tts = SpeechSynthesizer(data_dir=str(tmp_path), communicate_factory=FakeCommunicate, settle_delay=0)
+        tts = SpeechSynthesizer(data_dir=str(tmp_path), communicate_factory=FakeCommunicate, settle_delay=0, engine="edge")
         return Context(
             send_json=send_json,
             llm=llm or FakeLLM(),

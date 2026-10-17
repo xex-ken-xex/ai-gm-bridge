@@ -81,11 +81,12 @@ async def main():
     import websockets
 
     log_handler = logs.setup_logging()
-    llm, _ = _services()
+    llm, tts = _services()
     async with websockets.serve(handler, config.HOST, config.PORT, max_size=config.MAX_MESSAGE_SIZE):
         print("=" * 65)
         print(f"  AI GM Bridge サーバー起動完了 (ws://{config.HOST}:{config.PORT})")
         print(f"  AIエンジン: {llm.engine_name}")
+        print(f"  音声エンジン: {tts.engine_name}")
         print(f"  詳細ログ: {log_handler.log_dir}/<日付>/server.log ({log_handler.keep_days} 日分)")
         print("=" * 65)
         await asyncio.Future()
