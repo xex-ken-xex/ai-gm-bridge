@@ -84,3 +84,60 @@ export function buildRoomNarrationHtml(room) {
   </div>
   `;
 }
+
+/**
+ * NPC 会話の小説風カード (npc_dialogue_response)。全員に見えるため、内心と秘密のヒントは入れない (H7)。
+ * 判定ボタンには、GM のクライアントだけが持つ提案の id (offerId) と、判定するキャラクターの actor id だけを載せる
+ */
+export function buildNpcDialogueHtml(res, { offerId = null, actorId = null } = {}) {
+  const ambient = (res.ambient_reactions || []).filter(a => a?.silent_emote);
+  const ambientHtml = ambient.length ? `
+    <div style="margin-top: 8px; padding-top: 6px; border-top: 1px dashed #c9b99a; font-size: 12px; color: #555;">
+      ${ambient.map(a => `<p style="margin: 2px 0;"><em>👀 <strong>${escapeHtml(a.npc_name)}:</strong> ${escapeHtml(a.silent_emote)}</em></p>`).join("")}
+    </div>` : "";
+  const offer = res.check_offer;
+  const checkHtml = offer?.skill && offerId ? `
+    <div style="margin-top: 10px; background: #2c2c34; padding: 6px 8px; border-radius: 4px; border-left: 3px solid #f39c12;">
+      <div style="font-size: 11px; color: #f39c12; margin-bottom: 4px;">💡 態度の裏に何かがありそうだ…</div>
+      <button type="button" class="ai-npc-check-btn" data-offer-id="${escapeHtml(offerId)}" data-actor-id="${escapeHtml(actorId ?? "")}" data-skill="${escapeHtml(offer.skill)}"
+              style="width: 100%; background: #e67e22; color: #fff; border: none; padding: 5px; border-radius: 3px; cursor: pointer; font-weight: bold; font-size: 12px;">
+        🎲 【${escapeHtml(offer.skill)} DC${Number(offer.dc) || 13}】に挑戦して本音を引き出す
+      </button>
+    </div>` : "";
+  return `
+  <div class="ai-novel-dialogue" style="font-family: 'Yu Mincho', 'Hiragino Mincho ProN', serif; line-height: 1.75; font-size: 13.5px; color: #1a1a1a; background: #fdfaf2; padding: 10px 12px; border-radius: 4px; border-left: 4px solid #782e22;">
+    ${res.narrative_action ? `<p style="margin: 0 0 8px 0; text-indent: 1em; color: #333;">${textToHtml(res.narrative_action)}</p>` : ""}
+    ${res.speech ? `<p style="margin: 0 0 6px 0; font-weight: bold; color: #5a1810; font-size: 14px;">「${escapeHtml(res.speech)}」</p>` : ""}
+    ${ambientHtml}
+    ${checkHtml}
+  </div>`;
+}
+
+/** NPC 会話の GM 専用メモ (内心・信頼度の変化・判定の成功時に打ち明ける内容)。GM にだけウィスパーする */
+export function buildNpcGmNoteHtml(res, { npcName = "NPC", trust = null } = {}) {
+  const rows = [];
+  if (res.internal_thought) rows.push(`<p style="margin: 2px 0;">💭 <strong>内心:</strong> ${escapeHtml(res.internal_thought)}</p>`);
+  const delta = Number(res.trust_delta) || 0;
+  if (delta || trust !== null) {
+    rows.push(`<p style="margin: 2px 0;">🤝 <strong>信頼度:</strong> ${delta > 0 ? "+" : ""}${delta}${trust !== null ? ` (いま ${Number(trust)})` : ""}</p>`);
+  }
+  if (res.physical_action && res.physical_action !== "stay") {
+    rows.push(`<p style="margin: 2px 0;">🚶 <strong>動きたがっている:</strong> ${escapeHtml(PHYSICAL_ACTION_LABELS[res.physical_action] ?? res.physical_action)}</p>`);
+  }
+  if (res.check_offer?.target_secret_hint) {
+    rows.push(`<p style="margin: 2px 0;">🔑 <strong>判定に成功したら:</strong> ${escapeHtml(res.check_offer.target_secret_hint)}</p>`);
+  }
+  if (!rows.length) return "";
+  return `
+  <div class="ai-npc-gm-note" style="font-size: 12px; background: #fff8e7; border-left: 4px solid #f39c12; padding: 6px 10px; color: #7f5200; border-radius: 2px;">
+    <div style="font-weight: bold; margin-bottom: 2px;">🔒 GM 専用: ${escapeHtml(npcName)}</div>
+    ${rows.join("")}
+  </div>`;
+}
+
+export const PHYSICAL_ACTION_LABELS = Object.freeze({
+  approach_speaker: "話し手に近づく",
+  step_back: "一歩下がる",
+  leave_scene: "この場を立ち去る",
+  turn_hostile: "敵対する",
+});

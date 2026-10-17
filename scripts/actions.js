@@ -2,6 +2,7 @@
 // プロトコルを変更する場合は gm_server/protocol.py も同時に更新すること
 
 import { handleBuilderProgress, handleBuilderStageResult } from "./builder.js";
+import { handleNpcDialogueResponse } from "./npc.js";
 import { generatedFlags } from "./lib/chat-filter.js";
 import { buildChoiceCardHtml, buildSceneSuccessCardHtml } from "./lib/cards.js";
 import {
@@ -202,6 +203,7 @@ export const ACTION_HANDLERS = {
   update_dungeon_rooms: updateDungeonRooms,
   builder_stage_result: handleBuilderStageResult,
   builder_progress: handleBuilderProgress,
+  npc_dialogue_response: handleNpcDialogueResponse,
 };
 
 export async function handleServerAction(data) {

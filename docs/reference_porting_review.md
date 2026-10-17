@@ -113,33 +113,33 @@ npm test                   # FVTT 側の純粋関数 (tests/js, Node 18+ の nod
 
 | # | 重要度 | 行 | 問題 | 修正方針 |
 |---|---|---|---|---|
-| H1 | 高 | 1750-1785 | NPC 会話を `chatMessage` フックで拾っているが、このフックは発言者本人のクライアントでしか呼ばれない。条件が `isGM` なので、プレイヤーの発言は NPC に一度も届かない | 🔜 GM 側の `createChatMessage` で検知し、`activeGM` だけが処理 |
-| H2 | 高 | 1764, 1203 | 発言者トークンを「GM が選択中のトークン」や「シーンの最初の PC」から取っている | 🔜 `message.speaker.token` (無ければ `author.character`) |
-| H3 | 高 | 1769 | `currentRoom = rooms[0]` 固定。常に部屋 1 の情景がプロンプトに入る | 🔜 `scripts/lib/rooms.js` の `findRoomAt` で発言者の位置から判定 |
-| H4 | 高 | 本番 514-541 と連動 | 統合すると GM の発言が `npc_dialogue_request` と `player_message` の両方で送られ、AI が二重応答 | 🔜 経路を 1 本にする (§5-3 で決定: 近くに NPC がいれば NPC 会話、いなければ AI GM) |
+| H1 | 高 | 1750-1785 | NPC 会話を `chatMessage` フックで拾っているが、このフックは発言者本人のクライアントでしか呼ばれない。条件が `isGM` なので、プレイヤーの発言は NPC に一度も届かない | ✅ Phase 3: GM 側の `createChatMessage` で拾い、サーバー連携を担当する GM (`isPrimaryGM`) だけが送る |
+| H2 | 高 | 1764, 1203 | 発言者トークンを「GM が選択中のトークン」や「シーンの最初の PC」から取っている | ✅ Phase 3: `message.speaker.token` (無ければ発言ユーザーのキャラクターのトークン)。`speakerTokenId()` |
+| H3 | 高 | 1769 | `currentRoom = rooms[0]` 固定。常に部屋 1 の情景がプロンプトに入る | ✅ Phase 3: 発言者の位置から `findRoomAt` で部屋を引く (部屋の外ならシーン名) |
+| H4 | 高 | 本番 514-541 と連動 | 統合すると GM の発言が `npc_dialogue_request` と `player_message` の両方で送られ、AI が二重応答 | ✅ Phase 3: 声が届く NPC がいれば `npc_dialogue_request`、いなければ `player_message` の 1 経路 |
 | H5 | 高 | 2061, 2079 | 生成器が `light_preset` / `ambient_sound_src` を部屋データにコピーしないため、部屋ごとの照明と環境音が一切作られない | ✅ Phase 1: 生成器が部屋データにコピーし、FVTT が AmbientLight / AmbientSound を作る |
-| H6 | 高 | 1290-1326, 1640-1649, 1960-1975, 2104-2147 ほか | AI テキストのエスケープ漏れ (プレイヤー発言経由のプロンプトインジェクションで `<img onerror>` が全員の画面で動く) | 🔜 `scripts/lib/cards.js` 方式で移植 (本番分は ✅) |
-| H7 | 高 | 1310 | DM 秘密のヒントを公開カードの `data-hint` 属性に出している (プレイヤーが開発者ツールで読める) | 🔜 GM 側のメモリか GM 専用 flag に保存 |
+| H6 | 高 | 1290-1326, 1640-1649, 1960-1975, 2104-2147 ほか | AI テキストのエスケープ漏れ (プレイヤー発言経由のプロンプトインジェクションで `<img onerror>` が全員の画面で動く) | 🔜 NPC 会話のカードは ✅ Phase 3 (`buildNpcDialogueHtml`)。残りは各機能の移植時に `scripts/lib/cards.js` 方式で |
+| H7 | 高 | 1310 | DM 秘密のヒントを公開カードの `data-hint` 属性に出している (プレイヤーが開発者ツールで読める) | ✅ Phase 3: ヒントは GM のクライアントのメモリだけに置き、GM 宛てのウィスパー (NPC メモ) にだけ出す |
 | M1 | 中 | 2083 | AmbientSound の `radius` は距離単位 (ft) なのにピクセル値を入れている (音が非常に遠くまで届く) | ✅ Phase 1: `buildRoomSounds` で `マス数 × grid.distance × 0.85` |
 | M2 | 中 | 2128 | `r.role === "sub_goal"` は常に false (生成器は `type` キーに入れる) | ✅ Phase 1: 生成器が `role` と `type` に同じ値を入れ、FVTT は `roomRole()` で読む |
 | M3 | 中 | 1196, 1255, 1630, 2329 | 対象シーンを `game.scenes.active` で取るが、衝突判定は GM が表示中のシーンの壁を使う | 🔜 `combat.scene` / `tokenDoc.parent` を引き回す |
-| M4 | 中 | 2287-2338 | 技能判定ボタンがプレイヤーには効かず、GM が押しても `1d20+3` 固定 | 🔜 socket で GM に依頼し、dnd5e の `actor.rollSkill` を使う |
+| M4 | 中 | 2287-2338 | 技能判定ボタンがプレイヤーには効かず、GM が押しても `1d20+3` 固定 | ✅ Phase 3: ボタンは誰でも押せ、押した人のキャラクターで `1d20 + @skills.<技能>.total` を振る。GM 側がその結果を拾って続きを頼む (目標値は GM 側の記録を使う) |
 | M5 | 中 | 1655-1663 | `item.use()` の失敗時に Roll へフォールバックしない (§6 #13 の記述は誤り)。カードが二重投稿。AI の `dice_formula` を検証しない | 🔜 catch で Roll、`Roll.validate` で検証 |
 | M6 | 中 | 2341-2357 | AI 応答待ちの間に手番が進んでも古い行動を実行。行動不能・非表示の NPC も対象 | 🔜 `combat_id/round/turn` を付けて受信時に照合、`combatTurnChange` へ移行 |
 | M7 | 中 | 1590-1622 | 移動探索に現在地が候補として無く、隣接済みでも 3 マス動く。`flank` は接近と同じ。シーン外判定なし | 🔜 純粋関数 `planSteps` に切り出してテスト |
-| M8 | 中 | 1181-1187 + 1144-1151 | 重要度 4 以上の記憶が長期記憶に二重登録される | 🔜 `scripts/lib/memory.js` でテスト付きで実装 |
-| M9 | 中 | 1156-1157 | 鮮明度を毎回 0.01 単位に丸めるため、減衰量が 0.005 未満だと永久に変化しない。下限 0.1 の直後に 0.15 未満を削除しており下限が無意味 | 🔜 内部値は丸めない |
-| M10 | 中 | 1176-1191 | `setFlag` を連続 2 回、読み書きに排他なし。並行応答で記憶が消える | 🔜 1 回の更新にまとめ、actor ごとに直列化 |
+| M8 | 中 | 1181-1187 + 1144-1151 | 重要度 4 以上の記憶が長期記憶に二重登録される | ✅ Phase 3: 重要な記憶は短期記憶に `promoted` の印を付け、押し出されても二重に移さない (`scripts/lib/npc-brain.js`) |
+| M9 | 中 | 1156-1157 | 鮮明度を毎回 0.01 単位に丸めるため、減衰量が 0.005 未満だと永久に変化しない。下限 0.1 の直後に 0.15 未満を削除しており下限が無意味 | ✅ Phase 3: 鮮明度は丸めず、`FORGET_BELOW` (0.15) 未満で忘れる |
+| M10 | 中 | 1176-1191 | `setFlag` を連続 2 回、読み書きに排他なし。並行応答で記憶が消える | ✅ Phase 3: 読み→作り直し→1 回の `setFlag` を actor ごとに直列化 |
 | M12 | 中 | 1993-1996 | medium 以上のシーンが 50,000〜200,000px になる (grid 100px 固定) | ✅ Phase 2 (暫定): ビルダーは小・中のみ (`BUILDER_SIZE_KEYS`)。`/ai ダンジョン` の大・特大と grid_size 可変化は 📝 |
 | M14 | 中 | 2240-2283 | ボタンの押下状態が DOM にしか残らず、再描画で戻る | 🔜 `message.setFlag` で保存 (本番もまだ未対応) |
 | L1 | 低 | 1736 | `/["'“”」]+\$/` が `$` 文字にマッチ (本番版は修正済み) | ✅ 本番版を採用 |
 | L2 | 低 | 1721-1758 | `/ai` を 2 系統で登録し、正規表現の判定がずれている | 🔜 一本化 |
 | L3 | 低 | 1761 | `[` 始まりの発言を除外していない (AGENTS.md 違反) | ✅ `chat-filter.js` を共用 |
-| L4 | 低 | 1352 | NPC 抽出条件が `||` でプレイヤー所有 NPC も含む | 🔜 `&&` |
-| L5 | 低 | 1356-1430 ほか | ブレイン GUI の `value="${...}"` 等がエスケープされていない | 🔜 |
-| L6 | 低 | 1471-1477 | 保存のたびに全長期記憶の timestamp を上書き | 🔜 |
-| L7 | 低 | 1148 / 1158 | 重要度の既定値が 2 と 3 で不一致、範囲チェックなし | 🔜 定数化 + clamp(1,5) |
-| L8 | 低 | 1210 | 発言者不在時に全 NPC を 10ft 扱い。発言者 NPC 自身も聴き手に入る | 🔜 |
+| L4 | 低 | 1352 | NPC 抽出条件が `||` でプレイヤー所有 NPC も含む | ✅ Phase 3: `isConversableNpc` (すべて「かつ」) |
+| L5 | 低 | 1356-1430 ほか | ブレイン GUI の `value="${...}"` 等がエスケープされていない | ✅ Phase 3: ブレイン管理画面 (`/ai NPC`) の値はすべて `escapeHtml` |
+| L6 | 低 | 1471-1477 | 保存のたびに全長期記憶の timestamp を上書き | ✅ Phase 3: 文が変わらない記憶は元の時刻を残す (`brainFromForm`) |
+| L7 | 低 | 1148 / 1158 | 重要度の既定値が 2 と 3 で不一致、範囲チェックなし | ✅ Phase 3: `IMPORTANCE` 定数と `clampImportance` (1〜5、既定 3) |
+| L8 | 低 | 1210 | 発言者不在時に全 NPC を 10ft 扱い。発言者 NPC 自身も聴き手に入る | ✅ Phase 3: 発言者が分からなければ NPC 会話にしない (AI GM へ)。発言者自身は聴き手に入れない |
 | L9 | 低 | 1275 | `leave_scene` が `alpha: 0.3` だけでトークンが残る | 🔜 `hidden: true` |
 | L10 | 低 | 106, 276 | `localStorage` の JSON.parse 例外未処理、吹き出しタイマー未解除 | 🔜 |
 | L11 | 低 | 1854, 1033 | ランドマークを `window` に置いておりリロードで消える | ✅ Phase 2: 旅路の seed とランドマークを地図帳の `atlas_meta` flag に保存し、構築時に seed から地点グラフを再生成 |
@@ -167,8 +167,8 @@ npm test                   # FVTT 側の純粋関数 (tests/js, Node 18+ の nod
 |---|---|---|---|
 | **0 (完了)** | モジュール分割・テスト基盤・本番の不具合修正・Reference のユーティリティ移植 (TTS 声色・JSON 取得) | §2.1, §3.1 | — |
 | **1 (完了)** | 生成器の拡張: `scene_mode` (underground / ruins / wilderness)・壁タイプ (扉・隠し扉・低い壁)・照明プリセット・部屋データへの `light_preset` / `ambient_sound_src` | R1, R5, R11, H5, M1, M2, L13 | — |
-| **2 (PR 済み)** | 4 段階シナリオビルダー (サーバー: `builder_generate_stage` / `builder_build_scene`、FVTT: アトラスジャーナル、DialogV2 化) | R4, R9, R10, M12, L11 | Phase 1 |
-| 3 | NPC 会話システム (聴取範囲・記憶と忘却) | H1-H4, H7, M4, M8-M10, L4-L8 | — |
+| **2 (完了)** | 4 段階シナリオビルダー (サーバー: `builder_generate_stage` / `builder_build_scene`、FVTT: アトラスジャーナル、DialogV2 化) | R4, R9, R10, M12, L11 | Phase 1 |
+| **3 (PR 済み)** | NPC 会話システム (聴取範囲・記憶と忘却) | H1-H4, H7, M4, M8-M10, L4-L8 | — |
 | 4 | NPC 自律戦闘 | M3, M5-M7 | Phase 3 の知覚処理 |
 | 5 | 集落 BGM (別 WSL オーディオ生成) と環境音 | — | Phase 1 |
 | 6 | アシスタント DM マスコット UI (`game.socket`、`module.json` に `"socket": true`) | L10 | — |
