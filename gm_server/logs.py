@@ -1,7 +1,7 @@
 """
 詳細ログ (ログファイル) とコンソール表示の日時・レベル付け
 
-- ログは log/<YYYY-MM-DD>/server.log に書く。日付が変わると新しいフォルダに切り替え、
+- ログは ~/ai-gm-logs/<YYYY-MM-DD>/server.log に書く (AI_GM_LOG_DIR で変更可)。日付が変わると新しいフォルダに切り替え、
   LOG_RETENTION_DAYS 日より古い日付フォルダは削除する。1 日分が LOG_MAX_BYTES を超えたら server.log.1 … に回す
 - AI への問い合わせと応答 (プロンプト全文・応答全文・所要時間) は ai_request / ai_response でログファイルにだけ書く
 - コンソールの出力 (print / traceback) は 1 行ずつ「日時 レベル」を付けて表示し、ログファイルにも同じ行を書く
