@@ -3,12 +3,14 @@
 // - GM のクライアントでの状態 (待機・考え中・話し中・切断) と台詞を game.socket で全員に配る (module.json の "socket": true)。
 //   GM だけの操作・確認 (ビルダーの下書き・/ai の相談・接続の状態など) は状態も台詞も配らない
 // - ドラッグで動かせ、位置はブラウザごとに保存する。GM はダブルクリックでシナリオビルダー、右クリックで NPC ブレイン管理を開く
-// - 設定「マスコットを表示」(ユーザーごと) で隠せる。「マスコットの画像」(ワールド) で画像を差し替えられる
+// - 設定「マスコットを表示」(ユーザーごと) で隠せる。「マスコットの画像」(ワールド。状態ごとにも) で画像を差し替えられる
+// - Shift + ダブルクリックで既定の位置に戻す
 // 純粋関数は scripts/lib/mascot.js (tests/js)。見た目は styles/mascot.css
 
 import { MODULE_ID } from "./lib/chat-filter.js";
 import {
   clampPosition,
+  DEFAULT_POSITION,
   MASCOT_NAME,
   MascotController,
   mascotForAction,
@@ -22,6 +24,12 @@ const SOCKET = `module.${MODULE_ID}`;
 const POSITION_KEY = "ai-gm-mascot-pos";
 const SHOW_SETTING = "showMascot";
 const IMAGE_SETTING = "mascotImage";
+// 状態ごとの画像 (空欄なら「マスコットの画像」、それも空なら内蔵の SVG)
+const STATE_IMAGE_SETTINGS = Object.freeze({
+  thinking: { key: "mascotImageThinking", label: "考え中" },
+  speaking: { key: "mascotImageSpeaking", label: "話し中" },
+  offline: { key: "mascotImageOffline", label: "切断" },
+});
 
 let widget = null;
 let controller = null;
@@ -49,6 +57,24 @@ export function registerMascotSettings() {
     filePicker: "image",
     onChange: () => controller && render(controller.current),
   });
+  for (const { key, label } of Object.values(STATE_IMAGE_SETTINGS)) {
+    game.settings.register(MODULE_ID, key, {
+      name: `マスコットの画像 (${label})`,
+      hint: `「${label}」のときの画像。空欄なら「マスコットの画像」を使います。`,
+      scope: "world",
+      config: true,
+      type: String,
+      default: "",
+      filePicker: "image",
+      onChange: () => controller && render(controller.current),
+    });
+  }
+}
+
+/** 状態の画像: 状態ごとの画像 → 共通の画像 → 内蔵の SVG */
+function imageFor(state) {
+  const own = STATE_IMAGE_SETTINGS[state] ? setting(STATE_IMAGE_SETTINGS[state].key, "") : "";
+  return own || setting(IMAGE_SETTING, "") || mascotSvgDataUri(state);
 }
 
 function setting(key, fallback) {
@@ -80,7 +106,7 @@ function savePosition(pos) {
 function render({ state, text }) {
   if (!widget) return;
   widget.dataset.state = state;
-  const image = setting(IMAGE_SETTING, "") || mascotSvgDataUri(state);
+  const image = imageFor(state);
   widget.querySelector(".ai-mascot-avatar").style.backgroundImage = `url("${String(image).replace(/["\\]/g, "\\$&")}")`;
   const bubble = widget.querySelector(".ai-mascot-bubble");
   bubble.textContent = text;
@@ -128,12 +154,17 @@ export function initMascot({ openBuilder = null, openBrain = null } = {}) {
     <div class="ai-mascot-nameplate"><span class="ai-mascot-dot"></span><span class="ai-mascot-name"></span></div>`;
   widget.querySelector(".ai-mascot-name").textContent = MASCOT_NAME;
   widget.querySelector(".ai-mascot-nameplate").title = game.user?.isGM
-    ? "ドラッグ: 移動 / ダブルクリック: シナリオビルダー / 右クリック: NPC ブレイン管理"
-    : "ドラッグ: 移動";
+    ? "ドラッグ: 移動 / ダブルクリック: シナリオビルダー / 右クリック: NPC ブレイン管理 / Shift + ダブルクリック: 位置を戻す"
+    : "ドラッグ: 移動 / Shift + ダブルクリック: 位置を戻す";
   document.body.appendChild(widget);
   enableDrag(widget);
 
-  widget.addEventListener("dblclick", () => {
+  widget.addEventListener("dblclick", ev => {
+    // Shift + ダブルクリック: 既定の位置に戻す (誰でも)
+    if (ev.shiftKey) {
+      resetPosition();
+      return;
+    }
     if (game.user?.isGM && gmActions.openBuilder) gmActions.openBuilder();
     else controller?.set({ state: "speaking", text: "私は副マスターのアギィ！冒険のサポートはお任せあれ！", durationMs: 4000 });
   });
@@ -146,6 +177,19 @@ export function initMascot({ openBuilder = null, openBrain = null } = {}) {
   controller?.dispose();
   controller = new MascotController({ render });
   render(controller.current);
+}
+
+/** 既定の位置に戻す (Shift + ダブルクリック) */
+export function resetPosition() {
+  if (!widget) return;
+  const pos = clampPosition(DEFAULT_POSITION, { width: window.innerWidth, height: window.innerHeight });
+  widget.style.left = `${pos.left}px`;
+  widget.style.top = `${pos.top}px`;
+  try {
+    localStorage.removeItem(POSITION_KEY);
+  } catch (e) {
+    // 消せなくても表示は戻っている
+  }
 }
 
 export function removeMascot() {

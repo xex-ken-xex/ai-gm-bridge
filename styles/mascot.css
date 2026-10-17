@@ -1,5 +1,6 @@
 /* アシスタント DM マスコット (scripts/mascot.js)。module.json の styles で読み込む */
-#ai-gm-mascot-widget { position: fixed; z-index: 9999; display: flex; flex-direction: column; align-items: center; user-select: none; cursor: grab; touch-action: none; }
+/* z-index: キャンバスと画面の枠 (シーンコントロール・サイドバー) より上、ウィンドウ (シート・ビルダー・ジャーナル。100 以上) より下 */
+#ai-gm-mascot-widget { position: fixed; z-index: 70; display: flex; flex-direction: column; align-items: center; user-select: none; cursor: grab; touch-action: none; }
 #ai-gm-mascot-widget:active { cursor: grabbing; }
 
 @keyframes ai-mascot-float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-7px); } }
