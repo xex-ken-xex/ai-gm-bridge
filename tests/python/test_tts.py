@@ -207,3 +207,38 @@ def test_check_irodori(tmp_path):
     assert calls == [("http://irodori:8088/health", 5)]
     assert "refused" in run(make(tmp_path, FakePost(), get=bad_get).check_irodori())
     assert run(make(tmp_path, FakePost(), engine="edge").check_irodori()) is None
+
+
+def test_failed_health_check_skips_long_first_wait(tmp_path):
+    def bad_get(url, headers, timeout):
+        raise TimeoutError("timed out")
+
+    post = FakePost()
+    synth = make(tmp_path, post, get=bad_get, timeout=20, first_timeout=180)
+    run(synth.check_irodori())
+    assert run(synth.warm_up_irodori()) is None
+    run(synth.synthesize("やあ", "v.mp3"))
+    assert [c[3] for c in post.calls] == [20]
+
+
+def test_warm_up_uses_long_wait_then_reads_use_short_one(tmp_path):
+    post = FakePost()
+    synth = make(tmp_path, post, get=lambda *a: b"{}", timeout=20, first_timeout=180)
+    assert run(synth.check_irodori()) == ""
+    assert run(synth.warm_up_irodori()) == ""
+    assert not os.listdir(tmp_path)  # あいさつの音声はファイルにしない
+    run(synth.synthesize("やあ", "v.mp3"))
+    assert [c[3] for c in post.calls] == [180, 20]
+    assert post.calls[0][1]["input"] == tts_mod.WARM_UP_TEXT
+    # 2 回目は何もしない
+    assert run(synth.warm_up_irodori()) is None
+
+
+def test_warm_up_failure_is_reported_without_pausing(tmp_path):
+    post = RecordingPost([False, True])
+    synth = make(tmp_path, post, get=lambda *a: b"{}")
+    run(synth.check_irodori())
+    assert "timed out" in run(synth.warm_up_irodori())
+    assert run(synth.synthesize("やあ", "v.mp3"))
+    assert read(tmp_path, "v.mp3") == b"MP3DATA"
+    assert FakeCommunicate.calls == []

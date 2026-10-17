@@ -22,6 +22,8 @@ def create_gemini_client():
 _llm = None
 _tts = None
 _state = SessionState()
+# 裏で動かすタスク (途中で捨てられないよう参照を持っておく)
+_background = set()
 # 送り先の接続 (依頼元が閉じていたら再接続後の GM へ送る)
 _hub = ConnectionHub()
 
@@ -93,7 +95,9 @@ async def main():
         if irodori_error:
             print(f"  ※ Irodori-TTS に繋がりません ({irodori_error})。繋がるまで edge-tts で読み上げます")
         elif irodori_error == "":
-            print("  Irodori-TTS に繋がりました")
+            print("  Irodori-TTS に繋がりました (裏でモデルを読み込みます)")
+            # 最初の読み上げでモデルの読み込みを待たないよう、裏で 1 回作らせておく
+            _background.add(asyncio.create_task(tts.warm_up_irodori()))
         print(f"  詳細ログ: {log_handler.log_dir}/<日付>/server.log ({log_handler.keep_days} 日分)")
         print("=" * 65)
         await asyncio.Future()

@@ -15,6 +15,8 @@ from gm_server.progress import log
 from gm_server.text import normalize_tts_pitch, normalize_tts_rate
 
 TTS_ENGINES = ("edge", "irodori")
+# 起動時にモデルを読み込ませるための短い文 (音声は使わない)
+WARM_UP_TEXT = "こんにちは。冒険の準備ができました。"
 
 _counter = itertools.count()
 
@@ -184,7 +186,27 @@ class SpeechSynthesizer:
             await self.irodori.health()
             return ""
         except Exception as e:
+            # 繋がらない・固まっているサーバーで、最初の読み上げを長く待たないようにする
+            self.irodori.attempted = True
             return str(e) or e.__class__.__name__
+
+    async def warm_up_irodori(self) -> Optional[str]:
+        """
+        起動時に裏で短いあいさつを 1 回作り、Irodori-TTS-Server にモデルを読み込ませる (音声は捨てる)。
+        長い待ち (first_timeout) はここで使い切るので、実際の読み上げは最初から短い待ち上限になる。
+        Irodori を使わない・起動時の確認で繋がらなかったなら None、できたら空文字、失敗したら理由
+        """
+        if self.engine != "irodori" or self.irodori.attempted:
+            return None
+        started = self._clock()
+        try:
+            await self.irodori.speech(WARM_UP_TEXT, caption=default_caption(self.default_voice))
+            log(f"Irodori-TTS の準備ができました (モデルの読み込み {self._clock() - started:.1f}秒)")
+            return ""
+        except Exception as e:
+            reason = str(e) or e.__class__.__name__
+            log(f"Irodori-TTS の準備に失敗しました ({reason})。読み上げのときにもう一度試します")
+            return reason
 
     @property
     def engine_name(self) -> str:
