@@ -160,3 +160,82 @@ def test_concurrency_depends_on_engine(monkeypatch):
     monkeypatch.setattr(llm_mod, "LLM_CONCURRENCY", 3)
     assert LLMService(gemini_client=None).concurrency == 1
     assert LLMService(gemini_client=object()).concurrency == 3
+
+
+@pytest.fixture
+def file_log(tmp_path):
+    import datetime
+
+    from gm_server import logs
+
+    handler = logs.DailyFolderHandler(str(tmp_path), today=lambda: datetime.date(2026, 10, 18))
+    handler.setFormatter(logs.make_formatter())
+    logs.logger.addHandler(handler)
+    yield tmp_path / "2026-10-18"
+    logs.logger.removeHandler(handler)
+    handler.close()
+
+
+def fake_agy(monkeypatch, code):
+    """agy の代わりに python を動かす。渡された引数と stdin を記録する"""
+    import asyncio
+    import sys
+
+    real_exec = asyncio.create_subprocess_exec
+    calls = []
+
+    async def run(*args, **kwargs):
+        calls.append((args, kwargs))
+        return await real_exec(sys.executable, "-c", code, **kwargs)
+
+    monkeypatch.setattr("asyncio.create_subprocess_exec", run)
+    return calls
+
+
+async def test_call_agy_logs_stderr_lines_and_passes_log_file(monkeypatch, file_log, tmp_path):
+    import asyncio
+
+    from gm_server import llm as llm_mod
+
+    monkeypatch.setattr(llm_mod, "AGY_WORKDIR", str(tmp_path / "work"))
+
+    code = ("import sys; sys.stderr.write('step 1\\nstep 2\\n'); "
+            "print('{\"response\": \"ok\", \"conversation_id\": \"c9\"}')")
+    calls = fake_agy(monkeypatch, code)
+    assert await call_agy("hi", None) == ("ok", "c9")
+    args, kwargs = calls[0]
+    # agy が入力待ちでサーバーの端末を読まないよう stdin はつながない
+    assert kwargs["stdin"] == asyncio.subprocess.DEVNULL
+    # agy がモジュールのソースを読み回らないよう、空の作業フォルダで動かす
+    assert kwargs["cwd"] == str(tmp_path / "work") and (tmp_path / "work").is_dir()
+    log_file = args[args.index("--log-file") + 1]
+    assert log_file.startswith(str(file_log)) and "agy-" in log_file
+    text = (file_log / "server.log").read_text(encoding="utf-8")
+    assert "agy stderr: step 1" in text and "agy stderr: step 2" in text
+    assert '← agy 応答' in text and "exit_code=0" in text
+
+
+async def test_call_agy_timeout_keeps_partial_output_and_process_state(monkeypatch, file_log, tmp_path):
+    from gm_server import llm as llm_mod
+
+    monkeypatch.setattr(llm_mod, "AGY_WORKDIR", str(tmp_path / "work"))
+    monkeypatch.setattr(llm_mod, "AGY_WATCH_INTERVAL", 0.1)
+    code = ("import sys, time; sys.stdout.write('partial-out'); sys.stdout.flush(); "
+            "sys.stderr.write('thinking...\\n'); sys.stderr.flush(); time.sleep(30)")
+    fake_agy(monkeypatch, code)
+    assert await call_agy("hi", "conv", timeout=0.5) == ("", "conv")
+    text = (file_log / "server.log").read_text(encoding="utf-8")
+    assert "秒以内に応答なし" in text and "agy の動作ログ:" in text
+    assert "それまでの標準出力 (11B):\npartial-out" in text
+    assert "thinking..." in text
+    assert "agy 実行中" in text and "状態=" in text
+
+
+def test_process_snapshot_reads_own_process():
+    import os
+
+    from gm_server.llm import process_snapshot
+
+    snap = process_snapshot(os.getpid())
+    assert f"pid={os.getpid()}" in snap and "CPU=" in snap
+    assert process_snapshot(999999999) == "(プロセス情報なし)"

@@ -163,6 +163,10 @@ def line_level(line: str, default: int = logging.INFO) -> int:
     return default
 
 
+# 端末で行末まで消す (日本語は 1 文字が 2 桁なので、空白で上書きすると前の行の文字が残る)
+ERASE_EOL = "\x1b[K"
+
+
 def console_prefix(level: int, now: Optional[datetime.datetime] = None) -> str:
     now = now or datetime.datetime.now()
     return f"{now.strftime(DATE_FORMAT)} {logging.getLevelName(level):<7} "
@@ -196,7 +200,8 @@ class ConsoleStream:
             self.raw.write("\n")
             return
         level = line_level(text, self.default_level)
-        self.raw.write(("\r" if self.live else "") + console_prefix(level, self.now()) + mask_secrets(line) + "\n")
+        shown = mask_secrets(line.rstrip() + ERASE_EOL if self.live and self.isatty() else line)
+        self.raw.write(("\r" if self.live else "") + console_prefix(level, self.now()) + shown + "\n")
         console_logger.log(level, text)
 
     def write(self, s: str) -> int:
@@ -214,7 +219,8 @@ class ConsoleStream:
     def flush(self) -> None:
         with self.lock:
             if self.live and self.buf:
-                self.raw.write("\r" + console_prefix(logging.INFO, self.now()) + mask_secrets(self.buf))
+                tail = ERASE_EOL if self.isatty() else ""
+                self.raw.write("\r" + console_prefix(logging.INFO, self.now()) + mask_secrets(self.buf.rstrip()) + tail)
         self.raw.flush()
 
 
@@ -233,9 +239,31 @@ def clip_for_log(text, limit: int = MESSAGE_LOG_LIMIT) -> str:
 _request_ids = itertools.count(1)
 
 
-def ai_request(engine: str, prompt: str, **meta) -> int:
+def next_request_id() -> int:
+    return next(_request_ids)
+
+
+def day_dir() -> Optional[str]:
+    """今日のログフォルダ (setup_logging 前やテストでは None)"""
+    for h in logger.handlers:
+        if isinstance(h, DailyFolderHandler):
+            path = os.path.join(h.log_dir, h.today().isoformat())
+            os.makedirs(path, exist_ok=True)
+            return path
+    return None
+
+
+def agy_log_path(rid: int) -> Optional[str]:
+    """agy 自身の動作ログ (--log-file) の置き場所。今日のログフォルダに agy-<時刻>-<番号>.log"""
+    folder = day_dir() if config.AGY_LOG else None
+    if not folder:
+        return None
+    return os.path.join(folder, f"agy-{datetime.datetime.now().strftime('%H%M%S')}-{rid:04d}.log")
+
+
+def ai_request(engine: str, prompt: str, rid: Optional[int] = None, **meta) -> int:
     """問い合わせをログファイルに書き、応答と突き合わせる番号を返す"""
-    rid = next(_request_ids)
+    rid = rid if rid is not None else next(_request_ids)
     info = " ".join(f"{k}={v}" for k, v in meta.items() if v not in (None, ""))
     ai_logger.info(f"[AI #{rid}] → {engine} 問い合わせ ({len(prompt)}文字) {info}\n----- プロンプト -----\n{prompt}\n----------")
     return rid

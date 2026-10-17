@@ -1,8 +1,10 @@
 """Gemini API / agy CLI への問い合わせ"""
 
 import asyncio
+import contextlib
 import json
 import logging
+import os
 import time
 from typing import Awaitable, Callable, List, Optional, Tuple, Union
 
@@ -13,6 +15,7 @@ from gm_server.config import (
     AGY_MODEL,
     AGY_TIMEOUT,
     GEMINI_MODEL,
+    AGY_WORKDIR,
     GEMINI_TIMEOUT,
     LLM_CONCURRENCY,
 )
@@ -48,8 +51,10 @@ def is_retryable_error(err: Exception) -> bool:
 
 
 def build_agy_command(prompt: str, conversation_id: Optional[str] = None,
-                      model: str = AGY_MODEL, effort: str = AGY_EFFORT) -> List[str]:
+                      model: str = AGY_MODEL, effort: str = AGY_EFFORT, log_file: Optional[str] = None) -> List[str]:
     cmd = ["agy", "-p", prompt, "--output-format", "json"]
+    if log_file:
+        cmd.extend(["--log-file", log_file])
     if model:
         cmd.extend(["--model", model])
     if effort:
@@ -70,6 +75,104 @@ def _agy_semaphore() -> asyncio.Semaphore:
     return _agy_slots
 
 
+# agy の実行中、この秒数ごとにプロセスの様子を詳細ログに書く (止まったときの調査用)
+AGY_WATCH_INTERVAL = 30.0
+
+
+async def _read_stream(stream, buf: bytearray, on_line: Optional[Callable[[str], None]] = None) -> None:
+    """出力を読みながら貯める (communicate と違い、途中で打ち切ってもそれまでの出力が残る)"""
+    pending = b""
+    while True:
+        chunk = await stream.read(4096)
+        if not chunk:
+            break
+        buf.extend(chunk)
+        if on_line:
+            pending += chunk
+            *lines, pending = pending.split(b"\n")
+            for line in lines:
+                if line.strip():
+                    on_line(line.decode("utf-8", errors="replace").rstrip())
+    if on_line and pending.strip():
+        on_line(pending.decode("utf-8", errors="replace").rstrip())
+
+
+def _tail(buf: bytes, limit: int = 3000) -> str:
+    text = bytes(buf).decode("utf-8", errors="replace")
+    return text if len(text) <= limit else "…" + text[-limit:]
+
+
+def _read_proc(path: str) -> str:
+    try:
+        with open(path, "rb") as f:
+            return f.read().decode("utf-8", errors="replace")
+    except OSError:
+        return ""
+
+
+def _children(pid: int) -> List[int]:
+    kids: List[int] = []
+    for tid in os.listdir(f"/proc/{pid}/task") if os.path.isdir(f"/proc/{pid}/task") else []:
+        kids += [int(c) for c in _read_proc(f"/proc/{pid}/task/{tid}/children").split()]
+    return kids
+
+
+def process_snapshot(pid: int) -> str:
+    """プロセスの状態・CPU 時間・子プロセスを 1 行にする (Linux の /proc から。読めなければ空)"""
+    if not os.path.isdir(f"/proc/{pid}"):
+        return "(プロセス情報なし)"
+    tick = os.sysconf("SC_CLK_TCK") if hasattr(os, "sysconf") else 100
+
+    def one(p: int) -> str:
+        status = dict(
+            line.split(":", 1) for line in _read_proc(f"/proc/{p}/status").splitlines() if ":" in line
+        )
+        stat = _read_proc(f"/proc/{p}/stat").rsplit(")", 1)[-1].split()
+        cpu = (int(stat[11]) + int(stat[12])) / tick if len(stat) > 12 else 0.0
+        cmd = _read_proc(f"/proc/{p}/cmdline").replace("\0", " ").strip()
+        cmd = cmd if len(cmd) <= 80 else cmd[:80] + "…"
+        return (f"pid={p} 状態={status.get('State', '?').strip()} CPU={cpu:.1f}秒 "
+                f"スレッド={status.get('Threads', '?').strip()} 「{cmd}」")
+
+    parts = [one(pid)]
+    queue, seen = _children(pid), {pid}
+    while queue and len(parts) < 12:
+        child = queue.pop(0)
+        if child in seen:
+            continue
+        seen.add(child)
+        parts.append("子 " + one(child))
+        queue += _children(child)
+    return " / ".join(parts)
+
+
+async def _watch_agy(rid: int, proc, started: float, out_buf: bytearray, err_buf: bytearray) -> None:
+    while True:
+        await asyncio.sleep(AGY_WATCH_INTERVAL)
+        logs.ai_note(rid, f"agy 実行中 {time.monotonic() - started:.0f}秒 標準出力={len(out_buf)}B "
+                          f"標準エラー={len(err_buf)}B / {process_snapshot(proc.pid)}")
+
+
+async def _kill(proc, readers) -> None:
+    with contextlib.suppress(ProcessLookupError):
+        proc.kill()
+    await proc.wait()
+    for r in readers:
+        r.cancel()
+    with contextlib.suppress(asyncio.CancelledError):
+        await asyncio.gather(*readers, return_exceptions=True)
+
+
+def agy_workdir() -> Optional[str]:
+    """agy を動かす空のフォルダ (作れなければ None = サーバーと同じフォルダ)"""
+    try:
+        os.makedirs(AGY_WORKDIR, exist_ok=True)
+        return AGY_WORKDIR
+    except OSError as e:
+        log(f"agy の作業フォルダを作れませんでした ({e})。サーバーと同じフォルダで動かします")
+        return None
+
+
 async def call_agy(
     prompt: str, conversation_id: Optional[str] = None, timeout: Optional[float] = None
 ) -> Tuple[str, str]:
@@ -85,15 +188,21 @@ async def _call_agy(
     Antigravity Agent (agy) CLI を非同期呼び出し。
     timeout: None なら AGY_TIMEOUT、0 なら上限なし (呼び出し側が run_with_deadline で管理する場合)
     """
-    cmd = build_agy_command(prompt, conversation_id)
+    rid = logs.next_request_id()
+    agy_log = logs.agy_log_path(rid)
+    cmd = build_agy_command(prompt, conversation_id, log_file=agy_log)
 
     log(f"[agy 実行中] プロンプト長: {len(prompt)}文字")
     shown = " ".join(f"<プロンプト {len(prompt)}文字>" if a is prompt else a for a in cmd)
-    rid = logs.ai_request("agy", prompt, command=f"「{shown}」", conversation=conversation_id)
+    workdir = agy_workdir()
+    logs.ai_request("agy", prompt, rid=rid, command=f"「{shown}」", cwd=workdir, conversation=conversation_id)
     started = time.monotonic()
     try:
+        # stdin はつながない。agy が確認の入力を待つとサーバーの端末を読みに行き、応答が返らなくなるため
         proc = await asyncio.create_subprocess_exec(
             *cmd,
+            stdin=asyncio.subprocess.DEVNULL,
+            cwd=workdir,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
@@ -102,27 +211,44 @@ async def _call_agy(
         logs.ai_error(rid, "agy", "agy CLI が見つかりません", time.monotonic() - started)
         return "", conversation_id or ""
     limit = (AGY_TIMEOUT if timeout is None else timeout) or None
+    out_buf, err_buf = bytearray(), bytearray()
+    readers = [
+        asyncio.create_task(_read_stream(proc.stdout, out_buf)),
+        asyncio.create_task(_read_stream(proc.stderr, err_buf, on_line=lambda line: logs.ai_note(rid, f"agy stderr: {line}"))),
+    ]
+    watcher = asyncio.create_task(_watch_agy(rid, proc, started, out_buf, err_buf))
+
+    async def finish() -> None:
+        await asyncio.gather(*readers)
+        await proc.wait()
+
+    def give_up(reason: str) -> None:
+        # 止まった原因を追えるよう、それまでの出力とプロセスの様子を残す
+        logs.ai_error(rid, "agy", f"{reason}。agy の動作ログ: {agy_log or 'なし'}", time.monotonic() - started)
+        logs.ai_note(rid, f"打ち切り時の様子: {process_snapshot(proc.pid)}", level=logging.WARNING)
+        logs.ai_note(rid, f"それまでの標準出力 ({len(out_buf)}B):\n{_tail(out_buf)}\n"
+                          f"それまでの標準エラー出力 ({len(err_buf)}B):\n{_tail(err_buf)}", level=logging.WARNING)
+
     try:
         async with progress("agy 応答待ち", limit=limit):
-            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=limit)
+            await asyncio.wait_for(finish(), timeout=limit)
     except asyncio.CancelledError:
         # 打ち切り (延長確認で「打ち切る」) のときは agy プロセスも止める
-        logs.ai_error(rid, "agy", "打ち切り (キャンセル)", time.monotonic() - started)
-        proc.kill()
-        await proc.wait()
+        give_up("打ち切り (キャンセル)")
+        await _kill(proc, readers)
         raise
     except asyncio.TimeoutError:
         # 応答しないまま止まると後続の受信処理がすべて待たされるため打ち切る
         log(f"agy が {limit:.0f} 秒以内に応答しなかったため打ち切りました (AI_GM_AGY_TIMEOUT で変更可)")
-        logs.ai_error(rid, "agy", f"{limit:.0f} 秒以内に応答なし", time.monotonic() - started)
-        proc.kill()
-        await proc.wait()
+        give_up(f"{limit:.0f} 秒以内に応答なし")
+        await _kill(proc, readers)
         return "", conversation_id or ""
+    finally:
+        watcher.cancel()
+    stdout, stderr = bytes(out_buf), bytes(err_buf)
     out_str = stdout.decode("utf-8", errors="replace").strip()
     err_str = stderr.decode("utf-8", errors="replace").strip()
     logs.ai_response(rid, "agy", out_str, time.monotonic() - started, exit_code=proc.returncode)
-    if err_str:
-        logs.ai_note(rid, f"agy の標準エラー出力:\n{err_str}", level=logging.WARNING)
 
     try:
         res = json.loads(out_str)

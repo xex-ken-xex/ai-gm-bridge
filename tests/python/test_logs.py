@@ -110,3 +110,19 @@ def test_stderr_lines_are_errors():
 def test_clip_for_log():
     assert logs.clip_for_log("abc", 5) == "abc"
     assert logs.clip_for_log("a" * 10, 4) == "aaaa…(全 10 文字)"
+
+
+def test_console_stream_erases_rest_of_line_on_a_terminal():
+    """日本語は 1 文字 2 桁なので、空白の上書きでは前の行の文字が残る。端末では行末まで消す"""
+    class Tty(io.StringIO):
+        def isatty(self):
+            return True
+
+    raw = Tty()
+    out = logs.ConsoleStream(raw, now=lambda: datetime.datetime(2026, 10, 18, 0, 0, 0))
+    out.write("\r[集落] 経過 3秒 / タイムアウトまで残り 297秒")
+    out.flush()
+    out.write("\r[集落] 終了 (3.0秒)          ")
+    out.flush()
+    out.write("\n")
+    assert raw.getvalue().endswith("\r2026-10-18 00:00:00 INFO    [集落] 終了 (3.0秒)" + logs.ERASE_EOL + "\n")
