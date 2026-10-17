@@ -84,3 +84,11 @@ def builder_progress(stage: str, step: int, steps: int, step_label: str, elapsed
 def update_dungeon_rooms(scene_key: str, rooms: List[Dict]) -> Dict:
     """create_dungeon_scene (scene_key 付き) で作ったシーンの区画を書き換える (AI の情景ができた区画から順に)"""
     return {"action": "update_dungeon_rooms", "scene_key": scene_key, "rooms": rooms}
+
+
+def npc_dialogue_response(result: Dict, speaker_token_id=None, scene_id=None) -> Dict:
+    """
+    NPC 会話の反応。GM のクライアントだけが受け取る (内心と秘密のヒントを含むため、チャットに出すのは
+    地の文・セリフ・脇役の仕草と判定ボタンだけ)
+    """
+    return {"action": "npc_dialogue_response", "speaker_token_id": speaker_token_id, "scene_id": scene_id, "result": result}

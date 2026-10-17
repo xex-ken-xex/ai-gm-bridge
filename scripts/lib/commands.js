@@ -38,6 +38,11 @@ export function parseAiCommand(text) {
   return null;
 }
 
+/** `/ai NPC` など、NPC のブレイン管理画面を開く指示か (サーバーには送らない) */
+export function isBrainCommand(prompt) {
+  return /^(npc|brain|ブレイン|npcブレイン|npc管理|NPC ?ブレイン)$/i.test(String(prompt ?? "").trim());
+}
+
 /** `/ai ビルダー` など、シナリオビルダー画面を開く指示か (サーバーには送らない) */
 export function isBuilderCommand(prompt) {
   return /^(gui|builder|ビルダー|シナリオ(ビルダー)?|シナリオビルド)$/i.test(String(prompt ?? "").trim());
