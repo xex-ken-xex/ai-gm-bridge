@@ -128,3 +128,17 @@ async def test_call_agy_times_out_and_kills_process(monkeypatch):
     monkeypatch.setattr("asyncio.create_subprocess_exec", slow_agy)
     assert await call_agy("hi", "conv", timeout=0.2) == ("", "conv")
     assert procs[0].returncode is not None
+
+
+async def test_gemini_timeout_falls_back_to_agy():
+    import time
+
+    class SlowClient:
+        class models:
+            @staticmethod
+            def generate_content(**kwargs):
+                time.sleep(0.5)
+
+    agy = make_agy([('{"ok": true}', "c")])
+    llm = LLMService(gemini_client=SlowClient(), agy_runner=agy, sleep=no_sleep, gemini_timeout=0.05)
+    assert await llm.query_json("x") == {"ok": True}

@@ -15,11 +15,12 @@ FVTT API との互換性は [`reference/foundry_vtt_api_spec.md`](../reference/f
 
 | モジュール | 役割 | テスト |
 |---|---|---|
-| `config.py` | 環境変数・定数 (`AI_GM_DATA_DIR`, `AI_GM_HOST`, `AI_GM_PORT`, `AI_GM_GEMINI_MODEL`, `AI_GM_AGY_TIMEOUT`) | — |
+| `config.py` | 環境変数・定数 (`AI_GM_DATA_DIR`, `AI_GM_HOST`, `AI_GM_PORT`, `AI_GM_GEMINI_MODEL`, `AI_GM_AGY_TIMEOUT`, `AI_GM_GEMINI_TIMEOUT`, `AI_GM_MAPGEN_TIMEOUT`) | — |
 | `text.py` | HTML 除去・ダイス式抽出・TTS 話速/音高の正規化 (純粋関数) | `test_text.py` |
 | `protocol.py` | FVTT へ送る action メッセージの組み立て | `test_handlers.py` |
 | `tts.py` | edge-tts 音声合成 (`SpeechSynthesizer`、声色指定対応) | `test_handlers.py` |
 | `llm.py` | Gemini (リトライ付き) / agy CLI 問い合わせ (`LLMService`) | `test_llm.py` |
+| `progress.py` | 待ち時間の表示 (経過時間とタイムアウトまでの残り時間を同じ行に上書き) | `test_progress.py` |
 | `dungeon_scene.py` | ダンジョン生成ウィザード・シーン構築命令 | `test_handlers.py` |
 | `handlers/*.py` | event ごとの処理 (`player_message`, `ai_command`, `ai_choice`, `room_entered`) | `test_handlers.py` |
 | `router.py` | event 名 → ハンドラの振り分け表 | `test_handlers.py` |

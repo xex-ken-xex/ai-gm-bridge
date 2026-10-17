@@ -4,7 +4,8 @@ import asyncio
 import json
 from typing import Awaitable, Callable, Optional, Tuple, Union
 
-from gm_server.config import AGY_TIMEOUT, GEMINI_MODEL
+from gm_server.config import AGY_TIMEOUT, GEMINI_MODEL, GEMINI_TIMEOUT
+from gm_server.progress import progress
 from gm_server.text import first_sentence, newlines_to_br
 from tools.prompt_manager import extract_json_from_response
 
@@ -55,7 +56,8 @@ async def call_agy(
         return "", conversation_id or ""
     limit = AGY_TIMEOUT if timeout is None else timeout
     try:
-        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=limit)
+        async with progress("agy 応答待ち", limit=limit):
+            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=limit)
     except asyncio.TimeoutError:
         # 応答しないまま止まると後続の受信処理がすべて待たされるため打ち切る
         print(f"agy が {limit:.0f} 秒以内に応答しなかったため打ち切りました (AI_GM_AGY_TIMEOUT で変更可)")
@@ -88,8 +90,10 @@ class LLMService:
         model: str = GEMINI_MODEL,
         agy_runner: AgyRunner = call_agy,
         sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
+        gemini_timeout: float = GEMINI_TIMEOUT,
     ):
         self.client = gemini_client
+        self.gemini_timeout = gemini_timeout
         self.model = model
         self.agy_runner = agy_runner
         self.sleep = sleep
@@ -121,7 +125,12 @@ class LLMService:
         for attempt in range(retries):
             try:
                 # 同期 SDK 呼び出しでイベントループを止めないよう別スレッドで実行
-                response = await asyncio.to_thread(self._generate, contents, system_instruction)
+                # 応答が無いまま待ち続けないよう上限を設ける (超えたら TimeoutError → 呼び出し側で agy へ)
+                async with progress("Gemini 応答待ち", limit=self.gemini_timeout):
+                    response = await asyncio.wait_for(
+                        asyncio.to_thread(self._generate, contents, system_instruction),
+                        timeout=self.gemini_timeout,
+                    )
                 return extract_json_from_response(response.text)
             except Exception as e:
                 if is_retryable_error(e) and attempt < retries - 1:

@@ -7,7 +7,8 @@ from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
 
 from gm_server import protocol
-from gm_server.config import SPEAKER_SUPPORT
+from gm_server.config import MAPGEN_TIMEOUT, SPEAKER_SUPPORT
+from gm_server.progress import progress
 from gm_server.tts import voice_filename
 from tools.dungeon_generator import LIGHT_PRESET_KEYS, SCENE_MODES, DungeonGenerator
 from tools.prompt_manager import build_lore_prompt, build_rooms_prompt, get_active_world_info
@@ -211,7 +212,7 @@ async def generate_and_create_dungeon_scene(
     user_prompt: str = "",
     seed: Optional[int] = None,
     scene_mode: str = DEFAULT_SCENE_MODE,
-) -> Dict:
+) -> Optional[Dict]:
     """ダンジョンを生成し、ワールド設定から伝承・生態系・部屋フレーバーを補完してFVTTに新シーン作成命令を送信"""
     scene_mode = normalize_scene_mode(scene_mode)
     mode_name, default_scene_name = SCENE_MODE_INFO[scene_mode]
@@ -222,9 +223,22 @@ async def generate_and_create_dungeon_scene(
     ts = int(time.time())
     png_filename = f"dungeon_{scene_mode}_{w}x{h}_{ts}.png"
     png_filepath = os.path.join(ctx.data_dir, png_filename)
-    gen, walls = await asyncio.to_thread(
-        _build_geometry, w, h, density, loop_ratio, png_filepath, cell_size, seed, scene_mode
-    )
+    try:
+        async with progress("マップ生成", limit=MAPGEN_TIMEOUT):
+            gen, walls = await asyncio.wait_for(
+                asyncio.to_thread(
+                    _build_geometry, w, h, density, loop_ratio, png_filepath, cell_size, seed, scene_mode
+                ),
+                timeout=MAPGEN_TIMEOUT,
+            )
+    except asyncio.TimeoutError:
+        # 別スレッドの計算は止められないが、結果は使わずにウィザードを終える
+        print(f"マップ生成が {MAPGEN_TIMEOUT:.0f} 秒以内に終わらなかったため中止しました (AI_GM_MAPGEN_TIMEOUT で変更可)")
+        await ctx.send(protocol.chat(
+            f"⚠️ マップ生成が {MAPGEN_TIMEOUT:.0f} 秒以内に終わらなかったため中止しました。小さいサイズか低い密度でやり直してください。",
+            speaker=SPEAKER_SUPPORT,
+        ))
+        return None
     print(f"壁セグメント抽出完了: {len(walls)} 本 (部屋数: {len(gen.rooms)})")
 
     # 4. ワールド設定の読み込み

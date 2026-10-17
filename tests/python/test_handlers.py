@@ -214,3 +214,14 @@ async def test_room_flavor_prompt_carries_mode_and_light_presets(make_ctx, sent,
     rooms_prompt = llm.prompts[1][1]
     assert "廃墟" in rooms_prompt and "bonfire_bright" in rooms_prompt
     assert any(w[4] in ("low_wall", "rubble") for w in scene["walls"])
+
+
+async def test_map_generation_timeout_reports_to_gm(make_ctx, sent, monkeypatch):
+    import time
+
+    monkeypatch.setattr(dungeon_scene, "MAPGEN_TIMEOUT", 0.05)
+    monkeypatch.setattr(dungeon_scene, "_build_geometry", lambda *a: time.sleep(0.3))
+    ctx = make_ctx()
+    assert await dungeon_scene.generate_and_create_dungeon_scene(ctx, "small", 0.2) is None
+    assert actions(sent) == ["chat"]
+    assert "中止しました" in sent[0]["content"]
