@@ -92,3 +92,18 @@ def npc_dialogue_response(result: Dict, speaker_token_id=None, scene_id=None) ->
     地の文・セリフ・脇役の仕草と判定ボタンだけ)
     """
     return {"action": "npc_dialogue_response", "speaker_token_id": speaker_token_id, "scene_id": scene_id, "result": result}
+
+
+def execute_npc_turn(decision: Dict, token_id: str, scene_id=None, combat: Optional[Dict] = None) -> Dict:
+    """
+    NPC の手番の行動。combat は頼まれたときの手番 ({id, round, turn}) をそのまま返し、
+    FVTT は受け取ったときに手番が進んでいたら実行しない (M6)。内心 (internal_thought) は GM 宛てのメモにだけ出す
+    """
+    combat = combat or {}
+    return {
+        "action": "execute_npc_turn",
+        "token_id": token_id,
+        "scene_id": scene_id,
+        "combat": {"id": combat.get("id"), "round": combat.get("round"), "turn": combat.get("turn")},
+        "decision": decision,
+    }
