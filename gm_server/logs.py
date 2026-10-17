@@ -17,6 +17,7 @@ import re
 import shutil
 import sys
 import threading
+import unicodedata
 from typing import Callable, Iterable, List, Optional, TextIO
 
 from gm_server import config
@@ -167,6 +168,25 @@ def line_level(line: str, default: int = logging.INFO) -> int:
 ERASE_EOL = "\x1b[K"
 
 
+def display_width(text: str) -> int:
+    """端末での表示幅 (全角・絵文字は 2 桁)"""
+    return sum(2 if unicodedata.east_asian_width(ch) in ("W", "F") else 0 if unicodedata.combining(ch) else 1 for ch in text)
+
+
+def clip_to_width(text: str, width: int) -> str:
+    """表示幅 width に収まるよう末尾を「…」で切り詰める"""
+    if width <= 0 or display_width(text) <= width:
+        return text
+    out, used = "", 0
+    for ch in text:
+        w = display_width(ch)
+        if used + w > width - 1:
+            break
+        out += ch
+        used += w
+    return out + "…"
+
+
 def console_prefix(level: int, now: Optional[datetime.datetime] = None) -> str:
     now = now or datetime.datetime.now()
     return f"{now.strftime(DATE_FORMAT)} {logging.getLevelName(level):<7} "
@@ -220,7 +240,11 @@ class ConsoleStream:
         with self.lock:
             if self.live and self.buf:
                 tail = ERASE_EOL if self.isatty() else ""
-                self.raw.write("\r" + console_prefix(logging.INFO, self.now()) + mask_secrets(self.buf.rstrip()) + tail)
+                line = console_prefix(logging.INFO, self.now()) + mask_secrets(self.buf.rstrip())
+                if self.isatty():
+                    # 端末の幅を超えて折り返すと \r で行頭に戻れず、上書きにならずに行が積み重なる
+                    line = clip_to_width(line, shutil.get_terminal_size((120, 20)).columns - 1)
+                self.raw.write("\r" + line + tail)
         self.raw.flush()
 
 

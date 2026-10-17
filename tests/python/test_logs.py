@@ -126,3 +126,27 @@ def test_console_stream_erases_rest_of_line_on_a_terminal():
     out.flush()
     out.write("\n")
     assert raw.getvalue().endswith("\r2026-10-18 00:00:00 INFO    [集落] 終了 (3.0秒)" + logs.ERASE_EOL + "\n")
+
+
+def test_clip_to_width_counts_wide_characters_as_two():
+    assert logs.display_width("abc区画") == 7
+    assert logs.clip_to_width("abc区画", 7) == "abc区画"
+    clipped = logs.clip_to_width("区画 1・2・3 の描写を作成中", 10)
+    assert logs.display_width(clipped) <= 10 and clipped.endswith("…")
+
+
+def test_live_line_is_clipped_to_terminal_width(monkeypatch):
+    import io
+    import os
+
+    class Tty(io.StringIO):
+        def isatty(self):
+            return True
+
+    raw = Tty()
+    monkeypatch.setattr(logs.shutil, "get_terminal_size", lambda fallback=None: os.terminal_size((40, 20)))
+    out = logs.ConsoleStream(raw, now=lambda: datetime.datetime(2026, 10, 17, 9, 0, 0))
+    out.write("\r[旅路 2/2 地点の描写] 地点 1・2・3・4・5 の描写を作成中 / 経過 0秒 / タイムアウトまで残り 300秒")
+    out.flush()
+    shown = raw.getvalue().split("\r")[-1].replace(logs.ERASE_EOL, "")
+    assert logs.display_width(shown) <= 39
