@@ -1,6 +1,15 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { findRoomAt, RoomVisitTracker, tokenCenter, shouldNarrateToken } from "../../scripts/lib/rooms.js";
+import {
+  findRoomAt,
+  isRoomReached,
+  markRoomReached,
+  REACHED_MARK,
+  RoomVisitTracker,
+  shouldNarrateToken,
+  tokenCenter,
+} from "../../scripts/lib/rooms.js";
+import { buildRoomPage } from "../../scripts/lib/scene-docs.js";
 
 const rooms = [
   { id: 1, name: "部屋 1", grid_x: 2, grid_y: 2, grid_w: 4, grid_h: 3 },
@@ -39,4 +48,44 @@ test("shouldNarrateToken はプレイヤー所有か PC のトークンだけを
   assert.equal(shouldNarrateToken({ hasPlayerOwner: false, actorType: "npc" }), false);
   assert.equal(shouldNarrateToken({ hidden: true, hasPlayerOwner: true, actorType: "character" }), false);
   assert.equal(shouldNarrateToken({}), false);
+});
+
+const page = () => buildRoomPage({ name: "部屋 1: 入口", flavor: "冷たい風", grid_x: 0, grid_y: 0, grid_w: 2, grid_h: 2 }).text.content;
+
+test("markRoomReached は情景テキストの先頭に <到達済> を付け、isRoomReached で判定できる", () => {
+  const html = page();
+  assert.equal(isRoomReached(html), false);
+  const marked = markRoomReached(html);
+  assert.ok(marked.includes('class="ai-gm-room-flavor" style="margin-bottom: 12px; font-style: italic; color: #222;">&lt;到達済&gt; '));
+  assert.equal(isRoomReached(marked), true);
+  // 2 回付けない
+  assert.equal(markRoomReached(marked), marked);
+});
+
+test("isRoomReached は GM が手で書いた印 (エディタで class が消えた段落) も認識する", () => {
+  assert.equal(isRoomReached("<h1>部屋</h1><p>&lt;到達済&gt;&nbsp;冷たい風</p>"), true);
+  assert.equal(isRoomReached("<p><em>&lt;到達済&gt;</em> 冷たい風</p>"), true);
+  assert.equal(isRoomReached(`<p>${REACHED_MARK}</p>`), true);
+  // 段落の途中にあるだけなら未到達 (GM が印を消して文中に言及した等)
+  assert.equal(isRoomReached("<p>冷たい風。&lt;到達済&gt;</p>"), false);
+  assert.equal(isRoomReached(""), false);
+  assert.equal(isRoomReached(undefined), false);
+});
+
+test("markRoomReached は情景段落が無いページでは先頭に印の段落を足す", () => {
+  const marked = markRoomReached("<p>GM が書き換えた本文</p>");
+  assert.equal(marked, "<p>&lt;到達済&gt;</p><p>GM が書き換えた本文</p>");
+  assert.equal(isRoomReached(marked), true);
+});
+
+test("RoomVisitTracker.changedRoom と begin/finish", () => {
+  const t = new RoomVisitTracker();
+  assert.equal(t.changedRoom("tokA", 1), true);
+  assert.equal(t.changedRoom("tokA", 1), false);
+  // 別トークンは訪問済みでも true (到達済みはページの印で判定する)
+  assert.equal(t.changedRoom("tokB", 1), true);
+  assert.equal(t.begin("s", 1), true);
+  assert.equal(t.begin("s", 1), false);
+  t.finish("s", 1);
+  assert.equal(t.begin("s", 1), true);
 });

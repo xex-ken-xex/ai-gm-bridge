@@ -225,7 +225,7 @@ export function buildRoomPage(r, consts) {
         <div style="font-size: 16px; font-weight: bold; color: #782e22; border-bottom: 2px solid #782e22; margin-bottom: 8px; padding-bottom: 4px;">
           ${escapeHtml(r.name)} ${restBadge}
         </div>
-        <p style="margin-bottom: 12px; font-style: italic; color: #222;">
+        <p class="ai-gm-room-flavor" style="margin-bottom: 12px; font-style: italic; color: #222;">
           ${textToHtml(r.flavor)}
         </p>
         ${gmNoteHtml}
