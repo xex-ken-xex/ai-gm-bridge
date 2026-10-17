@@ -190,7 +190,7 @@ def build_rooms_prompt(
 
 def extract_json_from_response(resp_text: str) -> Optional[dict | list]:
     """AIの応答テキストからJSON部分（オブジェクトまたは配列）を安全に抽出・パース"""
-    if not resp_text:
+    if not resp_text or not isinstance(resp_text, str):
         return None
     cleaned = resp_text.strip()
     # Markdownコードブロックの除去
@@ -204,21 +204,17 @@ def extract_json_from_response(resp_text: str) -> Optional[dict | list]:
     except Exception:
         pass
 
-    # 2. 最初と最後の括弧を探して抽出
-    # オブジェクト
-    obj_match = re.search(r"(\{[\s\S]*\})", cleaned)
-    if obj_match:
+    # 2. 前後に説明文が付いている場合: 最初に現れる { または [ から JSON を読み取る
+    #    (オブジェクトを先に探すと、要素1件の配列 `[{...}]` が dict として返ってしまうため出現順に試す)
+    decoder = json.JSONDecoder()
+    for attempts, match in enumerate(re.finditer(r"[\{\[]", cleaned)):
+        if attempts >= 50:
+            break
         try:
-            return json.loads(obj_match.group(1))
-        except Exception:
-            pass
-
-    # 配列
-    arr_match = re.search(r"(\[[\s\S]*\])", cleaned)
-    if arr_match:
-        try:
-            return json.loads(arr_match.group(1))
-        except Exception:
-            pass
+            value, _ = decoder.raw_decode(cleaned, match.start())
+        except ValueError:
+            continue
+        if isinstance(value, (dict, list)):
+            return value
 
     return None

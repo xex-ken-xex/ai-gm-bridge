@@ -81,6 +81,16 @@ nohup python3 ai_gm_server.py > ai_gm_server.log 2>&1 &
 
 ---
 
+## 自動テスト
+
+```bash
+python3 -m pip install -r requirements-dev.txt
+python3 -m pytest   # サーバー側
+npm test            # FVTT 側の純粋関数 (Node 18+)
+```
+
+---
+
 ## ディレクトリ構成
 
 ```text
@@ -89,8 +99,11 @@ ai-gm-bridge/
 ├── README.md                 # 本ドキュメント
 ├── AGENTS.md                 # エージェント・開発者向け詳細仕様書
 ├── module.json               # FVTT モジュール定義ファイル
-├── bridge.js                 # FVTT クライアント側スクリプト
-├── ai_gm_server.py           # WebSocket サーバー & 音声・プロンプト統合
+├── bridge.js                 # FVTT クライアント側エントリーポイント
+├── scripts/                  # FVTT クライアント側の実装 (actions / net / lib)
+├── ai_gm_server.py           # WebSocket サーバー起動スクリプト
+├── gm_server/                # サーバー実装 (LLM・音声・ハンドラ・ルーター)
+├── tests/                    # 自動テスト (python: pytest / js: node:test)
 ├── requirements.txt          # Python 依存ライブラリ一覧
 ├── prompts/                  # プロンプトテンプレート (キャッシュ保持)
 │   ├── dungeon_lore_prompt.txt   # ダンジョン伝承・生態系生成用
@@ -104,6 +117,7 @@ ai-gm-bridge/
     ├── specification.md      # システム全体設計書
     ├── Todo.md               # 開発タスクリスト
     ├── ai_dungeon_flavor_spec.md # AI 階層フレーバー生成仕様
+    ├── reference_porting_review.md # reference/ 移植レビュー & 移植計画
     ├── dungeon_math_investigation.md # グラフ・数学モデリング調査
     └── investigation_fvtt_dnd5e_control.md # FVTT制御仕様調査
 ```

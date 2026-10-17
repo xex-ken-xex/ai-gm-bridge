@@ -22,8 +22,18 @@ ai-gm-bridge/
 ├── requirements.txt     # Python 依存ライブラリ一覧
 ├── AGENTS.md            # 本ドキュメント (AI エージェント向け仕様・規約)
 ├── module.json          # Foundry VTT モジュール定義ファイル
-├── bridge.js            # FVTT 側 ESModule スクリプト (WebSocket クライアント)
-├── ai_gm_server.py      # メインバックエンド (WebSocket サーバー + Gemini + edge-tts)
+├── bridge.js            # FVTT 側 ESModule エントリーポイント (フック登録)
+├── scripts/             # FVTT 側の実装 (bridge.js から import)
+│   ├── actions.js       # サーバーからの action 処理 (Foundry 依存)
+│   ├── net/connection.js # WebSocket 接続・自動再接続・受信の直列処理
+│   └── lib/             # Foundry 非依存の純粋関数 (html / commands / chat-filter / rooms / scene-docs / cards)
+├── ai_gm_server.py      # サーバー起動スクリプト (実装は gm_server/)
+├── gm_server/           # バックエンド実装 (config / text / protocol / tts / llm / dungeon_scene / handlers / router / app)
+├── tests/
+│   ├── python/          # pytest (python3 -m pytest)
+│   └── js/              # node:test (npm test)
+├── package.json         # JS テスト用 (依存パッケージなし)
+├── pytest.ini / requirements-dev.txt
 ├── prompts/             # プロンプトテンプレート (キャッシュ保持)
 │   ├── dungeon_lore_prompt.txt   # ダンジョン伝承・生態系生成用
 │   └── dungeon_rooms_prompt.txt  # 部屋トポロジー・情景補完用
@@ -37,6 +47,7 @@ ai-gm-bridge/
     ├── Todo.md          # 開発タスクリスト & ロードマップ
     ├── investigation_fvtt_dnd5e_control.md # FVTT & D&D5e 制御仕様調査レポート (シーン・マップ・トークン・ロール)
     ├── dungeon_generator_spec.md # ダンジョン自動生成ツール仕様書
+    ├── reference_porting_review.md # reference/ 移植レビュー (問題点リスト・移植フェーズ)
     ├── dungeon_math_investigation.md # ダンジョン生成の数学的モデリング調査・仕様化検討レポート
     └── ai_dungeon_flavor_spec.md # AI ダンジョン階層フレーバー生成仕様 & DMノウハウ調査レポート
 ```
@@ -177,6 +188,11 @@ python3 tools/test_voice.py
 
 # チャット・ダイス音テスト用
 python3 tools/test_send.py
+
+# 自動テスト (変更時は両方を通すこと)
+python3 -m pip install -r requirements-dev.txt
+python3 -m pytest
+npm test
 ```
 
 ---
@@ -197,4 +213,11 @@ python3 tools/test_send.py
 
 ### 4. 既存コードおよびドキュメントの維持
 - 既存の日本語コメント、Docstring、ログメッセージを尊重し、変更理由がない限り削除しないでください。
-- WebSocket メッセージプロトコルを変更する場合は、`bridge.js` と `ai_gm_server.py`（および必要に応じてテストスクリプト）の整合性を必ず同時に担保してください。
+- WebSocket メッセージプロトコルを変更する場合は、`scripts/actions.js`・`bridge.js` と `gm_server/protocol.py`・`gm_server/handlers/`（および必要に応じてテストスクリプト）の整合性を必ず同時に担保してください。
+
+### 5. モジュール構成とテスト
+- 新しい event は `gm_server/handlers/` にハンドラを追加し `gm_server/router.py` の `HANDLERS` に登録します。新しい action は `scripts/actions.js` の `ACTION_HANDLERS` に追加します。
+- FVTT のグローバル (`game`, `ui`, `CONST` など) に触れないロジックは `scripts/lib/` に純粋関数として置き、`tests/js/` にテストを書いてください。
+- AI やサーバー由来のテキストを HTML に埋め込むときは必ず `escapeHtml` / `textToHtml` を通してください。
+- AI が投稿する `ChatMessage` には `generatedFlags()` を付けてください (ループ検知に使います)。
+- `reference/` からの移植は [`docs/reference_porting_review.md`](docs/reference_porting_review.md) のフェーズ順に行います。

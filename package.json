@@ -1,0 +1,9 @@
+{
+  "name": "ai-gm-bridge",
+  "private": true,
+  "type": "module",
+  "description": "Foundry VTT モジュール側 (bridge.js / scripts/) のテスト用設定",
+  "scripts": {
+    "test": "node --test tests/js/*.test.js"
+  }
+}
