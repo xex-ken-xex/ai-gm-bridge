@@ -314,8 +314,10 @@ function dialogHtml() {
     .map(j => ({ id: j.id, label: j.name, checked: refs.has(j.id), attr: "data-reference" }));
   return `
   <div class="aib">
-    ${checkList("📚 ワールド資料として AI に渡すジャーナル", refItems)}
-    <label class="aib-auto-extend"><input type="checkbox" data-auto-extend ${state.autoExtend ? "checked" : ""}> ⏱️ タイムアウトしたら自動で延長する (最大 5 回)</label>
+    <div class="aib-top">
+      ${checkList("📚 ワールド資料として AI に渡すジャーナル", refItems)}
+      <label class="aib-auto-extend"><input type="checkbox" data-auto-extend ${state.autoExtend ? "checked" : ""}> ⏱️ タイムアウトしたら自動で延長する (最大 5 回)</label>
+    </div>
     <div class="aib-tabs">
       ${TABS.map(t => `<button type="button" class="aib-tab ${state.activeTab === t.id ? "active" : ""}" data-target="${t.id}">${t.label}</button>`).join("")}
     </div>
