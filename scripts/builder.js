@@ -297,40 +297,7 @@ function dialogHtml() {
   const refItems = (game.journal?.contents ?? [])
     .filter(j => !atlasIds.has(j.id) && !j.name.startsWith("【探索録】"))
     .map(j => ({ id: j.id, label: j.name, checked: refs.has(j.id), attr: "data-reference" }));
-  // FVTT のフォーム用 CSS (label・textarea・button の幅や並び) に負けないよう、レイアウトは !important で固定する
   return `
-  <style>
-    .aib { color: #f0f0e0 !important; background: #1a1a20; padding: 10px; border-radius: 6px; font-size: 13px; display: flex !important; flex-direction: column !important; gap: 8px; }
-    .aib * { box-sizing: border-box; }
-    .aib .aib-grid { display: grid !important; gap: 8px 10px; align-items: start; }
-    .aib .aib-settings { grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)) !important; }
-    .aib .aib-two { grid-template-columns: 1fr 1fr !important; }
-    .aib .aib-field { display: flex !important; flex-direction: column !important; gap: 3px; min-width: 0; margin: 0 !important; }
-    .aib .aib-label { color: #f39c12; font-weight: bold; font-size: 12px; line-height: 1.3; }
-    .aib input[type=text], .aib textarea, .aib select { width: 100% !important; max-width: none !important; min-width: 0 !important; background: #101014 !important; color: #f0f0f0 !important; border: 1px solid #555 !important; border-radius: 4px; padding: 5px 6px; font-family: inherit; font-size: 12px; margin: 0 !important; }
-    .aib input[type=text], .aib select { height: 28px !important; }
-    .aib input[type=range] { width: 100% !important; margin: 4px 0 0 0 !important; }
-    .aib textarea { resize: vertical !important; line-height: 1.5; }
-    .aib textarea.aib-tall { height: 190px !important; min-height: 120px; }
-    .aib textarea.aib-short { height: 90px !important; min-height: 60px; }
-    .aib .aib-pub { border-left: 3px solid #2ecc71; padding-left: 6px; }
-    .aib .aib-dm { border-left: 3px solid #e74c3c; padding-left: 6px; }
-    .aib .aib-canon { border-left: 3px solid #3498db; padding-left: 6px; }
-    .aib .aib-tabs { display: flex !important; flex-direction: row !important; gap: 4px; border-bottom: 2px solid #e67e22; }
-    .aib .aib-tab { flex: 1 1 0 !important; width: auto !important; margin: 0 !important; padding: 6px; background: #2a2a32 !important; color: #ccc !important; border: none !important; border-radius: 4px 4px 0 0; cursor: pointer; font-weight: bold; }
-    .aib .aib-tab.active { background: #e67e22 !important; color: #111 !important; }
-    .aib .aib-panel { display: none !important; flex-direction: column; gap: 10px; max-height: 620px; overflow-y: auto; padding-right: 4px; }
-    .aib .aib-panel.active { display: flex !important; }
-    .aib .aib-box { background: #101014; border: 1px solid #333; border-radius: 4px; padding: 4px 8px; }
-    .aib .aib-box > summary { cursor: pointer; color: #f39c12; font-weight: bold; font-size: 12px; }
-    .aib .aib-checks { display: grid !important; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)) !important; gap: 2px 10px; max-height: 120px; overflow-y: auto; margin-top: 4px; }
-    .aib .aib-check { display: flex !important; flex-direction: row !important; align-items: center; gap: 4px; margin: 0 !important; color: #f0f0e0; font-weight: normal; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .aib .aib-check input { flex: none; width: 14px !important; height: 14px !important; margin: 0 !important; }
-    .aib .aib-actions { display: flex !important; flex-direction: row !important; gap: 6px; padding-top: 8px; border-top: 1px solid #333; }
-    .aib .aib-actions button { flex: 1 1 0 !important; width: auto !important; margin: 0 !important; color: #fff !important; border: none !important; padding: 7px; border-radius: 4px; cursor: pointer; font-weight: bold; white-space: nowrap; }
-    .aib .aib-gen { background: #8e44ad !important; } .aib .aib-save { background: #2980b9 !important; } .aib .aib-build { background: #27ae60 !important; }
-    .aib .aib-busy { color: #f1c40f; margin: 0; }
-  </style>
   <div class="aib">
     ${checkList("📚 ワールド資料として AI に渡すジャーナル", refItems)}
     <div class="aib-tabs">
@@ -366,6 +333,8 @@ async function openDialog(content) {
   const DialogV2 = foundry?.applications?.api?.DialogV2;
   if (DialogV2) {
     const app = new DialogV2({
+      // 見た目は styles/builder.css (module.json の styles)。DialogV2 の content に <style> を書いても反映されない
+      classes: ["ai-gm-builder"],
       window: { title, resizable: true },
       position: { width: 860, height: "auto" },
       content,
@@ -381,7 +350,7 @@ async function openDialog(content) {
       content,
       buttons: { close: { label: "閉じる" } },
       render: html => resolve({ app, root: html instanceof HTMLElement ? html : html[0] }),
-    }, { width: 860, height: "auto", resizable: true });
+    }, { classes: ["dialog", "ai-gm-builder"], width: 860, height: "auto", resizable: true });
     app.render(true);
   });
 }

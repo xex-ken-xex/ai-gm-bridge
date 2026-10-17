@@ -23,6 +23,7 @@ ai-gm-bridge/
 ├── AGENTS.md            # 本ドキュメント (AI エージェント向け仕様・規約)
 ├── module.json          # Foundry VTT モジュール定義ファイル
 ├── bridge.js            # FVTT 側 ESModule エントリーポイント (フック登録)
+├── styles/builder.css   # シナリオビルダー画面の CSS (module.json の styles。DialogV2 の content 内 <style> は効かない)
 ├── scripts/             # FVTT 側の実装 (bridge.js から import)
 │   ├── actions.js       # サーバーからの action 処理 (Foundry 依存)
 │   ├── builder.js       # シナリオビルダー画面 (DialogV2) と地図帳ジャーナル (Foundry 依存)
