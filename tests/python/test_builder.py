@@ -17,7 +17,7 @@ def progress(monkeypatch):
     """画面の進捗表示 (builder_progress) は sent と分けて集める"""
     calls = []
 
-    def fake_status(ctx, stage, step, steps, step_label):
+    def fake_status(ctx, stage, step, steps, step_label, kind="draft"):
         async def _send(elapsed, remaining, detail):
             calls.append((stage, step, steps, step_label, detail))
         return _send
@@ -26,8 +26,13 @@ def progress(monkeypatch):
     return calls
 
 
+def main(sent):
+    """画面の進捗表示 (builder_progress) を除いたメッセージ"""
+    return [m for m in sent if m["action"] != "builder_progress"]
+
+
 def actions(sent):
-    return [m["action"] for m in sent]
+    return [m["action"] for m in main(sent)]
 
 
 def region_result(**extra):
@@ -213,7 +218,7 @@ async def test_build_wilderness_regenerates_the_same_points(make_ctx, sent, tmp_
         "map": {"seed": 1234}, "landmarks": landmarks,
     })
     assert actions(sent) == ["create_dungeon_scene", "play_sound"]
-    scene = sent[0]
+    scene = main(sent)[0]
     assert scene["scene_mode"] == "wilderness" and scene["room_count"] == len(topos)
     assert [r["title"] for r in scene["rooms"]] == [f"地点{t['id']}" for t in topos]
     assert scene["lore"]["dm_secrets"] == "見張り"
@@ -225,7 +230,9 @@ async def test_build_wilderness_without_seed_drops_landmarks(make_ctx, sent):
     await builder.handle_build_scene(ctx, {"scene_mode": "wilderness", "landmarks": [{"id": 0, "title": "古い下書き"}]})
     assert actions(sent) == ["chat", "create_dungeon_scene", "play_sound"]
     assert "seed" in sent[0]["content"]
-    assert all(r["title"] != "古い下書き" for r in sent[1]["rooms"])
+    assert all(r["title"] != "古い下書き" for r in main(sent)[1]["rooms"])
+    # 画面の「構築中」は最後に消す
+    assert sent[-1]["action"] == "builder_progress" and sent[-1]["finished"] is True and sent[-1]["kind"] == "build"
 
 
 async def test_build_site_assigns_roles_before_asking_ai(make_ctx, sent):
@@ -237,8 +244,10 @@ async def test_build_site_assigns_roles_before_asking_ai(make_ctx, sent):
         "public_lore": "大目標: 荷を取り返す", "dm_secrets": "頭目は孤立している", "sub_objectives": subs,
         "parents": [{"category": "settlement", "name": "グレン", "canon": ["手仕事: 香木の鈴"]}],
     })
-    assert actions(sent) == ["chat", "create_dungeon_scene", "play_sound"]
-    scene = sent[1]
+    # マップだけのシーンを先に作り、情景は後から (この AI は何も返さない)
+    assert actions(sent) == ["create_dungeon_scene", "chat", "chat", "play_sound"]
+    scene = main(sent)[0]
+    assert scene["scene_key"].startswith("builder-8-")
     assert scene["grid_width"] == 100  # xlarge は small に丸める (M12)
     prompts = [p for kind, p in llm.prompts if kind == "json"]
     assert prompts and all("頭目は孤立している" in p and "香木の鈴" in p for p in prompts)
@@ -298,7 +307,43 @@ async def test_stage_status_sends_builder_progress(make_ctx, sent, monkeypatch):
     send = builder.stage_status(ctx, "wilderness", 2, 2, "地点の描写")
     await send(12.6, 287.4, "完了 1/2")
     assert sent == [{
-        "action": "builder_progress", "stage": "wilderness", "step": 2, "steps": 2, "step_label": "地点の描写",
+        "action": "builder_progress", "kind": "draft", "finished": False, "stage": "wilderness", "step": 2, "steps": 2, "step_label": "地点の描写",
         "detail": "完了 1/2", "elapsed": 12, "remaining": 287,
     }]
     assert deadline.STATUS_INTERVAL > 0
+
+
+async def test_build_site_reflects_rooms_as_each_job_finishes(make_ctx, sent):
+    """できた区画から順に update_dungeon_rooms で反映する"""
+    def answer(prompt):
+        rooms = json.loads(prompt.split("【あなたが書く区画】\n")[1].split("\n")[0])
+        return [{"id": r["id"], "title": f"区画{r['id']}", "tts_narration": "音"} for r in rooms]
+
+    ctx = make_ctx(PromptLLM(answer))
+    await builder.handle_build_scene(ctx, {"scene_mode": "ruins", "name": "塔", "seed": 8, "density": 0.5})
+    msgs = main(sent)
+    scene = msgs[0]
+    updates = [m for m in msgs if m["action"] == "update_dungeon_rooms"]
+    assert updates and all(u["scene_key"] == scene["scene_key"] for u in updates)
+    updated = [r for u in updates for r in u["rooms"]]
+    assert len(updated) == len({r["id"] for r in updated})
+    assert all(r["title"] == f"区画{r['id'] - 1}" for r in updated)  # 部屋ノートの id は 1 始まり
+    # 先に送ったシーンの区画は、AI の情景が無い既定の文面
+    assert not any(r["title"].startswith("区画") for r in scene["rooms"])
+    assert msgs[-1]["action"] == "play_sound" and f"{len(updated)}区画に情景" in msgs[-2]["content"]
+    progress_kinds = {(m["kind"], m["step_label"]) for m in sent if m["action"] == "builder_progress"}
+    assert ("build", "完了") in progress_kinds
+
+
+async def test_auto_extend_flag_is_passed_to_the_deadline(make_ctx, sent, monkeypatch):
+    seen = []
+
+    async def fake_deadline(ctx, label, awaitable, limit, **kwargs):
+        seen.append(kwargs.get("auto_extend"))
+        return await awaitable
+
+    monkeypatch.setattr(builder, "run_with_deadline", fake_deadline)
+    ctx = make_ctx(FakeLLM(json_responses=[region_result(), region_result()]))
+    await builder.handle_generate_stage(ctx, {"stage": "region", "auto_extend": True})
+    await builder.handle_generate_stage(ctx, {"stage": "region"})
+    assert seen == [True, False]

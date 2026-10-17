@@ -140,3 +140,17 @@ async def test_run_with_deadline_reports_status_until_done(make_ctx):
     count = len(calls)
     await asyncio.sleep(0.03)
     assert len(calls) == count  # 終わったら止まる
+
+
+async def test_auto_extend_skips_the_card_up_to_the_limit(make_ctx, sent, monkeypatch):
+    monkeypatch.setattr(deadline, "AUTO_EXTEND_MAX", 2)
+    ctx = make_ctx()
+
+    async def work():
+        await asyncio.sleep(0.25)
+        return "ok"
+
+    # 0.1 秒ごとに期限が来るが、2 回までは確認せずに延長する
+    assert await deadline.run_with_deadline(ctx, "テスト", work(), limit=0.1, auto_extend=True,
+                                            notify_interval=100) == "ok"
+    assert not [m for m in sent if m.get("action") == "interactive_card"]

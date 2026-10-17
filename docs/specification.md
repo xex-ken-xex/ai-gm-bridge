@@ -177,6 +177,11 @@ GM が対話型チャットカード上の選択肢ボタンをクリックし�
 `builder_build_scene` は上記の文脈に加えて `scene_mode`, `name`, `public_lore`, `dm_secrets` を送ります。
 旅路は `map` (`{"seed": …}`) と `landmarks`、遺跡は `size_key` (small / medium)・`density`・`loop_ratio`・`sub_objectives` を送ります。
 サーバーは `create_dungeon_scene` で応答します。
+遺跡は、ジェネレータ (`tools/dungeon_generator.py`) で地図・壁・区画を作った時点で仮の区画名のまま `scene_key` 付きの `create_dungeon_scene` を送り、
+AI が区画の情景を書き終えたものから `update_dungeon_rooms` で差し替えます (AI の応答を待たずにシーンを開けます)。
+
+`builder_generate_stage` と `builder_build_scene` は `auto_extend` (bool。ビルダー画面の「⏱️ タイムアウトしたら自動で延長する」、既定 false) を送ります。
+true のときはタイムアウトしても GM に確認せず、同じ秒数だけ自動で延長します (最大 5 回。それ以降は通常どおりカードで確認します)。
 
 集落と旅路の下書きは、AI の応答が長くタイムアウトしやすいため 2 回に分けて問い合わせます
 (集落: 骨組み → 人物と秘密、旅路: 骨組みと地点の一覧 → 地点の描写を 5 地点ずつ。Gemini は並列、agy は 1 本ずつ)。FVTT に返す `builder_stage_result` の形は 1 回のときと同じです。
@@ -273,6 +278,18 @@ PC のトークン (プレイヤー所有、または所有者未設定の `char
 - `walls[i][4]` (壁タイプ): `normal` / `door` / `secret_door` / `low_wall`・`rubble` (移動のみ遮り、視線・光・音は通す)。省略時は `normal`。
 - `rooms[i].light_preset`: `torch_warm` / `bonfire_bright` / `magic_blue` / `acid_green` / `moonlight_dim` / `dark` / `null`。`null` で安全な休憩所なら焚き火を置きます。
 - `rooms[i].ambient_sound_src`: 部屋の中心に置く環境音 (Data フォルダからの相対パス)。半径は部屋の長辺のマス数 × 1 マスの距離 × 0.85。
+- `scene_key` (任意): 後から届く `update_dungeon_rooms` の宛先の目印。シーンの flag (`scene_key`, `journal_id`) に記録します。
+  区画の光源・環境音・ノート・探索録のページには flag `room_id` (区画の `id`) を付けます。
+
+#### 5-2. 区画の差し替え (`update_dungeon_rooms`)
+
+```json
+{ "action": "update_dungeon_rooms", "scene_key": "builder-1234-ab12cd34",
+  "rooms": [{ "id": 3, "name": "区画 3: 崩れた礼拝堂", "flavor": "…", "gm_notes": "…", "icon": "icons/svg/temple.svg", "light_preset": "magic_blue", "cx": 350, "cy": 450 }] }
+```
+
+`scene_key` の flag を持つシーンを探し、`rooms[i].id` が同じ区画について、探索録のページ (名前と本文)・マップノート (名前とアイコン)・光源と環境音 (作り直し)・シーンの `rooms` flag を書き換えます。
+シーンが見つからなければ何もしません (コンソールに警告)。
 
 #### 6. シナリオビルダーの下書き (`builder_stage_result`)
 
@@ -292,12 +309,15 @@ PC のトークン (プレイヤー所有、または所有者未設定の `char
 `create_dungeon_scene.lore.dm_secrets` があれば、探索録の伝承ページに DM 専用情報として表示します。
 
 #### 7. シナリオビルダーの進捗 (`builder_progress`)
-下書きの作成中、2 秒ごとに送ります。ビルダー画面の「⏳ AI が下書きを作成中です…」の行に、工程・完了数・経過・タイムアウトまでの残り秒を出します
-(次の進捗が届くまでは画面側で 1 秒ずつ数え進めます。残りが 0 になったら、延長確認のカードを選ぶよう案内します)。
+下書きの作成中とシーン構築中に、2 秒ごとに送ります。ビルダー画面の「⏳ AI が下書きを作成中です…」(`kind: "draft"`) /
+「⏳ シーンを構築中です…」(`kind: "build"`) の行に、工程・完了数・経過・タイムアウトまでの残り秒を出します
+(次の進捗が届くまでは画面側で 1 秒ずつ数え進めます。残りが 0 になったら、延長確認のカードを選ぶよう案内します。自動延長のときは「自動で延長します」)。
+作業中は「AI で下書き」「シーン構築」のボタンを押せなくします。
+シーン構築の最後 (失敗しても) に `finished: true` を送り、画面の「構築中」の行を消します。下書きは `builder_stage_result` が届いた時点で消します。
 
 ```json
-{ "action": "builder_progress", "stage": "wilderness", "step": 2, "steps": 2, "step_label": "地点の描写",
-  "detail": "完了 1/2", "elapsed": 40, "remaining": 260 }
+{ "action": "builder_progress", "kind": "build", "finished": false, "stage": "site_lore", "step": 2, "steps": 2,
+  "step_label": "区画の情景", "detail": "完了 1/2", "elapsed": 40, "remaining": 260 }
 ```
 
 ---

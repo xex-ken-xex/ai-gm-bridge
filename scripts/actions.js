@@ -7,16 +7,18 @@ import { buildChoiceCardHtml, buildSceneSuccessCardHtml } from "./lib/cards.js";
 import {
   buildJournalPages,
   buildNoteDocs,
+  buildRoomPage,
   buildRoomLights,
   buildRoomSounds,
   buildSceneData,
   buildStartGoalLights,
   buildWallDocs,
   DEFAULT_LEVEL_ID,
+  mergeRoomUpdates,
+  MODULE_ID,
+  roomIdOf,
   sceneSize,
 } from "./lib/scene-docs.js";
-
-const MODULE_ID = "ai-gm-bridge";
 
 async function postChat(data) {
   await ChatMessage.create({
@@ -62,16 +64,22 @@ async function showInteractiveCard(data) {
   });
 }
 
+/** シーン描画原点オフセット (sceneX, sceneY) を取得 (padding や shiftX/Y に追従) */
+function sceneOffset(scene) {
+  const dims = scene.dimensions ?? (scene.getDimensions ? scene.getDimensions() : {});
+  return { offsetX: dims.sceneX ?? 0, offsetY: dims.sceneY ?? 0 };
+}
+
 async function createDungeonScene(data) {
   ui.notifications.info("AI GM Bridge: ダンジョンシーンを構築中...");
   const { width: sceneWidth, height: sceneHeight } = sceneSize(data);
 
   const newScene = await Scene.create(buildSceneData(data));
   console.log("AI GM Bridge | ダンジョンシーン作成完了 ID:", newScene.id);
+  // scene_key: 後から届く update_dungeon_rooms (AI の情景ができた区画) の宛先の目印
+  if (data.scene_key) await newScene.setFlag(MODULE_ID, "scene_key", data.scene_key);
 
-  // シーン描画原点オフセット (sceneX, sceneY) を取得 (padding や shiftX/Y に追従)
-  const dims = newScene.dimensions ?? (newScene.getDimensions ? newScene.getDimensions() : {});
-  const offset = { offsetX: dims.sceneX ?? 0, offsetY: dims.sceneY ?? 0 };
+  const offset = sceneOffset(newScene);
 
   // v14 レベル背景画像の明示的確認・更新 (確実な描画反映)
   const firstLevel = newScene.levels?.get?.(DEFAULT_LEVEL_ID) || newScene.levels?.contents?.[0];
@@ -112,6 +120,7 @@ async function createDungeonScene(data) {
       noteCount = noteDocs.length;
       // 部屋メタデータをシーンのフラグに記録（トークン進入判定用）
       await newScene.setFlag(MODULE_ID, "rooms", data.rooms);
+      await newScene.setFlag(MODULE_ID, "journal_id", journal.id);
     }
   }
 
@@ -135,6 +144,54 @@ async function createDungeonScene(data) {
   });
 }
 
+/**
+ * 先に作ったダンジョンシーンの区画を、AI の情景ができたものから差し替える。
+ * ジャーナルのページ・マップノート・光源・環境音・シーンの rooms フラグを書き換える
+ */
+async function updateDungeonRooms(data) {
+  const scene = game.scenes?.find(s => s.getFlag(MODULE_ID, "scene_key") === data.scene_key);
+  if (!scene) {
+    console.warn("AI GM Bridge | 区画の差し替え先のシーンが見つかりません:", data.scene_key);
+    return;
+  }
+  const { rooms, changed } = mergeRoomUpdates(scene.getFlag(MODULE_ID, "rooms") ?? [], data.rooms);
+  if (changed.length === 0) return;
+  const ids = new Set(changed.map(c => c.room.id));
+  const offset = sceneOffset(scene);
+
+  // ジャーナルのページとマップノート (区画 id の flag で探し、無ければ差し替え前の名前で探す)
+  const journal = game.journal?.get(scene.getFlag(MODULE_ID, "journal_id"));
+  const pages = journal?.pages?.contents ?? [];
+  const notes = scene.notes?.contents ?? [];
+  const pageUpdates = [];
+  const noteUpdates = [];
+  for (const { before, room } of changed) {
+    const page = pages.find(p => roomIdOf(p) === room.id) ?? pages.find(p => p.name === before.name);
+    if (page) {
+      const pageData = buildRoomPage(room, CONST);
+      pageUpdates.push({ _id: page.id, name: pageData.name, text: pageData.text });
+    }
+    const note = notes.find(n => roomIdOf(n) === room.id) ?? notes.find(n => n.text === before.name);
+    if (note) noteUpdates.push({ _id: note.id, text: room.name, texture: { src: room.icon || "icons/svg/book.svg" } });
+  }
+  if (journal && pageUpdates.length) await journal.updateEmbeddedDocuments("JournalEntryPage", pageUpdates);
+  if (noteUpdates.length) await scene.updateEmbeddedDocuments("Note", noteUpdates);
+
+  // 光源と環境音は区画ごとに作り直す (light_preset / ambient_sound_src が変わるため)
+  const changedRooms = changed.map(c => c.room);
+  const oldLights = (scene.lights?.contents ?? []).filter(l => ids.has(roomIdOf(l))).map(l => l.id);
+  if (oldLights.length) await scene.deleteEmbeddedDocuments("AmbientLight", oldLights);
+  const lights = buildRoomLights(changedRooms, offset);
+  if (lights.length) await scene.createEmbeddedDocuments("AmbientLight", lights);
+  const oldSounds = (scene.sounds?.contents ?? []).filter(s => ids.has(roomIdOf(s))).map(s => s.id);
+  if (oldSounds.length) await scene.deleteEmbeddedDocuments("AmbientSound", oldSounds);
+  const sounds = buildRoomSounds(changedRooms, offset, scene.grid?.distance ?? 5);
+  if (sounds.length) await scene.createEmbeddedDocuments("AmbientSound", sounds);
+
+  await scene.setFlag(MODULE_ID, "rooms", rooms);
+  console.log(`AI GM Bridge | 『${scene.name}』の区画を ${changed.length} 件差し替えました`);
+}
+
 export const ACTION_HANDLERS = {
   chat: postChat,
   roll: rollDice,
@@ -142,6 +199,7 @@ export const ACTION_HANDLERS = {
   interactive_card: showInteractiveCard,
   progress: showProgress,
   create_dungeon_scene: createDungeonScene,
+  update_dungeon_rooms: updateDungeonRooms,
   builder_stage_result: handleBuilderStageResult,
   builder_progress: handleBuilderProgress,
 };

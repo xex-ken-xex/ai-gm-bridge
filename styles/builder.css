@@ -30,3 +30,4 @@
 .ai-gm-builder .aib .aib-actions button { flex: 1 1 0; width: auto; margin: 0; color: #fff; border: none; padding: 7px; border-radius: 4px; cursor: pointer; font-weight: bold; white-space: nowrap; }
 .ai-gm-builder .aib .aib-gen { background: #8e44ad; } .ai-gm-builder .aib .aib-save { background: #2980b9; } .ai-gm-builder .aib .aib-build { background: #27ae60; }
 .ai-gm-builder .aib .aib-busy { color: #f1c40f; margin: 0; }
+.ai-gm-builder .aib .aib-auto-extend { display: flex; align-items: center; gap: 4px; margin: 4px 0; }

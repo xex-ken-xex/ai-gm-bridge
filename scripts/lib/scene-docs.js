@@ -4,6 +4,34 @@
 import { escapeHtml, textToHtml } from "./html.js";
 
 export const DEFAULT_LEVEL_ID = "defaultLevel0000";
+export const MODULE_ID = "ai-gm-bridge";
+
+/** 区画の id を flags に付ける (区画を後から差し替えるとき、光源・環境音・ノート・ページを探す目印) */
+export function roomFlags(r) {
+  return r?.id == null ? {} : { flags: { [MODULE_ID]: { room_id: r.id } } };
+}
+
+/** ドキュメント (またはそのデータ) に付いた区画の id。無ければ null */
+export function roomIdOf(doc) {
+  return doc?.flags?.[MODULE_ID]?.room_id ?? null;
+}
+
+/**
+ * 既存の区画一覧に、AI の情景ができた区画を id で上書きする (update_dungeon_rooms)。
+ * 返り値: rooms = 上書き後の一覧 (並び順は元のまま)、changed = [{ before, room }] (一覧に無い id は無視)
+ */
+export function mergeRoomUpdates(rooms, updates) {
+  const byId = new Map((updates || []).filter(u => u?.id != null).map(u => [u.id, u]));
+  const changed = [];
+  const merged = (rooms || []).map(before => {
+    const update = byId.get(before.id);
+    if (!update) return before;
+    const room = { ...before, ...update };
+    changed.push({ before, room });
+    return room;
+  });
+  return { rooms: merged, changed };
+}
 
 /** v14.368 の CONST 値 (CONST が無い環境でのフォールバック) */
 export const FALLBACK_CONSTS = {
@@ -130,7 +158,7 @@ export function buildRoomLights(rooms, { offsetX = 0, offsetY = 0 } = {}) {
     const key = r.light_preset || (r.safe_rest ? "bonfire_bright" : null);
     const preset = key ? LIGHT_PRESETS[key] : null;
     if (!preset) continue;
-    lights.push({ x: r.cx + offsetX, y: r.cy + offsetY, config: structuredClone(preset) });
+    lights.push({ x: r.cx + offsetX, y: r.cy + offsetY, config: structuredClone(preset), ...roomFlags(r) });
   }
   return lights;
 }
@@ -153,6 +181,7 @@ export function buildRoomSounds(rooms, { offsetX = 0, offsetY = 0 } = {}, gridDi
       volume: 0.65,
       walls: true,
       easing: true,
+      ...roomFlags(r),
     });
   }
   return sounds;
@@ -237,6 +266,7 @@ export function buildRoomPage(r, consts) {
       `,
       format: html,
     },
+    ...roomFlags(r),
   };
 }
 
@@ -262,5 +292,6 @@ export function buildNoteDocs(rooms, journalId, createdPages, { offsetX = 0, off
     texture: { src: r.icon || "icons/svg/book.svg" },
     iconSize: 36,
     fontSize: 16,
+    ...roomFlags(r),
   }));
 }

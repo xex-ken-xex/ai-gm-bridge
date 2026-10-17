@@ -4,7 +4,7 @@ import asyncio
 import os
 import time
 from dataclasses import dataclass
-from typing import Callable, Dict, List, Optional, Tuple
+from typing import Awaitable, Callable, Dict, List, Optional, Tuple
 
 from gm_server import protocol
 from gm_server.config import AGY_TIMEOUT, GEMINI_TIMEOUT, LLM_CONCURRENCY, MAPGEN_TIMEOUT, SPEAKER_SUPPORT
@@ -232,6 +232,8 @@ async def query_room_flavors(
     prompt_for_chunk: Optional[Callable[[List[Dict]], str]] = None,
     label: str = "部屋の情景",
     on_status=None,
+    auto_extend: bool = False,
+    on_chunk: Optional[Callable[[List[Dict]], Awaitable[None]]] = None,
 ) -> Optional[List[Dict]]:
     """
     部屋の情景を ROOMS_PER_JOB 部屋ずつのジョブに分け、ctx.llm.concurrency 本まで並列に問い合わせる
@@ -239,6 +241,7 @@ async def query_room_flavors(
     返す id は 0 始まり。全ジョブ失敗なら None (呼び出し側は既定のノートを使う)。
     prompt_for_chunk を渡すと、1 ジョブ分の部屋からプロンプトを作る処理を差し替えられる (シナリオビルダー用)。
     label は進捗表示とログに使う名前 (旅路の地点にも使うため)。
+    on_chunk を渡すと、ジョブが 1 つ終わるたびにその結果 (0 始まりの id) で呼ぶ (できた区画から順にシーンへ反映する)。
     """
     selected = prioritize_key_topologies(topologies, max_count=MAX_ROOMS_FOR_AI)
     if prompt_for_chunk is None:
@@ -268,7 +271,13 @@ async def query_room_flavors(
             finally:
                 done += 1
         items = [r for r in parsed if isinstance(r, dict)] if isinstance(parsed, list) else []
-        flavors.extend(_normalize_chunk_ids(items, [t["id"] for t in chunk]))
+        got = _normalize_chunk_ids(items, [t["id"] for t in chunk])
+        flavors.extend(got)
+        if on_chunk and got:
+            try:
+                await on_chunk(got)
+            except Exception as e:
+                log(f"[{label}] 途中結果の反映に失敗しました ({e})")
 
     # タイムアウト: 1 ジョブの上限 × 並列で回す段数
     rounds = -(-len(chunks) // concurrency)
@@ -276,6 +285,7 @@ async def query_room_flavors(
         await run_with_deadline(
             ctx, label, asyncio.gather(*(run(c) for c in chunks)),
             limit=llm_step_limit(ctx) * rounds, detail=lambda: f"完了 {done}/{len(chunks)}", on_status=on_status,
+            auto_extend=auto_extend,
         )
     except asyncio.TimeoutError:
         log(f"{label}を打ち切りました (完了 {done}/{len(chunks)})。残りは既定のノートを使用します。")
@@ -371,7 +381,8 @@ async def generate_and_create_dungeon_scene(
 
 
 async def build_map(
-    ctx, size_key: str, density: float, loop_ratio: float, seed: Optional[int], scene_mode: str
+    ctx, size_key: str, density: float, loop_ratio: float, seed: Optional[int], scene_mode: str,
+    on_status=None, auto_extend: bool = False,
 ) -> Optional[Tuple[DungeonGenerator, List[list], str]]:
     """幾何生成・PNG 書き出し・壁抽出。打ち切られたら GM に知らせて None"""
     w, h, _, cell_size = SIZE_PRESETS.get(size_key, SIZE_PRESETS[DEFAULT_SIZE_KEY])
@@ -382,7 +393,7 @@ async def build_map(
         gen, walls = await run_with_deadline(
             ctx, "マップ生成",
             asyncio.to_thread(_build_geometry, w, h, density, loop_ratio, png_filepath, cell_size, seed, scene_mode),
-            limit=MAPGEN_TIMEOUT,
+            limit=MAPGEN_TIMEOUT, on_status=on_status, auto_extend=auto_extend,
         )
     except asyncio.TimeoutError:
         # 別スレッドの計算は止められないが、結果は使わずに終える
@@ -397,9 +408,12 @@ async def build_map(
 
 async def send_scene(
     ctx, name: str, scene_mode: str, png_filename: str, gen: DungeonGenerator, walls: List[list],
-    lore: Dict, rooms: List[Dict], density: float, speech_text: str,
+    lore: Dict, rooms: List[Dict], density: float, speech_text: Optional[str], scene_key: Optional[str] = None,
 ) -> Dict:
-    """FVTT へ create_dungeon_scene を送り、完了を音声で報告する"""
+    """
+    FVTT へ create_dungeon_scene を送り、完了を音声で報告する (speech_text が None なら報告しない)。
+    scene_key を付けると、あとから update_dungeon_rooms で区画を書き換えられる
+    """
     scene_msg = {
         "action": "create_dungeon_scene",
         "name": name,
@@ -416,7 +430,11 @@ async def send_scene(
         "goal_pos": list(gen.goal_pos) if gen.goal_pos else None,
         "walls": walls,
     }
+    if scene_key:
+        scene_msg["scene_key"] = scene_key
     await ctx.send(scene_msg)
+    if speech_text is None:
+        return scene_msg
 
     file_name = voice_filename("voice_dungeon")
     if await ctx.tts.synthesize(speech_text, file_name):

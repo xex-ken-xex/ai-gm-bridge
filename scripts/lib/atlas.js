@@ -301,8 +301,9 @@ export function actorsContext(actors) {
  * シナリオビルダーの「作成中」の行 (builder_progress)。
  * sinceSec は進捗を受け取ってからの秒数 (次の進捗が届くまで画面側で数え進める)。
  */
-export function formatBuilderProgress(progress, sinceSec = 0) {
-  const base = "⏳ AI が下書きを作成中です…";
+export function formatBuilderProgress(progress, sinceSec = 0, kind = "draft") {
+  // kind: "draft" (下書き作成) / "build" (シーン構築)。進捗が届いていれば、そちらの kind を使う
+  const base = (progress?.kind ?? kind) === "build" ? "⏳ シーンを構築中です…" : "⏳ AI が下書きを作成中です…";
   if (!progress) return base;
   const since = Math.max(0, Math.floor(Number(sinceSec) || 0));
   const parts = [];
@@ -311,6 +312,7 @@ export function formatBuilderProgress(progress, sinceSec = 0) {
   if (progress.detail) parts.push(progress.detail);
   parts.push(`経過 ${(Number(progress.elapsed) || 0) + since}秒`);
   const remaining = (Number(progress.remaining) || 0) - since;
-  parts.push(remaining > 0 ? `タイムアウトまで残り ${remaining}秒` : "タイムアウト。延長するかチャットのカードで選んでください");
+  if (remaining > 0) parts.push(`タイムアウトまで残り ${remaining}秒`);
+  else parts.push(progress.auto_extend ? "タイムアウト。自動で延長します" : "タイムアウト。延長するかチャットのカードで選んでください");
   return `${base} ${parts.join(" ・ ")}`;
 }

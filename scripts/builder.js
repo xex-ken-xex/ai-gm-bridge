@@ -48,8 +48,11 @@ const state = {
   openIds: {},
   // この画面で引いたカード (保存前でも次の抽選で避ける)
   sessionCards: [],
+  // tab -> 作業中の種類 ("draft": 下書き作成 / "build": シーン構築)。作業中でなければ偽
   pending: {},
-  // tab -> 下書き作成の進捗 (builder_progress と受け取った時刻)
+  // タイムアウトしたら GM に確認せずに自動で延長する (既定 OFF。サーバー側で上限 5 回)
+  autoExtend: false,
+  // tab -> 下書き作成・シーン構築の進捗 (builder_progress と受け取った時刻)
   progress: {},
   progressTimer: null,
 };
@@ -285,6 +288,8 @@ function panelHtml(tab) {
   }
 
   const busy = state.pending[tab.id] ? `<p class="aib-busy" data-busy-for="${tab.id}">${escapeHtml(progressText(tab.id))}</p>` : "";
+  // 作業中は AI を呼ぶボタン (下書き・シーン構築) を押せなくする (二重の依頼を防ぐ)
+  if (state.pending[tab.id]) buttons = buttons.replace(/data-action="(generate|build)"/g, 'data-action="$1" disabled');
   return `
     <section class="aib-panel ${state.activeTab === tab.id ? "active" : ""}" data-tab="${tab.id}">
       <div class="aib-grid aib-settings">${settings.join("")}</div>
@@ -304,6 +309,7 @@ function dialogHtml() {
   return `
   <div class="aib">
     ${checkList("📚 ワールド資料として AI に渡すジャーナル", refItems)}
+    <label class="aib-auto-extend"><input type="checkbox" data-auto-extend ${state.autoExtend ? "checked" : ""}> ⏱️ タイムアウトしたら自動で延長する (最大 5 回)</label>
     <div class="aib-tabs">
       ${TABS.map(t => `<button type="button" class="aib-tab ${state.activeTab === t.id ? "active" : ""}" data-target="${t.id}">${t.label}</button>`).join("")}
     </div>
@@ -394,6 +400,9 @@ function bindEvents(root) {
     root.querySelectorAll(".aib-tab").forEach(b => b.classList.toggle("active", b === btn));
     root.querySelectorAll(".aib-panel").forEach(p => p.classList.toggle("active", p.dataset.tab === state.activeTab));
   }));
+  root.querySelector("[data-auto-extend]")?.addEventListener("change", ev => {
+    state.autoExtend = ev.target.checked;
+  });
   root.querySelectorAll("[data-reference]").forEach(el => el.addEventListener("change", async () => {
     const ids = [...root.querySelectorAll("[data-reference]")].filter(c => c.checked).map(c => c.dataset.reference);
     await game.user?.setFlag?.(MODULE_ID, REFERENCE_FLAG, ids);
@@ -466,6 +475,7 @@ function requestDraft(tab) {
     user_prompt: d.prompt ?? "",
     // GM が自分で付けた名前は AI にもそのまま使わせる (AI が前回付けた名前は付け直してよい)
     fixed_name: gmTypedName(tab.id),
+    auto_extend: state.autoExtend,
     ...stageContext(parentIds, state.openIds[tab.id]),
   };
   if (tab.id === "settlement") payload.settlement_scale = d.scale || SETTLEMENT_SCALES[0];
@@ -475,7 +485,7 @@ function requestDraft(tab) {
     payload.actors_context = selectedActors(d.actorIds ?? []);
   }
   if (state.send(payload)) {
-    state.pending[tab.id] = true;
+    state.pending[tab.id] = "draft";
     state.progress[tab.id] = null;
     ui.notifications.info(`AI GM Bridge: ${tab.label.replace(/^\S+\s*\d+\.\s*/, "")}の下書きを依頼しました。`);
     openScenarioBuilder(tab.id);
@@ -484,7 +494,8 @@ function requestDraft(tab) {
 
 function progressText(tabId) {
   const p = state.progress[tabId];
-  return formatBuilderProgress(p?.data, p ? (Date.now() - p.at) / 1000 : 0);
+  const progress = p ? { ...p.data, auto_extend: state.autoExtend } : null;
+  return formatBuilderProgress(progress, p ? (Date.now() - p.at) / 1000 : 0, state.pending[tabId] || "draft");
 }
 
 /** 「作成中」の行だけを書き換える (画面全体を描き直すと入力中の文字が消えるため) */
@@ -503,10 +514,19 @@ function refreshProgressLines() {
   }
 }
 
-/** サーバーから届いた下書き作成の進捗 (工程・完了数・残り秒) を「作成中」の行に出す */
-export function handleBuilderProgress(data) {
+/** サーバーから届いた下書き作成・シーン構築の進捗 (工程・完了数・残り秒) を「作成中」の行に出す */
+export async function handleBuilderProgress(data) {
   const tab = TABS.find(t => t.stage === data.stage);
   if (!tab || !state.pending[tab.id]) return;
+  if (data.finished) {
+    // シーン構築が終わった (失敗も含む)。「構築中」の行を消して描き直す
+    if (state.pending[tab.id] !== "build") return;
+    state.pending[tab.id] = false;
+    state.progress[tab.id] = null;
+    refreshProgressLines();
+    if (state.root?.isConnected) await openScenarioBuilder(tab.id);
+    return;
+  }
   state.progress[tab.id] = { data, at: Date.now() };
   refreshProgressLines();
   // 次の進捗が届くまでの間も、経過と残り秒を 1 秒ごとに数え進める
@@ -602,6 +622,7 @@ async function buildScene(tab) {
     user_prompt: d.prompt ?? "",
     public_lore: d.public ?? "",
     dm_secrets: d.dm ?? "",
+    auto_extend: state.autoExtend,
     ...ctx,
   };
   if (tab.id === "wilderness") {
@@ -616,6 +637,8 @@ async function buildScene(tab) {
     });
   }
   if (state.send(payload)) {
+    state.pending[tab.id] = "build";
+    state.progress[tab.id] = null;
     ui.notifications.info(`AI GM Bridge: 『${entry.name}』のシーン構築を依頼しました。`);
   }
   await openScenarioBuilder(tab.id);

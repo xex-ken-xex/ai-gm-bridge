@@ -62,10 +62,15 @@ def builder_stage_result(
 
 
 def builder_progress(stage: str, step: int, steps: int, step_label: str, elapsed: float, remaining: float,
-                     detail: str = "") -> Dict:
-    """シナリオビルダーの下書き作成の進捗 (画面の「作成中」の行に出す)。remaining はタイムアウトまでの残り秒"""
+                     detail: str = "", kind: str = "draft", finished: bool = False) -> Dict:
+    """
+    シナリオビルダーの進捗 (画面の「作成中」の行に出す)。remaining はタイムアウトまでの残り秒。
+    kind: draft (下書き作成) / build (シーン構築)。finished: シーン構築が終わった (画面の「構築中」を消す)
+    """
     return {
         "action": "builder_progress",
+        "kind": kind,
+        "finished": finished,
         "stage": stage,
         "step": step,
         "steps": steps,
@@ -74,3 +79,8 @@ def builder_progress(stage: str, step: int, steps: int, step_label: str, elapsed
         "elapsed": int(elapsed),
         "remaining": max(0, int(remaining)),
     }
+
+
+def update_dungeon_rooms(scene_key: str, rooms: List[Dict]) -> Dict:
+    """create_dungeon_scene (scene_key 付き) で作ったシーンの区画を書き換える (AI の情景ができた区画から順に)"""
+    return {"action": "update_dungeon_rooms", "scene_key": scene_key, "rooms": rooms}

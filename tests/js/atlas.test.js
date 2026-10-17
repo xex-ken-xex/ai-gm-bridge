@@ -170,3 +170,12 @@ test("formatBuilderProgress: 工程・完了数・経過・残り秒を並べ、
   assert.ok(formatBuilderProgress({ ...p, remaining: 2 }, 5).endsWith("タイムアウト。延長するかチャットのカードで選んでください"));
   assert.equal(formatBuilderProgress(null), "⏳ AI が下書きを作成中です…");
 });
+
+test("formatBuilderProgress: シーン構築中は文言が変わり、自動延長なら確認を求めない", () => {
+  assert.equal(formatBuilderProgress(null, 0, "build"), "⏳ シーンを構築中です…");
+  const p = { kind: "build", step: 2, steps: 2, step_label: "区画の情景", elapsed: 10, remaining: 0 };
+  const text = formatBuilderProgress(p);
+  assert.ok(text.startsWith("⏳ シーンを構築中です… 工程 2/2「区画の情景」"));
+  assert.ok(text.endsWith("延長するかチャットのカードで選んでください"));
+  assert.ok(formatBuilderProgress({ ...p, auto_extend: true }).endsWith("タイムアウト。自動で延長します"));
+});
