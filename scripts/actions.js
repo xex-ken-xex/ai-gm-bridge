@@ -6,6 +6,8 @@ import { buildChoiceCardHtml, buildSceneSuccessCardHtml } from "./lib/cards.js";
 import {
   buildJournalPages,
   buildNoteDocs,
+  buildRoomLights,
+  buildRoomSounds,
   buildSceneData,
   buildStartGoalLights,
   buildWallDocs,
@@ -77,10 +79,16 @@ async function createDungeonScene(data) {
     await newScene.createEmbeddedDocuments("Wall", wallDocs);
   }
 
-  // スタート地点とゴール地点に光源を配置
-  const lights = buildStartGoalLights(data, offset);
+  // スタート/ゴール地点と各部屋 (light_preset) に光源を配置
+  const lights = [...buildStartGoalLights(data, offset), ...buildRoomLights(data.rooms, offset)];
   if (lights.length > 0) {
     await newScene.createEmbeddedDocuments("AmbientLight", lights);
+  }
+
+  // 部屋ごとの環境音 (ambient_sound_src)
+  const sounds = buildRoomSounds(data.rooms, offset, newScene.grid?.distance ?? 5);
+  if (sounds.length > 0) {
+    await newScene.createEmbeddedDocuments("AmbientSound", sounds);
   }
 
   // 部屋フレーバーノート用ジャーナル帳の作成 & マップノートピンの配置
@@ -112,6 +120,8 @@ async function createDungeonScene(data) {
       sceneHeight,
       wallCount: newScene.walls?.size ?? wallDocs.length,
       noteCount,
+      lightCount: lights.length,
+      soundCount: sounds.length,
       journalId: journal?.id,
     }),
     whisper: [game.user.id],

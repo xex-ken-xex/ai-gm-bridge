@@ -31,6 +31,86 @@ FLOOR = "□"
 START = "◆"
 GOAL = "★"
 
+# 空間タイプ (シーンモード)
+#   underground: 地下迷宮・城塞 (完全閉鎖空間。扉・隠し扉あり)
+#   ruins      : 野外の廃墟・古戦場 (崩落石垣・低い壁・瓦礫で視線が通る)
+#   wilderness : 野外の旅路 (ポイントクロール。部屋=ランドマーク、通路=道。壁なし)
+SCENE_MODES = ("underground", "ruins", "wilderness")
+
+# 壁タイプ (extract_walls の5要素目。FVTT 側で Wall の move/sight/door に変換)
+WALL_TYPES = ("normal", "low_wall", "rubble", "door", "secret_door")
+
+# 部屋ごとの照明プリセット (FVTT 側の scripts/lib/scene-docs.js LIGHT_PRESETS と揃えること)
+LIGHT_PRESET_KEYS = ("torch_warm", "bonfire_bright", "magic_blue", "acid_green", "moonlight_dim", "dark")
+
+# AI フレーバーが無い場合のモード別テーマ (underground は get_room_flavor_notes 内の themes を使用)
+MODE_FALLBACK_THEMES = {
+    "ruins": [
+        {"type": "breach", "title": "崩れた城壁の切れ目", "icon": "icons/svg/door-open-outline.svg",
+         "flavor": "崩落した石垣の隙間から風が吹き込み、足元には砕けた切石と枯れ草が散らばっている。壁の向こうの気配が、低くなった石積み越しにうかがえる。"},
+        {"type": "courtyard", "title": "苔むした中庭", "icon": "icons/svg/statue.svg",
+         "flavor": "敷石の継ぎ目から雑草が伸び、中央の干上がった泉には苔が厚く張りついている。四方の回廊は半ば崩れ、空が大きく開けている。"},
+        {"type": "tower", "title": "倒壊した見張り塔", "icon": "icons/svg/eye.svg",
+         "flavor": "折れた塔の基部に螺旋階段の名残が数段だけ残る。積み重なった瓦礫の上からは、周囲の廃墟を見渡せそうだ。"},
+        {"type": "chapel", "title": "草に埋もれた礼拝堂", "icon": "icons/svg/temple.svg",
+         "flavor": "屋根の落ちた礼拝堂に陽光が差し込み、倒れた長椅子を蔦が覆っている。祭壇の石には古い紋章がかすかに残る。"},
+        {"type": "barracks", "title": "焼け落ちた兵舎跡", "icon": "icons/svg/sword.svg",
+         "flavor": "黒く焦げた梁が斜めに突き出し、灰の積もった床に錆びた鎧の部品が転がっている。焦げ臭さが今も残っている。"},
+        {"type": "well", "title": "古井戸の広場", "icon": "icons/svg/book.svg",
+         "flavor": "石組みの古井戸を囲むように小さな広場がある。井戸の底からは湿った冷気が上がり、縄の擦れた跡が新しい。"},
+    ],
+    "wilderness": [
+        {"type": "signpost", "title": "古い道標の分かれ道", "icon": "icons/svg/direction.svg",
+         "flavor": "苔に覆われた石の道標が二股の道に立っている。刻まれた地名は風化し、片方の道には新しい轍が残る。"},
+        {"type": "ford", "title": "渓流の渡し場", "icon": "icons/svg/waterfall.svg",
+         "flavor": "浅瀬を冷たい水が音を立てて流れ、平たい飛び石が対岸へ続いている。水際の泥に大きな足跡がある。"},
+        {"type": "camp", "title": "倒木の野営跡", "icon": "icons/svg/campfire.svg",
+         "flavor": "巨大な倒木が風よけになった窪地に、古い焚き火の跡が残っている。雨をしのげる張り出しもある。"},
+        {"type": "lookout", "title": "崖上の見張り岩", "icon": "icons/svg/eye.svg",
+         "flavor": "せり出した岩棚から谷の先まで見通せる。冷たい風が強く吹きつけ、遠くに目的地の影がかすむ。"},
+        {"type": "marsh", "title": "霧の湿原", "icon": "icons/svg/hazard.svg",
+         "flavor": "膝まで沈む湿地に白い霧が漂い、どこからか水鳥の羽音が聞こえる。足元の道は板切れで細く続いている。"},
+        {"type": "trail", "title": "獣道の茂み", "icon": "icons/svg/pawprint.svg",
+         "flavor": "背丈ほどの藪を分けて細い獣道が続く。枝に引っかかった毛の束と、折られたばかりの小枝が目につく。"},
+    ],
+}
+
+MODE_ENDPOINTS = {
+    "underground": {
+        "start": ("迷宮の入口広間 (安全地帯)", "icons/svg/door-open-outline.svg",
+                  "地上へと続く階段の麓にある、冷たい地下の空気が吹き抜ける石造りの広間。古い苔むした石畳が広がり、ここから未知の迷宮が始まる。",
+                  "安全な退路。地上へ撤退可能。"),
+        "goal": ("最深部：災厄の祭壇 (ボス部屋)", "icons/svg/skull.svg",
+                 "圧倒的な威圧感と澱んだ魔力が充満する巨大な円形広間。中央の黒曜石の祭壇には不穏な紫の光が揺らめき、古代の封印紋が刻まれている。",
+                 "最深部ボス部屋。手強い敵と主要な財宝が眠る。"),
+    },
+    "ruins": {
+        "start": ("廃墟の外門跡 (安全地帯)", "icons/svg/door-open-outline.svg",
+                  "崩れかけた門柱の間を風が抜け、草に埋もれた石畳が奥の廃墟へと続いている。振り返れば来た道がよく見通せる。",
+                  "安全な退路。外の街道へ撤退可能。"),
+        "goal": ("最奥：崩れた大広間 (決戦の場)", "icons/svg/skull.svg",
+                 "天井の半分が崩れ落ちた大広間に、瓦礫で組まれた粗末な玉座が据えられている。焚き火の煙と鉄の匂いが立ちこめている。",
+                 "最奥の決戦場。首領と主要な財宝がある。"),
+    },
+    "wilderness": {
+        "start": ("集落の出口 (出発地点)", "icons/svg/door-open-outline.svg",
+                  "集落の柵が途切れた先に、踏み固められた街道が丘の向こうへ続いている。背後から家々の煙の匂いが届く。",
+                  "旅の出発地点。集落へいつでも戻れる。"),
+        "goal": ("目的地の入口", "icons/svg/ruins.svg",
+                 "木々が途切れた先に、目指してきた場所の入口が姿を現す。あたりの鳥の声が急に途絶えた。",
+                 "旅路の終点。ここから廃墟・迷宮へ入る。"),
+    },
+}
+
+ROOM_LABEL = {"underground": "部屋", "ruins": "区画", "wilderness": "地点"}
+
+# PNG 描画色 (壁/床)
+MODE_COLORS = {
+    "underground": {"wall": (25, 25, 28), "floor": (195, 185, 165)},      # 岩壁と石畳
+    "ruins": {"wall": (74, 88, 58), "floor": (172, 164, 146)},            # 草地・崩れた石垣と敷石
+    "wilderness": {"wall": (52, 90, 46), "floor": (178, 152, 104)},       # 森と土の道・開けた空き地
+}
+
 
 class UnionFind:
     """素集合データ構造 (Kruskal法による最小全域木構築用)"""
@@ -59,8 +139,12 @@ class DungeonGenerator:
         height: int = 100,
         seed: Optional[int] = None,
         density: Optional[float] = None,
-        loop_ratio: Optional[float] = None
+        loop_ratio: Optional[float] = None,
+        scene_mode: str = "underground"
     ):
+        if scene_mode not in SCENE_MODES:
+            raise ValueError(f"scene_mode は {SCENE_MODES} のいずれかを指定してください: {scene_mode}")
+        self.scene_mode = scene_mode
         self.width = max(20, width)
         self.height = max(20, height)
 
@@ -94,6 +178,8 @@ class DungeonGenerator:
         self.start_room_idx: int = 0
         self.goal_room_idx: int = 0
         self.max_depth: int = 0
+        # 閉路に含まれない辺 (橋)。in_cycle 判定に使用
+        self.bridge_edges: set = set()
         self.floor_count: int = 0
         self.elapsed_time: float = 0.0
 
@@ -154,8 +240,11 @@ class DungeonGenerator:
             self.grid[y][0] = WALL
             self.grid[y][self.width - 1] = WALL
 
-    def generate(self):
-        """ダンジョンを生成 (MST + ループ付加 + 最短経路ゴール探索)"""
+    def generate(self, target_room_count: Optional[int] = None):
+        """
+        ダンジョンを生成 (MST + ループ付加 + 最短経路ゴール探索)
+        target_room_count を指定すると密度による部屋数計算を上書きする (ワイルダネスのランドマーク数など)
+        """
         t0 = time.time()
         area = self.width * self.height
 
@@ -172,6 +261,8 @@ class DungeonGenerator:
         scale_factor = (area / 10000) ** 0.5
         base_room_count = int(scale_factor * (10 + 38 * (self.density ** 1.3)))
         base_room_count = max(8, min(500, base_room_count))
+        if target_room_count is not None:
+            base_room_count = max(2, min(500, int(target_room_count)))
 
         # 部屋サイズの決定 (密度が高いほど部屋もやや広めに)
         min_room_size = max(5, int(min(self.width, self.height) * (0.025 + 0.012 * self.density)))
@@ -276,6 +367,7 @@ class DungeonGenerator:
 
         self.adj = adj
         self.dist = dist
+        self.bridge_edges = self._find_bridges(num_rooms, adj)
 
         farthest_room_idx = max(range(num_rooms), key=lambda i: dist[i])
         self.start_room_idx = start_room_idx
@@ -294,9 +386,7 @@ class DungeonGenerator:
     def get_room_topologies(self) -> List[Dict]:
         """各部屋の離散グラフ上のトポロジー（次数・深さ・面積・サイクル所属等）を抽出"""
         topologies = []
-        num_rooms = len(self.rooms)
-        # MST以外の追加辺（サイクル形成辺）
-        cycle_edges = set(self.edges[num_rooms - 1:]) if len(self.edges) >= num_rooms else set()
+        bridges = self.bridge_edges
 
         for i, room in enumerate(self.rooms):
             rx, ry, rw, rh = room
@@ -305,7 +395,8 @@ class DungeonGenerator:
             depth = self.dist[i] if hasattr(self, 'dist') and i < len(self.dist) else 0
             is_start = (i == self.start_room_idx)
             is_goal = (i == self.goal_room_idx)
-            in_cycle = any((i, v) in cycle_edges or (v, i) in cycle_edges for v in neighbors)
+            # 橋でない辺 (どこかの閉路に含まれる辺) に接していれば周回路上の部屋
+            in_cycle = any((min(i, v), max(i, v)) not in bridges for v in neighbors)
 
             topologies.append({
                 "id": i,
@@ -321,6 +412,46 @@ class DungeonGenerator:
             })
         return topologies
 
+    @staticmethod
+    def _find_bridges(num_nodes: int, adj: Dict[int, List[int]]) -> set:
+        """
+        無向グラフの橋 (取り除くと連結成分が増える辺) を (小さいid, 大きいid) の集合で返す。
+        閉路に含まれる辺は橋ではない。再帰を使わない Tarjan 法 (部屋数が多くても再帰上限に当たらない)
+        """
+        disc = [-1] * num_nodes
+        low = [0] * num_nodes
+        bridges = set()
+        timer = 0
+        for root in range(num_nodes):
+            if disc[root] != -1:
+                continue
+            disc[root] = low[root] = timer
+            timer += 1
+            # (ノード, 親, 隣接リストの走査位置, 親への辺を1本スキップ済みか)
+            stack = [(root, -1, 0, False)]
+            while stack:
+                node, parent, idx, skipped = stack.pop()
+                neighbors = adj.get(node, [])
+                if idx < len(neighbors):
+                    stack.append((node, parent, idx + 1, skipped))
+                    nxt = neighbors[idx]
+                    if nxt == parent and not skipped:
+                        # 親への辺は1本だけ無視する (多重辺は閉路として扱う)
+                        stack[-1] = (node, parent, idx + 1, True)
+                        continue
+                    if disc[nxt] == -1:
+                        disc[nxt] = low[nxt] = timer
+                        timer += 1
+                        stack.append((nxt, node, 0, False))
+                    else:
+                        low[node] = min(low[node], disc[nxt])
+                else:
+                    if parent != -1:
+                        low[parent] = min(low[parent], low[node])
+                        if low[node] > disc[parent]:
+                            bridges.add((min(node, parent), max(node, parent)))
+        return bridges
+
     def get_fill_ratio(self) -> float:
         """床の充填率 (Fill Ratio: ρ)"""
         return round(self.floor_count / (self.width * self.height), 4)
@@ -335,8 +466,9 @@ class DungeonGenerator:
         img_w = self.width * cell_size
         img_h = self.height * cell_size
 
-        color_wall = (25, 25, 28)       # 濃いスレート岩壁
-        color_floor = (195, 185, 165)   # 石畳の床
+        palette = MODE_COLORS[self.scene_mode]
+        color_wall = palette["wall"]
+        color_floor = palette["floor"]
         color_start = (46, 204, 113)    # 緑のスタート地点
         color_goal = (231, 76, 60)      # 赤のゴール/ボス部屋
 
@@ -368,7 +500,112 @@ class DungeonGenerator:
             f.write(struct.pack(">I", len(compressed)) + b"IDAT" + compressed + struct.pack(">I", zlib.crc32(b"IDAT" + compressed)))
             f.write(struct.pack(">I", 0) + b"IEND" + struct.pack(">I", zlib.crc32(b"IEND")))
 
-    def extract_walls(self, grid_size: int = 100) -> List[List[int]]:
+    def extract_walls(self, grid_size: int = 100) -> List[list]:
+        """
+        壁と扉の線分リスト [x0, y0, x1, y1, type] を返却 (座標はマップ画像上のピクセル)。
+        type は WALL_TYPES のいずれか。
+          underground: 境界は normal。部屋の出入口に door / secret_door (袋小路の部屋)
+          ruins      : 境界を短く区切り normal / low_wall / rubble を混在。出入口の一部に door
+          wilderness : 壁なし (空リスト)
+        乱数は seed から派生させるため、同じ seed なら何度呼んでも同じ結果になる。
+        """
+        if self.scene_mode == "wilderness":
+            return []
+        rng = random.Random(f"{self.seed}:walls")
+        walls: List[list] = []
+        for seg in self._extract_boundary_segments(grid_size):
+            if self.scene_mode == "ruins":
+                for piece in self._split_segment(seg, max_cells=4, grid_size=grid_size):
+                    roll = rng.random()
+                    wall_type = "normal" if roll < 0.55 else ("low_wall" if roll < 0.85 else "rubble")
+                    walls.append(piece + [wall_type])
+            else:
+                walls.append(seg + ["normal"])
+        walls.extend(self._door_segments(grid_size, rng))
+        return walls
+
+    @staticmethod
+    def _split_segment(seg: List[int], max_cells: int, grid_size: int) -> List[List[int]]:
+        """軸平行の線分を max_cells マスごとに分割"""
+        x0, y0, x1, y1 = seg
+        step = max_cells * grid_size
+        pieces = []
+        if y0 == y1:
+            start = x0
+            while start < x1:
+                end = min(start + step, x1)
+                pieces.append([start, y0, end, y1])
+                start = end
+        else:
+            start = y0
+            while start < y1:
+                end = min(start + step, y1)
+                pieces.append([x0, start, x1, end])
+                start = end
+        return pieces
+
+    def _room_openings(self) -> List[Tuple[int, str, int, int, int]]:
+        """
+        各部屋の出入口 (通路が部屋の辺に接する幅1〜2マスの開口部) を列挙。
+        戻り値: (部屋index, 向き "h"|"v", 線の位置, 開始マス, 終了マス)
+        部屋の辺に沿って通路が走っている場合 (長い開口) は扉を付けない
+        """
+        openings = []
+        for idx, (rx, ry, rw, rh) in enumerate(self.rooms):
+            sides = [
+                ("h", ry, [(c, ry - 1) for c in range(rx, rx + rw)]),        # 上辺
+                ("h", ry + rh, [(c, ry + rh) for c in range(rx, rx + rw)]),  # 下辺
+                ("v", rx, [(rx - 1, r) for r in range(ry, ry + rh)]),        # 左辺
+                ("v", rx + rw, [(rx + rw, r) for r in range(ry, ry + rh)]),  # 右辺
+            ]
+            for orient, line, cells in sides:
+                run_start = None
+                run_len = 0
+                for k, (cx, cy) in enumerate(cells + [(-1, -1)]):
+                    open_cell = 0 <= cx < self.width and 0 <= cy < self.height and self.grid[cy][cx] != WALL
+                    if open_cell:
+                        if run_start is None:
+                            run_start = k
+                        run_len += 1
+                        continue
+                    if run_start is not None and run_len <= 2:
+                        first = cells[run_start]
+                        begin = first[0] if orient == "h" else first[1]
+                        openings.append((idx, orient, line, begin, begin + run_len))
+                    run_start, run_len = None, 0
+        return openings
+
+    def _door_segments(self, grid_size: int, rng: random.Random) -> List[list]:
+        """出入口に扉を配置。袋小路の部屋 (次数1) は一定確率で隠し扉にする"""
+        doors = []
+        seen = set()
+        for idx, orient, line, begin, end in self._room_openings():
+            key = (orient, line, begin, end)
+            if key in seen:
+                continue
+            seen.add(key)
+            is_dead_end = len(self.adj.get(idx, [])) == 1 if hasattr(self, "adj") else False
+            special_room = idx in (self.start_room_idx, self.goal_room_idx)
+            roll = rng.random()
+            if self.scene_mode == "ruins":
+                # 野外廃墟は扉の多くが朽ちて失われている
+                if roll >= 0.25:
+                    continue
+                door_type = "door"
+            else:
+                if is_dead_end and not special_room and roll < 0.35:
+                    door_type = "secret_door"
+                elif roll < 0.75:
+                    door_type = "door"
+                else:
+                    continue
+            if orient == "h":
+                doors.append([begin * grid_size, line * grid_size, end * grid_size, line * grid_size, door_type])
+            else:
+                doors.append([line * grid_size, begin * grid_size, line * grid_size, end * grid_size, door_type])
+        return doors
+
+    def _extract_boundary_segments(self, grid_size: int = 100) -> List[List[int]]:
         """ダンジョンの部屋・通路と壁の境界線を抽出し、結合された線分リスト [x0, y0, x1, y1] として返却"""
         from collections import defaultdict
 
@@ -543,7 +780,7 @@ class DungeonGenerator:
         ]
 
         # シャッフルしたテーマリストを用意（シード値依存で再現性あり）
-        theme_pool = list(themes)
+        theme_pool = list(MODE_FALLBACK_THEMES.get(self.scene_mode, themes))
         self.rng.shuffle(theme_pool)
 
         results = []
@@ -554,28 +791,28 @@ class DungeonGenerator:
             # AI生成カスタムフレーバーが存在するかチェック
             cf = cf_map.get(i)
 
+            label = ROOM_LABEL[self.scene_mode]
+            endpoints = MODE_ENDPOINTS[self.scene_mode]
+            light_preset = None
+            ambient_sound_src = None
             if cf:
-                room_type = cf.get("role", "room")
-                title = cf.get("title", f"部屋 {i + 1}")
-                icon = cf.get("icon", "icons/svg/door-steel.svg")
+                room_type = cf.get("role") or "room"
+                title = cf.get("title") or f"{label} {i + 1}"
+                icon = cf.get("icon") or "icons/svg/door-steel.svg"
                 flavor = cf.get("tts_narration") or cf.get("flavor", "")
                 gm_notes = cf.get("gm_notes", "")
-                is_empty = cf.get("is_empty", False)
-                safe_rest = cf.get("safe_rest", False)
+                is_empty = bool(cf.get("is_empty", False))
+                safe_rest = bool(cf.get("safe_rest", False))
+                light_preset = cf.get("light_preset") if cf.get("light_preset") in LIGHT_PRESET_KEYS else None
+                ambient_sound_src = cf.get("ambient_sound_src") or None
             elif i == self.start_room_idx:
                 room_type = "start"
-                title = "迷宮の入口広間 (安全地帯)"
-                icon = "icons/svg/door-open-outline.svg"
-                flavor = "地上へと続く階段の麓にある、冷たい地下の空気が吹き抜ける石造りの広間。古い苔むした石畳が広がり、ここから未知の迷宮が始まる。"
-                gm_notes = "安全な退路。地上へ撤退可能。"
+                title, icon, flavor, gm_notes = endpoints["start"]
                 is_empty = False
                 safe_rest = True
             elif i == self.goal_room_idx:
                 room_type = "goal"
-                title = "最深部：災厄の祭壇 (ボス部屋)"
-                icon = "icons/svg/skull.svg"
-                flavor = "圧倒的な威圧感と澱んだ魔力が充満する巨大な円形広間。中央の黒曜石の祭壇には不穏な紫の光が揺らめき、古代の封印紋が刻まれている。"
-                gm_notes = "最深部ボス部屋。手強い敵と主要な財宝が眠る。"
+                title, icon, flavor, gm_notes = endpoints["goal"]
                 is_empty = False
                 safe_rest = False
             else:
@@ -588,11 +825,16 @@ class DungeonGenerator:
                 is_empty = False
                 safe_rest = False
 
+            prefix = f"{label} {i + 1}"
             results.append({
                 "id": i + 1,
-                "name": f"部屋 {i + 1}: {title}" if not title.startswith(f"部屋 {i + 1}") else title,
+                "name": f"{prefix}: {title}" if not title.startswith(prefix) else title,
                 "title": title,
+                # role と type は同じ値 (reference 版は role、旧版は type を参照していたため両方出す)
                 "type": room_type,
+                "role": room_type,
+                "light_preset": light_preset,
+                "ambient_sound_src": ambient_sound_src,
                 "icon": icon,
                 "grid_x": rx,
                 "grid_y": ry,
@@ -688,6 +930,12 @@ def main():
         help="ループ率 (サイクロマティック数制御: 0.0=純木構造/袋小路のみ 〜 0.5=周回路多数。未指定時はランダム)"
     )
     parser.add_argument(
+        "-m", "--mode",
+        choices=SCENE_MODES,
+        default="underground",
+        help="シーンモード: underground (地下迷宮) / ruins (地上の廃墟) / wilderness (野外・壁なし) (既定: underground)"
+    )
+    parser.add_argument(
         "-o", "--output",
         type=str,
         default=None,
@@ -719,13 +967,15 @@ def main():
         height=height,
         seed=args.seed,
         density=density,
-        loop_ratio=args.loop_ratio
+        loop_ratio=args.loop_ratio,
+        scene_mode=args.mode
     )
     generator.generate()
 
     print("=" * 65)
     print("【ダンジョン生成完了 (数学的グラフ検証済)】")
     print(f"・シード値 (Seed)         : {generator.seed}")
+    print(f"・モード (Scene Mode)     : {generator.scene_mode}")
     print(f"・サイズ (Dimensions)     : {generator.width} x {generator.height} マス ({generator.width * generator.height:,} セル)")
     print(f"・部屋密度 (Density)      : {generator.density}")
     print(f"・部屋数 (|V|)            : {len(generator.rooms)} 部屋 (全域木連結保証)")

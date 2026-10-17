@@ -3,9 +3,13 @@ import assert from "node:assert/strict";
 import {
   buildJournalPages,
   buildNoteDocs,
+  buildRoomLights,
+  buildRoomSounds,
   buildSceneData,
   buildStartGoalLights,
   buildWallDocs,
+  LIGHT_PRESETS,
+  roomRole,
 } from "../../scripts/lib/scene-docs.js";
 
 const data = {
@@ -71,4 +75,78 @@ test("buildNoteDocs はページ名でページを対応付ける (並び順に�
   assert.equal(notes[1].pageId, "p2");
   assert.deepEqual([notes[0].x, notes[0].y], [355, 455]);
   assert.equal(notes[1].texture.src, "icons/svg/book.svg");
+});
+
+test("buildSceneData はシーンモードで明るさとレベル名を切り替える", () => {
+  assert.equal(buildSceneData(data).levels[0].name, "地下1階");
+  const ruins = buildSceneData({ ...data, scene_mode: "ruins" });
+  assert.equal(ruins.darkness, 0.35);
+  assert.equal(ruins.environment.globalLight.enabled, false);
+  assert.equal(ruins.levels[0].name, "地上・野外");
+  const wild = buildSceneData({ ...data, scene_mode: "wilderness" });
+  assert.deepEqual(wild.environment, { darknessLevel: 0.35, globalLight: { enabled: true } });
+  assert.equal(wild.globalLight.enabled, true);
+  assert.equal(buildSceneData({ ...data, scene_mode: "moon" }).darkness, 0.75);
+});
+
+test("buildWallDocs は壁タイプを扉・隠し扉・低い壁に変換する", () => {
+  const walls = [
+    [0, 0, 100, 0],
+    [0, 0, 100, 0, "normal"],
+    [0, 0, 100, 0, "door"],
+    [0, 0, 100, 0, "secret_door"],
+    [0, 0, 100, 0, "low_wall"],
+    [0, 0, 100, 0, "rubble"],
+  ];
+  const docs = buildWallDocs(walls);
+  assert.deepEqual(docs.map(d => d.door), [0, 0, 1, 2, 0, 0]);
+  assert.deepEqual(docs.map(d => d.sight), [20, 20, 20, 20, 0, 0]);
+  assert.deepEqual(docs.map(d => d.light), [20, 20, 20, 20, 0, 0]);
+  assert.ok(docs.every(d => d.move === 20));
+  const custom = buildWallDocs([[0, 0, 1, 0, "secret_door"]], {}, { WALL_DOOR_TYPES: { NONE: 0, DOOR: 5, SECRET: 6 } });
+  assert.equal(custom[0].door, 6);
+});
+
+test("buildRoomLights は light_preset と安全な休憩所から光源を作る", () => {
+  const rooms = [
+    { cx: 10, cy: 20, light_preset: "magic_blue" },
+    { cx: 30, cy: 40, safe_rest: true },
+    { cx: 50, cy: 60, light_preset: "dark", safe_rest: true },
+    { cx: 70, cy: 80, light_preset: "unknown" },
+    { cx: 90, cy: 99 },
+  ];
+  const lights = buildRoomLights(rooms, { offsetX: 1, offsetY: 2 });
+  assert.equal(lights.length, 2);
+  assert.deepEqual([lights[0].x, lights[0].y], [11, 22]);
+  assert.equal(lights[0].config.color, LIGHT_PRESETS.magic_blue.color);
+  assert.equal(lights[1].config.animation.type, "flame");
+  // 生成した config を書き換えてもプリセットは変わらない
+  lights[0].config.bright = 999;
+  assert.equal(LIGHT_PRESETS.magic_blue.bright, 15);
+  assert.deepEqual(buildRoomLights(undefined), []);
+});
+
+test("LIGHT_PRESETS はアニメーション無しを null で表す (L13)", () => {
+  assert.equal(LIGHT_PRESETS.moonlight_dim.animation.type, null);
+  assert.ok(Object.values(LIGHT_PRESETS).every(p => p === null || p.animation.type !== "none"));
+});
+
+test("buildRoomSounds の radius は距離単位 (マス数 × grid.distance) (M1)", () => {
+  const rooms = [
+    { cx: 100, cy: 200, grid_w: 4, grid_h: 6, ambient_sound_src: "sounds/drips.ogg" },
+    { cx: 0, cy: 0, grid_w: 4, grid_h: 4 },
+  ];
+  const [sound, ...rest] = buildRoomSounds(rooms, { offsetX: 5, offsetY: 5 });
+  assert.equal(rest.length, 0);
+  assert.equal(sound.radius, 6 * 5 * 0.85);
+  assert.deepEqual([sound.x, sound.y, sound.path], [105, 205, "sounds/drips.ogg"]);
+  assert.equal(buildRoomSounds(rooms, {}, 10)[0].radius, 6 * 10 * 0.85);
+});
+
+test("roomRole は role を優先し、無ければ type を使う (M2)", () => {
+  assert.equal(roomRole({ role: "sub_goal", type: "room" }), "sub_goal");
+  assert.equal(roomRole({ type: "start" }), "start");
+  assert.equal(roomRole({}), null);
+  const pages = buildJournalPages({ rooms: [{ ...data.rooms[1], type: "sub_goal" }] });
+  assert.ok(pages[0].text.content.includes("中目標ギミック"));
 });

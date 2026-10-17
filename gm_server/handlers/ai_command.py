@@ -12,9 +12,10 @@ async def handle_command(ctx, data: dict) -> None:
 
     if dungeon_scene.is_dungeon_intent(prompt):
         ctx.state.pending_dungeon["user_prompt"] = prompt
-        # ステップ1: サイズ選択肢カードを返送
-        await ctx.send(dungeon_scene.size_card())
-        print("サイズ選択肢カードをFVTTへ送信しました。")
+        ctx.state.pending_dungeon["scene_mode"] = dungeon_scene.DEFAULT_SCENE_MODE
+        # ステップ1: 舞台 (シーンモード) 選択肢カードを返送
+        await ctx.send(dungeon_scene.mode_card())
+        print("モード選択肢カードをFVTTへ送信しました。")
         return
 
     # その他の自然言語指示は agy CLI へルーティング (NPC操作・相談・設定構築など)
@@ -35,9 +36,21 @@ async def handle_choice(ctx, data: dict) -> None:
         print(f"未対応の選択肢です: {value}")
         return
 
-    # ステップ2: サイズ選択完了 -> 部屋の密度選択肢カード
+    pending = ctx.state.pending_dungeon
+    scene_mode = dungeon_scene.normalize_scene_mode(pending.get("scene_mode"))
+
+    # ステップ1.5: モード選択完了 -> サイズ選択肢カード
+    if choice.kind == "mode":
+        pending["scene_mode"] = choice.scene_mode
+        await ctx.send(dungeon_scene.size_card(dungeon_scene.scene_mode_label(choice.scene_mode)))
+        return
+
+    # ステップ2: サイズ選択完了 -> 部屋の密度選択肢カード (野外は地点数固定のためループ率へ)
     if choice.kind == "size":
-        await ctx.send(dungeon_scene.density_card(choice.size_key, label))
+        if scene_mode == "wilderness":
+            await ctx.send(dungeon_scene.loop_card(choice.size_key, dungeon_scene.DEFAULT_DENSITY, label, prev_kind="サイズ"))
+        else:
+            await ctx.send(dungeon_scene.density_card(choice.size_key, label))
         return
 
     # ステップ3: 部屋密度選択完了 -> ループ率選択肢カード
@@ -46,7 +59,7 @@ async def handle_choice(ctx, data: dict) -> None:
         return
 
     # ステップ4: ループ率選択完了 -> 実際のダンジョン生成 & シーン作成
-    user_prompt = ctx.state.pending_dungeon.get("user_prompt", "")
+    user_prompt = pending.get("user_prompt", "")
     await dungeon_scene.generate_and_create_dungeon_scene(
-        ctx, choice.size_key, choice.loop_ratio, choice.density, user_prompt=user_prompt
+        ctx, choice.size_key, choice.loop_ratio, choice.density, user_prompt=user_prompt, scene_mode=scene_mode
     )

@@ -84,17 +84,31 @@ def get_active_world_info() -> Dict[str, str]:
         }
 
 
+# シーンモード -> プロンプトに埋め込む舞台説明
+SCENE_MODE_LABELS = {
+    "underground": "地下迷宮 (石壁と扉で区切られた閉鎖空間。隠し扉あり)",
+    "ruins": "地上の廃墟 (崩れた城壁・腰高の石積み・瓦礫越しに視線が通る半開放空間)",
+    "wilderness": "野外 (壁のない森・丘・川辺などを結ぶ旅路の地点群)",
+}
+
+
+def scene_mode_label(scene_mode: str) -> str:
+    return SCENE_MODE_LABELS.get(scene_mode, SCENE_MODE_LABELS["underground"])
+
+
 def build_lore_prompt(
     world_title: str,
     world_description: str,
     user_prompt: str = "",
     floor_number: int = 1,
     size_name: str = "小",
-    room_count: int = 10
+    room_count: int = 10,
+    scene_mode: str = "underground"
 ) -> str:
     """Tier 1/2: ダンジョン全体の歴史・伝承とフロア生態系を生成するプロンプトを構築"""
     template = load_cached_prompt("dungeon_lore_prompt.txt")
     return template.format(
+        scene_mode_label=scene_mode_label(scene_mode),
         world_title=world_title or "The Antikythira",
         world_description=world_description or "ゴブリンキングとブラックドラゴンの地下城塞",
         user_prompt=user_prompt or "なし（ワールド設定に忠実な城塞ダンジョン）",
@@ -142,7 +156,9 @@ def prioritize_key_topologies(topologies: List[Dict], max_count: int = 15) -> Li
 def build_rooms_prompt(
     lore: Dict,
     topologies: List[Dict],
-    max_rooms: int = 15
+    max_rooms: int = 15,
+    scene_mode: str = "underground",
+    light_presets: Optional[List[str]] = None
 ) -> str:
     """Tier 3: 部屋のトポロジーに基づくマイクロフレーバー生成プロンプトを構築"""
     template = load_cached_prompt("dungeon_rooms_prompt.txt")
@@ -173,12 +189,20 @@ def build_rooms_prompt(
             "depth": topo["depth"],
             "start": topo["start"],
             "goal": topo["goal"],
+            "in_cycle": topo.get("in_cycle", False),
+            "neighbors": topo.get("neighbors", []),
             "area": topo["area"]
         })
 
     rooms_topology_json = json.dumps(compact_topologies, ensure_ascii=False)
 
+    if light_presets is None:
+        from tools.dungeon_generator import LIGHT_PRESET_KEYS
+        light_presets = list(LIGHT_PRESET_KEYS)
+
     return template.format(
+        scene_mode_label=scene_mode_label(scene_mode),
+        light_presets=", ".join(light_presets),
         dungeon_name=dungeon_name,
         floor_title=floor_title,
         floor_origin=floor_origin,

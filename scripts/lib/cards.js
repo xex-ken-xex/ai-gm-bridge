@@ -25,10 +25,18 @@ export function buildChoiceCardHtml({ title, message, choices }) {
 }
 
 /** シーン構築完了カード */
-export function buildSceneSuccessCardHtml({ sceneId, sceneName, data, sceneWidth, sceneHeight, wallCount, noteCount, journalId }) {
+const SCENE_MODE_LABELS = { underground: "地下迷宮", ruins: "地上の廃墟", wilderness: "野外" };
+
+export function buildSceneSuccessCardHtml({ sceneId, sceneName, data, sceneWidth, sceneHeight, wallCount, noteCount, lightCount = 0, soundCount = 0, journalId }) {
+  const modeStr = `・舞台: ${SCENE_MODE_LABELS[data.scene_mode] ?? SCENE_MODE_LABELS.underground}<br>`;
+  const ambienceStr = lightCount > 0 || soundCount > 0
+    ? `・光源: ${Number(lightCount)} 箇所 / 環境音: ${Number(soundCount)} 箇所<br>`
+    : "";
   const roomCountStr = data.room_count ? `・部屋数: ${Number(data.room_count)} 部屋<br>` : "";
   const noteCountStr = noteCount > 0 ? `・フレーバーノート: ${noteCount} 箇所 (全室にマップピン📌配置済)<br>` : "";
-  const wallNote = wallCount === 0 ? " ⚠️ マップが大きいため壁は省略されました" : " (視界・衝突ブロック)";
+  const wallNote = wallCount === 0
+    ? (data.scene_mode === "wilderness" ? " (野外のため壁なし)" : " ⚠️ マップが大きいため壁は省略されました")
+    : " (視界・衝突ブロック)";
   const journalBtnHtml = journalId ? `
     <button class="ai-gm-journal-open-btn" data-journal-id="${escapeHtml(journalId)}"
             style="flex: 1; padding: 6px; background: #8e44ad; color: #fff; border: none; border-radius: 4px; cursor: pointer;">
@@ -43,9 +51,9 @@ export function buildSceneSuccessCardHtml({ sceneId, sceneName, data, sceneWidth
       🏰 新シーン『${escapeHtml(sceneName)}』を生成しました！
     </div>
     <div style="font-size: 12px; margin-bottom: 8px; line-height: 1.4;">
-      ・サイズ: ${Number(data.grid_width)}x${Number(data.grid_height)} マス (${sceneWidth}x${sceneHeight} px)<br>
+      ${modeStr}・サイズ: ${Number(data.grid_width)}x${Number(data.grid_height)} マス (${sceneWidth}x${sceneHeight} px)<br>
       ${roomCountStr}・自動配置した壁: ${wallCount} 本${wallNote}<br>
-      ${noteCountStr}・スタート地点 (緑光): (${pos(data.start_pos)})<br>
+      ${noteCountStr}${ambienceStr}・スタート地点 (緑光): (${pos(data.start_pos)})<br>
       ・最深部ゴール (赤光): (${pos(data.goal_pos)})
     </div>
     <div style="display: flex; gap: 6px;">
