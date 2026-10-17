@@ -61,12 +61,13 @@ test("MascotController: 切断は台詞が消えても切断のまま", () => {
   assert.equal(t.timers.size, 0);
 });
 
-test("mascotForEvent / mascotForAction: ビルダーや GM 宛ての台詞はプレイヤーに配らない", () => {
+test("mascotForEvent / mascotForAction: ビルダーや GM 宛てのものはプレイヤーに配らない", () => {
   assert.equal(mascotForEvent({ event: "builder_generate_stage" }).public, false);
   assert.equal(mascotForEvent({ event: "ai_command" }).public, false);
   assert.equal(mascotForEvent({ event: "player_message" }).state, "thinking");
   assert.match(mascotForEvent({ event: "npc_turn_request", perception: { npc_name: "オーク" } }).text, /オーク/);
-  assert.equal(mascotForEvent({ event: "room_entered" }), null);
+  assert.equal(mascotForEvent({ event: "room_entered" }).state, "thinking");
+  assert.equal(mascotForEvent({ event: "ai_choice" }), null);
   assert.equal(mascotForAction({ action: "progress", message: "秘密の遺跡" }).public, false);
   assert.equal(mascotForAction({ action: "builder_stage_result" }).public, false);
   assert.match(mascotForAction({ action: "npc_dialogue_response", result: { primary_npc_name: "エドガー" } }).text, /エドガー/);

@@ -1,6 +1,6 @@
 // アシスタント DM マスコット (アギィ) の純粋関数 (Foundry 非依存): 状態の切り替えと吹き出しのタイマー・
 // 送受信ごとの台詞・保存位置の読み込み・内蔵 SVG
-// GM の画面での状態を game.socket で全員に配る (scripts/mascot.js)。プレイヤーに見せてよい台詞だけを配る
+// GM の画面での状態を game.socket で全員に配る (scripts/mascot.js)。プレイヤーに見せてよいものだけを配る
 
 export const MASCOT_NAME = "アギィ (Agy)";
 export const MASCOT_STATES = Object.freeze(["idle", "thinking", "speaking", "offline"]);
@@ -44,12 +44,14 @@ export function clampPosition({ left, top }, { width = Infinity, height = Infini
 
 /**
  * FVTT → サーバーへ送った event ごとのマスコットの反応。null なら変えない。
- * public: プレイヤーの画面にも台詞を出してよいか (false なら状態だけを配る)
+ * public: プレイヤーの画面にも配ってよいか (false なら GM の画面にだけ出し、状態も配らない)
  */
 export function mascotForEvent(payload = {}) {
   switch (payload.event) {
     case "ai_command":
       return { state: "thinking", text: "指示を解析しているよ…", durationMs: 15000, public: false };
+    case "room_entered":
+      return { state: "thinking", text: "部屋の様子を語る準備をしているよ…", durationMs: 8000, public: true };
     case "player_message":
       return { state: "thinking", text: "AI GM が続きを考えているよ…", durationMs: 15000, public: true };
     case "npc_dialogue_request":

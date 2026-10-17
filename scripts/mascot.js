@@ -1,7 +1,7 @@
 // アシスタント DM マスコット UI (Foundry 依存): GM・プレイヤー全員の画面に出すミニキャラ
 //
 // - GM のクライアントでの状態 (待機・考え中・話し中・切断) と台詞を game.socket で全員に配る (module.json の "socket": true)。
-//   プレイヤーに見せない台詞 (ビルダーの下書きなど) は状態だけを配る
+//   GM だけの操作・確認 (ビルダーの下書き・/ai の相談・接続の状態など) は状態も台詞も配らない
 // - ドラッグで動かせ、位置はブラウザごとに保存する。GM はダブルクリックでシナリオビルダー、右クリックで NPC ブレイン管理を開く
 // - 設定「マスコットを表示」(ユーザーごと) で隠せる。「マスコットの画像」(ワールド) で画像を差し替えられる
 // 純粋関数は scripts/lib/mascot.js (tests/js)。見た目は styles/mascot.css
@@ -156,13 +156,13 @@ export function removeMascot() {
 
 /**
  * マスコットの状態を変える。GM が呼んだときは全員の画面にも配る
- * (isPublic が false の台詞は GM の画面にだけ出し、ほかの人には状態だけを配る)
+ * (isPublic が false のもの = GM だけの操作・確認は、状態も台詞も GM の画面にだけ出す)
  */
 export function setMascotState(state, text = "", durationMs = 5000, { isPublic = true, broadcast = true } = {}) {
   const value = normalizeMascotState({ state, text, durationMs });
   controller?.set(value);
-  if (broadcast && game.user?.isGM && game.socket) {
-    game.socket.emit(SOCKET, { action: "sync_mascot", ...value, text: isPublic ? value.text : "" });
+  if (broadcast && isPublic && game.user?.isGM && game.socket) {
+    game.socket.emit(SOCKET, { action: "sync_mascot", ...value });
   }
 }
 
@@ -192,6 +192,11 @@ export function mascotOnSend(payload, ok) {
 /** サーバーから届いたとき (bridge.js の受信処理から呼ぶ) */
 export function mascotOnAction(data) {
   apply(mascotForAction(data));
+}
+
+/** サーバーにつなぐ前 (GM の画面だけ)。つながるまで「切断」のままにする */
+export function mascotOnConnecting() {
+  setMascotState("offline", "サーバーにつないでいます… (Python サーバーは起動していますか？)", 6000, { isPublic: false });
 }
 
 /** 接続と切断 */

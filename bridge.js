@@ -22,6 +22,7 @@ import {
   initMascot,
   listenMascotSocket,
   mascotOnAction,
+  mascotOnConnecting,
   mascotOnConnection,
   mascotOnSend,
   registerMascotSettings,
@@ -188,6 +189,8 @@ Hooks.once("ready", async function() {
       warn: msg => ui.notifications.warn(msg),
     },
   });
+  // つながるまでは GM の画面のマスコットを「切断」にしておく (サーバーを起動していないと気づけるように)
+  mascotOnConnecting();
   connection.connect();
   setBuilderSender(sendToServer);
   setNpcSender(sendToServer);
@@ -279,7 +282,7 @@ Hooks.once("ready", async function() {
       });
 
       if (connection.isOpen) {
-        connection.send({
+        sendToServer({
           event: "room_entered",
           token_name: tokenDoc.name,
           room_name: currentRoom.name,
