@@ -239,3 +239,28 @@ def test_process_snapshot_reads_own_process():
     snap = process_snapshot(os.getpid())
     assert f"pid={os.getpid()}" in snap and "CPU=" in snap
     assert process_snapshot(999999999) == "(プロセス情報なし)"
+
+
+async def test_call_agy_takes_the_answer_even_if_agy_does_not_exit(monkeypatch, file_log):
+    """agy は結果を出したあと終了せずに残ることがある。結果がそろったら受け取って止める"""
+    import time
+
+    from gm_server import llm as llm_mod
+
+    monkeypatch.setattr(llm_mod, "AGY_EXIT_GRACE", 0.2)
+    code = ("import sys, time; sys.stdout.write('{\"response\": \"done\",\\n \"conversation_id\": \"c1\"}\\n'); "
+            "sys.stdout.flush(); time.sleep(30)")
+    fake_agy(monkeypatch, code)
+    started = time.monotonic()
+    assert await call_agy("hi", None, timeout=20) == ("done", "c1")
+    assert time.monotonic() - started < 5
+    text = (file_log / "server.log").read_text(encoding="utf-8")
+    assert "終了しないため止めました" in text and "← agy 応答" in text
+
+
+def test_complete_agy_output():
+    from gm_server.llm import complete_agy_output
+
+    assert complete_agy_output(b'{"response": "x"}\n')
+    assert not complete_agy_output(b'{"response": "x"')
+    assert not complete_agy_output(b'[1, 2]') and not complete_agy_output(b"")

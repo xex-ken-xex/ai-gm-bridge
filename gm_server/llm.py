@@ -79,7 +79,23 @@ def _agy_semaphore() -> asyncio.Semaphore:
 AGY_WATCH_INTERVAL = 30.0
 
 
-async def _read_stream(stream, buf: bytearray, on_line: Optional[Callable[[str], None]] = None) -> None:
+# agy が結果の JSON を出し終えてから、自分で終了するのを待つ秒数。過ぎたら止める
+AGY_EXIT_GRACE = 3.0
+
+
+def complete_agy_output(buf: bytes) -> bool:
+    """--output-format json の結果 (1 つの JSON オブジェクト) を出し終えたか"""
+    text = bytes(buf).strip()
+    if not text.endswith(b"}"):
+        return False
+    try:
+        return isinstance(json.loads(text.decode("utf-8", errors="replace")), dict)
+    except ValueError:
+        return False
+
+
+async def _read_stream(stream, buf: bytearray, on_line: Optional[Callable[[str], None]] = None,
+                       on_chunk: Optional[Callable[[], None]] = None) -> None:
     """出力を読みながら貯める (communicate と違い、途中で打ち切ってもそれまでの出力が残る)"""
     pending = b""
     while True:
@@ -87,6 +103,8 @@ async def _read_stream(stream, buf: bytearray, on_line: Optional[Callable[[str],
         if not chunk:
             break
         buf.extend(chunk)
+        if on_chunk:
+            on_chunk()
         if on_line:
             pending += chunk
             *lines, pending = pending.split(b"\n")
@@ -212,15 +230,44 @@ async def _call_agy(
         return "", conversation_id or ""
     limit = (AGY_TIMEOUT if timeout is None else timeout) or None
     out_buf, err_buf = bytearray(), bytearray()
+    # agy は結果を出し終えたあと、プロセスが終了しないまま残ることがある (2026-10-18 に確認: 28 秒で結果を
+    # 出し、agy 自身のログも終了しているのに 5 分以上残った)。結果の JSON がそろった時点で受け取る
+    answered = asyncio.Event()
+
+    def check_answer() -> None:
+        if not answered.is_set() and complete_agy_output(out_buf):
+            answered.set()
+
     readers = [
-        asyncio.create_task(_read_stream(proc.stdout, out_buf)),
+        asyncio.create_task(_read_stream(proc.stdout, out_buf, on_chunk=check_answer)),
         asyncio.create_task(_read_stream(proc.stderr, err_buf, on_line=lambda line: logs.ai_note(rid, f"agy stderr: {line}"))),
     ]
     watcher = asyncio.create_task(_watch_agy(rid, proc, started, out_buf, err_buf))
 
-    async def finish() -> None:
+    async def exited() -> None:
         await asyncio.gather(*readers)
         await proc.wait()
+
+    async def finish() -> None:
+        done_task = asyncio.ensure_future(exited())
+        answer_task = asyncio.ensure_future(answered.wait())
+        try:
+            await asyncio.wait({done_task, answer_task}, return_when=asyncio.FIRST_COMPLETED)
+            if done_task.done():
+                return
+            # 結果は届いた。少しだけ自分で終わるのを待ち、終わらなければ止める
+            try:
+                await asyncio.wait_for(asyncio.shield(done_task), timeout=AGY_EXIT_GRACE)
+            except asyncio.TimeoutError:
+                logs.ai_note(rid, f"agy が結果を出したあと {AGY_EXIT_GRACE:.0f} 秒たっても終了しないため止めました "
+                                  f"({process_snapshot(proc.pid)})", level=logging.WARNING)
+                await _kill(proc, readers)
+        finally:
+            for t in (done_task, answer_task):
+                if not t.done():
+                    t.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await asyncio.gather(done_task, answer_task, return_exceptions=True)
 
     def give_up(reason: str) -> None:
         # 止まった原因を追えるよう、それまでの出力とプロセスの様子を残す
