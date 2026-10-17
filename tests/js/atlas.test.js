@@ -149,3 +149,12 @@ test("actorsContext は PC と NPC に分け、経歴の HTML を外す", () => 
   assert.deepEqual(ctx.pcs, [{ name: "アリア", info: "エルフ 学者", bio: "塩の研究" }]);
   assert.deepEqual(ctx.npcs, [{ name: "エドガー", role: "職人", bio: "" }]);
 });
+
+test("formatStageDraft: 人柄が届かなかった NPC も undefined を出さない", () => {
+  const d = formatStageDraft("settlement", {
+    settlement_name: "塩見の里",
+    public_lore: { key_npcs: [{ name: "エドガー", role: "職人頭", want: "道を取り戻す" }] },
+  });
+  assert.ok(d.publicText.includes("・エドガー (職人頭) / 望み: 道を取り戻す"));
+  assert.ok(!d.publicText.includes("undefined"));
+});

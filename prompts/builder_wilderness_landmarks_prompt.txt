@@ -1,0 +1,40 @@
+あなたはワイルダネス・アドベンチャー (野外探索と旅路) のレベルデザイナーです。
+旅路『{wilderness_title}』の骨組みはすでに決まっています。担当する地点について、到着時の読み上げと GM 向けメモを書いてください。
+他の地点は別の担当者が同時に書くので、骨組みの名前・役割・主役の感覚を必ず守ってください。
+
+{context_block}
+
+【この旅路の骨組み (確定)】
+{core_json}
+
+【全地点の名前と役割】(参考: 担当外の地点も含む)
+{plan_overview}
+
+【あなたが書く地点】
+{points_json}
+(id=地点番号 (0 始まり), deg=つながる道の数, depth=出発地からの距離, start=集落側の出発口, goal=目的地の入口,
+ in_cycle=周回路上にある, neighbors=直接つながる地点の id, plan=骨組みで決めた名前と役割)
+
+【この回の設計指針】
+- tts_narration は到着した瞬間に読み上げる五感の描写 (2 文以内・60 文字前後・ネタバレ禁止・記号や括弧なし)。
+  骨組みで割り振った主役の感覚 (sense) を中心に書く。
+- gm_notes は【状況】【調べられるもの と DC】【分かれ道】(neighbors のどこへ行けるか) の順で書く。
+  手仕事の品の痕跡や迂回路の秘密がこの地点にあるなら、何の手がかりかを具体的に書く。
+- light_preset は次のいずれか: {light_presets}
+- icon は次のいずれか: icons/svg/door-steel.svg, icons/svg/campfire.svg, icons/svg/eye.svg, icons/svg/skull.svg,
+  icons/svg/chest.svg, icons/svg/temple.svg, icons/svg/book.svg, icons/svg/sword.svg
+- 共通ルール (下記) のうち 5 (伏線) と 7 (発想カード) はこの回では使わない。
+
+{rules}
+
+必ず次の JSON 配列だけを、あなたが書く地点の数だけ出力してください:
+[
+  {{
+    "id": 0,
+    "icon": "icons/svg/door-steel.svg",
+    "light_preset": "moonlight_dim",
+    "tts_narration": "到着時の読み上げ",
+    "gm_notes": "【状況】… 【調べられるもの と DC】… 【分かれ道】…",
+    "ambient_sound_en": "この地点の環境音を表す英語プロンプト"
+  }}
+]

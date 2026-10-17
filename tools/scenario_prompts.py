@@ -314,3 +314,49 @@ def build_site_rooms_prompt(
         light_presets=", ".join(light_presets),
         rules=load_cached_prompt("builder_rules.txt"),
     )
+
+
+# -------------------------------------------------------------------------
+# 集落・旅路の 2 回目の問い合わせ (骨組みをもとに細部を書く)
+# 1 回で全部を書かせると AI の応答が長くなり、タイムアウトしやすいため分ける
+# -------------------------------------------------------------------------
+def build_settlement_secrets_prompt(context: Dict, core: Dict, world_fallback: Optional[Dict] = None) -> str:
+    """集落の 2 回目: 骨組みの NPC の人柄と隠し事・手仕事の品の手がかり・BGM"""
+    return load_cached_prompt("builder_settlement_secrets_prompt.txt").format(
+        settlement_name=core.get("settlement_name", ""),
+        context_block=build_context_block(context, None, world_fallback),
+        core_json=json.dumps(core, ensure_ascii=False),
+        rules=load_cached_prompt("builder_rules.txt"),
+    )
+
+
+def format_landmark_plan(plan: Dict[int, Dict]) -> str:
+    return "\n".join(
+        f"- 地点 {pid}: {p.get('title', '')}{' (野営可)' if p.get('safe_rest') else ''} / {p.get('purpose', '')}"
+        for pid, p in sorted(plan.items())
+    )
+
+
+def build_wilderness_landmarks_prompt(
+    context: Dict,
+    core: Dict,
+    plan: Dict[int, Dict],
+    chunk: List[Dict],
+    light_presets: List[str],
+    world_fallback: Optional[Dict] = None,
+) -> str:
+    """旅路の 2 回目 (1 ジョブ分): 担当地点の読み上げと GM メモ"""
+    core_view = {k: v for k, v in core.items() if k != "landmark_plan"}
+    points = []
+    for t in compact_topology(chunk):
+        p = plan.get(t["id"], {})
+        points.append({**t, "plan": {k: p[k] for k in ("title", "purpose", "safe_rest", "sense") if k in p}})
+    return load_cached_prompt("builder_wilderness_landmarks_prompt.txt").format(
+        wilderness_title=core.get("wilderness_title", ""),
+        context_block=build_context_block(context, None, world_fallback),
+        core_json=json.dumps(core_view, ensure_ascii=False),
+        plan_overview=format_landmark_plan(plan) or "(なし)",
+        points_json=json.dumps(points, ensure_ascii=False),
+        light_presets=", ".join(light_presets),
+        rules=load_cached_prompt("builder_rules.txt"),
+    )

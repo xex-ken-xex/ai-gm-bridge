@@ -95,21 +95,99 @@ async def test_unknown_stage_is_ignored(make_ctx, sent):
     assert sent == []
 
 
-async def test_wilderness_draft_returns_map_and_zero_based_landmarks(make_ctx, sent):
+class PromptLLM(FakeLLM):
+    """応答をプロンプトの中身で選ぶ (並列ジョブの順番に依存しない)"""
+
+    def __init__(self, answer):
+        super().__init__()
+        self.answer = answer
+
+    async def query_json(self, prompt, unbounded=False):
+        self.prompts.append(("json", prompt))
+        return self.answer(prompt)
+
+
+def chunk_ids(prompt):
+    return [p["id"] for p in json.loads(prompt.split("【あなたが書く地点】\n")[1].split("\n")[0])]
+
+
+def wilderness_core(topos, offset=0):
+    plan = [{"id": t["id"] + offset, "title": f"地点{t['id']}", "purpose": f"役割{t['id']}", "safe_rest": t["id"] == 1}
+            for t in topos]
+    return {"wilderness_title": "塩の道", "public_lore": {"route_overview": "道"}, "canon": ["旅路: 本道"],
+            "landmark_plan": plan}
+
+
+async def test_wilderness_draft_is_split_into_core_and_parallel_landmarks(make_ctx, sent):
     topos = builder.make_wilderness_generator(99).get_room_topologies()
-    # AI が 1 始まりで返しても地点グラフの id にそろう
-    landmarks = [{"id": t["id"] + 1, "title": f"地点{t['id']}", "safe_rest": t["id"] == 1} for t in topos]
-    result = {"wilderness_title": "塩の道", "public_lore": {"route_overview": "道"}, "landmarks": landmarks}
-    llm = FakeLLM(json_responses=[result])
+
+    def answer(prompt):
+        if "【あなたが書く地点】" not in prompt:
+            return wilderness_core(topos, offset=1)  # AI が 1 始まりで返しても地点グラフの id にそろう
+        # 地点の細部も 1 始まりで返ってくる
+        return [{"id": i + 1, "tts_narration": f"読み上げ{i}", "gm_notes": f"メモ{i}"} for i in chunk_ids(prompt)]
+
+    llm = PromptLLM(answer)
     await builder.handle_generate_stage(make_ctx(llm), {"stage": "wilderness", "seed": 99})
+    assert actions(sent)[-1] == "builder_stage_result" and "chat" not in actions(sent)
     msg = sent[-1]
     assert msg["map"]["seed"] == 99 and msg["map"]["points"] == builder.WILDERNESS_POINT_COUNT
     lms = msg["result"]["landmarks"]
     assert [lm["id"] for lm in lms] == [t["id"] for t in topos]
-    assert lms[0]["title"] == "地点0"
+    assert lms[0]["title"] == "地点0" and lms[0]["tts_narration"] == "読み上げ0" and lms[0]["gm_notes"] == "メモ0"
     assert {lm["role"] for lm in lms} >= {"start", "goal"}
     assert lms[1]["safe_rest"] is True
+    assert "landmark_plan" not in msg["result"]
     assert '"neighbors"' in llm.prompts[0][1]
+    detail_prompts = [p for _, p in llm.prompts[1:]]
+    assert len(detail_prompts) == -(-len(topos) // builder.ROOMS_PER_JOB)
+    assert sorted(i for p in detail_prompts for i in chunk_ids(p)) == [t["id"] for t in topos]
+
+
+async def test_wilderness_keeps_the_plan_when_details_fail(make_ctx, sent):
+    topos = builder.make_wilderness_generator(99).get_room_topologies()
+    llm = PromptLLM(lambda p: None if "【あなたが書く地点】" in p else wilderness_core(topos))
+    await builder.handle_generate_stage(make_ctx(llm), {"stage": "wilderness", "seed": 99})
+    assert actions(sent) == ["chat", "builder_stage_result"]
+    assert "細部の一部" in sent[0]["content"]
+    msg = sent[-1]
+    assert msg["fallback"] is False
+    assert [lm["gm_notes"] for lm in msg["result"]["landmarks"]] == [f"役割{t['id']}" for t in topos]
+
+
+def settlement_core():
+    return {
+        "settlement_name": "塩見の里",
+        "public_lore": {"visible_sorrows": "荷車が戻らない",
+                        "key_npcs": [{"name": "エドガー", "role": "職人頭", "want": "道を取り戻す"}]},
+        "dm_secrets": {"sorrow_truth": "塔の一団"},
+        "canon": ["集落: 塩見の里"],
+    }
+
+
+async def test_settlement_is_split_into_core_and_secrets(make_ctx, sent):
+    extra = {
+        "key_npcs": [{"name": "エドガー", "personality": "寡黙"}, {"name": "知らない人", "personality": "x"}],
+        "dm_secrets": {"npc_hidden_agenda": "裏取引", "sorrow_truth": "書き換えようとした真相"},
+        "audio_prompts": {"joy_bgm_en": "lute"},
+        "canon": ["集落: 塩見の里", "人物: エドガーは裏取引を知る"],
+        "open_threads": ["裏取引の相手"],
+    }
+    llm = FakeLLM(json_responses=[settlement_core(), extra])
+    await builder.handle_generate_stage(make_ctx(llm), {"stage": "settlement"})
+    assert actions(sent) == ["builder_stage_result"]
+    res = sent[0]["result"]
+    assert res["public_lore"]["key_npcs"] == [{"name": "エドガー", "role": "職人頭", "want": "道を取り戻す", "personality": "寡黙"}]
+    assert res["dm_secrets"] == {"npc_hidden_agenda": "裏取引", "sorrow_truth": "塔の一団"}
+    assert res["canon"] == ["集落: 塩見の里", "人物: エドガーは裏取引を知る"]
+    assert res["open_threads"] == ["裏取引の相手"] and res["audio_prompts"] == {"joy_bgm_en": "lute"}
+    assert "塩見の里" in llm.prompts[1][1] and "塔の一団" in llm.prompts[1][1]
+
+
+async def test_settlement_keeps_the_core_when_secrets_fail(make_ctx, sent):
+    await builder.handle_generate_stage(make_ctx(FakeLLM(json_responses=[settlement_core(), None])), {"stage": "settlement"})
+    assert actions(sent) == ["chat", "builder_stage_result"]
+    assert sent[1]["fallback"] is False and sent[1]["result"]["settlement_name"] == "塩見の里"
 
 
 async def test_build_wilderness_regenerates_the_same_points(make_ctx, sent, tmp_path):

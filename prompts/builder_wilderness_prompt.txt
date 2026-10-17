@@ -1,5 +1,7 @@
 あなたはワイルダネス・アドベンチャー (野外探索と旅路) のレベルデザイナーです。
 集落から目的地 (遺跡・迷宮の入口) へ向かう旅路を、地点 (ランドマーク) をつないだネットワークとして設計してください。
+この回は旅路の骨組み (全体像・秘密・各地点の名前と役割) を書きます。各地点の読み上げと GM メモは、
+この骨組みをもとに次の回で地点ごとに書きます。
 
 {context_block}
 
@@ -11,16 +13,12 @@
  in_cycle=周回路上にある (迂回路を作れる), neighbors=直接つながる地点の id)
 
 【この段階の設計指針】
-- landmarks は上のグラフの全地点について 1 件ずつ、同じ id で書く。
+- landmark_plan は上のグラフの全地点について 1 件ずつ、同じ id で書く。各地点は名前と役割 (purpose: 1 文) だけ。
 - depth が浅い地点には集落の産業の名残を、深い地点ほど手つかずの自然と目的地の勢力の気配を濃くする。
-- 集落の手仕事の品を、道中のどこか 1〜2 地点に痕跡として置く (gm_notes に何の手がかりかを書く)。
+- 集落の手仕事の品を、道中のどこか 1〜2 地点に痕跡として置き、その地点の purpose に書く。
 - in_cycle の地点を使って、本道とは別の迂回路を作る。迂回路を通ると得をするか損をするかを決める。
 - 野営できる地点 (safe_rest: true) を中ほどに 1〜2 箇所。
-- tts_narration は到着した瞬間に読み上げる五感の描写 (2 文以内・60 文字前後・ネタバレ禁止・記号や括弧なし)。
-  地点ごとに違う感覚 (音・におい・足元・光) を主役にし、同じ名詞を 3 地点以上で繰り返さない。
-- light_preset は次のいずれか: {light_presets}
-- icon は次のいずれか: icons/svg/door-steel.svg, icons/svg/campfire.svg, icons/svg/eye.svg, icons/svg/skull.svg,
-  icons/svg/chest.svg, icons/svg/temple.svg, icons/svg/book.svg, icons/svg/sword.svg
+- 地点ごとに主役の感覚 (音・におい・足元・光 など) を sense に 1 語で割り振り、隣り合う地点で同じにしない。
 
 必ず次の JSON だけを出力してください:
 {{
@@ -33,17 +31,8 @@
     "stalking_threat": "旅の一行を見張る・追う者の動きと、野営時に起きること",
     "shortcut_secret": "迂回路で見つかる、目的地に有利に近づく秘密"
   }},
-  "landmarks": [
-    {{
-      "id": 0,
-      "title": "地点の名称",
-      "icon": "icons/svg/door-steel.svg",
-      "safe_rest": false,
-      "light_preset": "moonlight_dim",
-      "tts_narration": "到着時の読み上げ",
-      "gm_notes": "【状況】… 【調べられるもの と DC】… 【分かれ道】…",
-      "ambient_sound_en": "この地点の環境音を表す英語プロンプト"
-    }}
+  "landmark_plan": [
+    {{"id": 0, "title": "地点の名称", "purpose": "この地点の役割 (1 文)", "safe_rest": false, "sense": "音"}}
   ],
   "canon": ["種別: 内容"],
   "open_threads": ["後で回収する伏線"],

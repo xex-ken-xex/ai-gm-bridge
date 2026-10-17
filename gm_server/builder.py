@@ -2,6 +2,8 @@
 4 段階シナリオビルダー (FVTT のビルダー画面から届く event)
 
 - builder_generate_stage: 地域 / 集落 / 旅路 / 遺跡の前提 の下書きを AI に作らせ、builder_stage_result で返す
+  集落と旅路は 1 回で書かせると応答が長くタイムアウトしやすいため、骨組み → 細部 の 2 回に分ける
+  (旅路の地点の細部は遺跡の区画と同じく数地点ずつ並列に問い合わせる)
 - builder_build_scene: 旅路または遺跡のシーンを構築する (create_dungeon_scene)
 
 旅路の地点グラフは seed から再生成できるので、下書きと一緒に seed を返し、FVTT 側が地図帳ジャーナルの
@@ -17,6 +19,7 @@ from gm_server.config import SPEAKER_SUPPORT
 from gm_server.deadline import run_with_deadline
 from gm_server.dungeon_scene import (
     MAX_ROOMS_FOR_AI,
+    ROOMS_PER_JOB,
     SIZE_PRESETS,
     WILDERNESS_POINT_COUNT,
     _normalize_chunk_ids,
@@ -33,8 +36,10 @@ from tools.prompt_manager import get_active_world_info, prioritize_key_topologie
 from tools.scenario_decks import draw_cards
 from tools.scenario_prompts import (
     STAGE_TEMPLATES,
+    build_settlement_secrets_prompt,
     build_site_rooms_prompt,
     build_stage_prompt,
+    build_wilderness_landmarks_prompt,
     plan_site_rooms,
 )
 
@@ -249,6 +254,107 @@ def fallback_stage_result(stage: str) -> Dict:
 # -------------------------------------------------------------------------
 # builder_generate_stage
 # -------------------------------------------------------------------------
+async def query_stage(ctx, label: str, prompt: str):
+    """AI に 1 回問い合わせる。打ち切り・失敗なら None"""
+    try:
+        return await run_with_deadline(ctx, label, ctx.llm.query_json(prompt, unbounded=True), limit=llm_step_limit(ctx))
+    except asyncio.TimeoutError:
+        log(f"[{label}] 打ち切りました。")
+    except Exception as e:
+        log(f"[{label}] 生成に失敗しました ({e})")
+    return None
+
+
+def _merge_unique(*lists) -> List[str]:
+    result: List[str] = []
+    for items in lists:
+        for item in _str_list(items):
+            if item not in result:
+                result.append(item)
+    return result
+
+
+def merge_settlement(core: Dict, extra) -> Dict:
+    """集落の骨組みに 2 回目の応答 (人柄・隠し事・BGM・伏線) を足す。骨組みの内容は上書きしない"""
+    result = dict(core)
+    extra = extra if isinstance(extra, dict) else {}
+    public = dict(result.get("public_lore") or {})
+    details = {
+        str(n.get("name")): n for n in extra.get("key_npcs") or [] if isinstance(n, dict) and n.get("name")
+    }
+    npcs = []
+    for npc in public.get("key_npcs") or []:
+        if isinstance(npc, dict):
+            more = details.get(str(npc.get("name")), {})
+            npc = {**npc, **({"personality": more["personality"]} if more.get("personality") else {})}
+        npcs.append(npc)
+    public["key_npcs"] = npcs
+    result["public_lore"] = public
+    dm = dict(result.get("dm_secrets") or {}) if isinstance(result.get("dm_secrets"), dict) else {}
+    extra_dm = extra.get("dm_secrets") if isinstance(extra.get("dm_secrets"), dict) else {}
+    result["dm_secrets"] = {**extra_dm, **dm}
+    if isinstance(extra.get("audio_prompts"), dict):
+        result["audio_prompts"] = extra["audio_prompts"]
+    result["canon"] = _merge_unique(result.get("canon"), extra.get("canon"))
+    result["open_threads"] = _merge_unique(result.get("open_threads"), extra.get("open_threads"))
+    return result
+
+
+async def generate_settlement(ctx, data: dict, label: str, core_prompt: str):
+    """集落: 骨組み (表の情報・人物の顔ぶれ・真相の要点) → 人柄・隠し事・BGM。(応答, 一部欠けたか) を返す"""
+    core = await query_stage(ctx, f"{label} 1/2 骨組み", core_prompt)
+    if normalize_stage_result("settlement", core) is None:
+        return core, False
+    prompt = build_settlement_secrets_prompt(data, core, world_fallback=get_active_world_info())
+    extra = await query_stage(ctx, f"{label} 2/2 人物と秘密", prompt)
+    return merge_settlement(core, extra), not isinstance(extra, dict)
+
+
+def landmark_plan(core: Dict, topologies: List[Dict]) -> Dict[int, Dict]:
+    """旅路の骨組みの landmark_plan を地点グラフの id (0 始まり) にそろえる"""
+    items = [p for p in core.get("landmark_plan") or [] if isinstance(p, dict)]
+    return {p["id"]: p for p in _normalize_chunk_ids(items, [t["id"] for t in topologies])}
+
+
+def merge_landmarks(plan: Dict[int, Dict], details: Optional[List[Dict]]) -> List[Dict]:
+    """骨組みの名前・役割と、地点ごとの細部を合わせる。細部が無い地点は役割を GM メモにする"""
+    by_id = {d["id"]: d for d in details or []}
+    result = []
+    for pid, p in sorted(plan.items()):
+        d = by_id.get(pid, {})
+        item = {**d, "id": pid, "title": p.get("title") or d.get("title") or f"地点 {pid + 1}",
+                "safe_rest": bool(p.get("safe_rest"))}
+        if not item.get("gm_notes"):
+            item["gm_notes"] = p.get("purpose", "")
+        result.append(item)
+    return result
+
+
+async def generate_wilderness(ctx, data: dict, label: str, core_prompt: str, topologies: List[Dict]):
+    """旅路: 骨組み (全体像・秘密・各地点の名前と役割) → 地点ごとの読み上げと GM メモ (並列)"""
+    core = await query_stage(ctx, f"{label} 1/2 骨組み", core_prompt)
+    if normalize_stage_result("wilderness", core) is None:
+        return core, False
+    plan = landmark_plan(core, topologies)
+    if not plan:
+        # 骨組みに地点の一覧が無い (1 回で landmarks まで書いてきた場合はそれを使う)
+        return core, not core.get("landmarks")
+    world = get_active_world_info()
+    presets = list(LIGHT_PRESET_KEYS)
+
+    def prompt_for_chunk(chunk: List[Dict]) -> str:
+        return build_wilderness_landmarks_prompt(data, core, plan, chunk, presets, world_fallback=world)
+
+    targets = [t for t in topologies if t["id"] in plan]
+    details = await query_room_flavors(
+        ctx, None, targets, "wilderness", prompt_for_chunk=prompt_for_chunk, label=f"{label} 2/2 地点の描写",
+    )
+    result = {k: v for k, v in core.items() if k != "landmark_plan"}
+    result["landmarks"] = merge_landmarks(plan, details)
+    got = {d["id"] for d in details or []}
+    return result, not set(plan) <= got
+
+
 async def handle_generate_stage(ctx, data: dict) -> None:
     stage = data.get("stage")
     if stage not in STAGE_TEMPLATES:
@@ -278,13 +384,13 @@ async def handle_generate_stage(ctx, data: dict) -> None:
     )
 
     label = f"ビルダー: {stage_label}"
-    raw = None
-    try:
-        raw = await run_with_deadline(ctx, label, ctx.llm.query_json(prompt, unbounded=True), limit=llm_step_limit(ctx))
-    except asyncio.TimeoutError:
-        log(f"[{label}] 打ち切りました。")
-    except Exception as e:
-        log(f"[{label}] 生成に失敗しました ({e})")
+    partial = False
+    if stage == "settlement":
+        raw, partial = await generate_settlement(ctx, data, label, prompt)
+    elif stage == "wilderness":
+        raw, partial = await generate_wilderness(ctx, data, label, prompt, topologies)
+    else:
+        raw = await query_stage(ctx, label, prompt)
 
     result = normalize_stage_result(stage, raw)
     fallback = result is None
@@ -292,6 +398,11 @@ async def handle_generate_stage(ctx, data: dict) -> None:
         result = fallback_stage_result(stage)
         await ctx.send(protocol.chat(
             f"⚠️ {stage_label}の下書きを AI から受け取れなかったため、手直し用の骨組みを入れました。",
+            speaker=SPEAKER_SUPPORT,
+        ))
+    elif partial:
+        await ctx.send(protocol.chat(
+            f"⚠️ {stage_label}の細部の一部を AI から受け取れませんでした。骨組みは届いているので、空いた所を手直ししてください。",
             speaker=SPEAKER_SUPPORT,
         ))
     if stage == "wilderness":

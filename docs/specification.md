@@ -97,6 +97,8 @@ flowchart TD
 #### エラーハンドリング & レジリエンス
 - **HTML クリーニング**: FVTT チャットに含まれる `<p>...</p>` などの HTML タグを正規表現で事前除去。
 - **API 再試行 (Exponential Backoff)**: Gemini API が 503 過負荷を返した場合、最大 3 回まで指数関数的待機時間（2秒、4秒）を設けて自動再試行。
+- **再接続をまたぐ送信**: 処理中に依頼元の接続が閉じたら (FVTT の再読み込みなど)、いま繋がっている接続へ送る。
+  どこにも繋がっていなければ最大 20 件まで溜め、次の接続時に送る (`progress` は溜めない)。`gm_server/context.py` の `ConnectionHub`。
 
 ---
 
@@ -161,6 +163,9 @@ GM が対話型チャットカード上の選択肢ボタンをクリックし�
 `builder_build_scene` は上記の文脈に加えて `scene_mode`, `name`, `public_lore`, `dm_secrets` を送ります。
 旅路は `map` (`{"seed": …}`) と `landmarks`、遺跡は `size_key` (small / medium)・`density`・`loop_ratio`・`sub_objectives` を送ります。
 サーバーは `create_dungeon_scene` で応答します。
+
+集落と旅路の下書きは、AI の応答が長くタイムアウトしやすいため 2 回に分けて問い合わせます
+(集落: 骨組み → 人物と秘密、旅路: 骨組みと地点の一覧 → 地点の描写を 5 地点ずつ並列)。FVTT に返す `builder_stage_result` の形は 1 回のときと同じです。
 
 ---
 

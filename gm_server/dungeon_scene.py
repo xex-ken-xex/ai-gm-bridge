@@ -230,11 +230,13 @@ async def query_room_flavors(
     topologies: List[Dict],
     scene_mode: str,
     prompt_for_chunk: Optional[Callable[[List[Dict]], str]] = None,
+    label: str = "部屋の情景",
 ) -> Optional[List[Dict]]:
     """
     部屋の情景を ROOMS_PER_JOB 部屋ずつのジョブに分け、LLM_CONCURRENCY 本まで並列に問い合わせる。
     返す id は 0 始まり。全ジョブ失敗なら None (呼び出し側は既定のノートを使う)。
     prompt_for_chunk を渡すと、1 ジョブ分の部屋からプロンプトを作る処理を差し替えられる (シナリオビルダー用)。
+    label は進捗表示とログに使う名前 (旅路の地点にも使うため)。
     """
     selected = prioritize_key_topologies(topologies, max_count=MAX_ROOMS_FOR_AI)
     if prompt_for_chunk is None:
@@ -258,7 +260,7 @@ async def query_room_flavors(
                 prompt = prompt_for_chunk(chunk)
                 parsed = await ctx.llm.query_json(prompt, unbounded=True)
             except Exception as e:
-                log(f"Roomフレーバー生成失敗 ({e})。この部屋群は既定のノートを使用します。")
+                log(f"[{label}] 生成失敗 ({e})。この部屋群は既定のノートを使用します。")
                 parsed = None
             finally:
                 done += 1
@@ -269,11 +271,11 @@ async def query_room_flavors(
     rounds = -(-len(chunks) // LLM_CONCURRENCY)
     try:
         await run_with_deadline(
-            ctx, "部屋の情景", asyncio.gather(*(run(c) for c in chunks)),
+            ctx, label, asyncio.gather(*(run(c) for c in chunks)),
             limit=llm_step_limit(ctx) * rounds, detail=lambda: f"完了 {done}/{len(chunks)}",
         )
     except asyncio.TimeoutError:
-        log(f"部屋の情景を打ち切りました (完了 {done}/{len(chunks)})。残りは既定のノートを使用します。")
+        log(f"{label}を打ち切りました (完了 {done}/{len(chunks)})。残りは既定のノートを使用します。")
     return sorted(flavors, key=lambda r: r["id"]) or None
 
 

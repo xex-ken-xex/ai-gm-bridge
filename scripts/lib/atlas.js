@@ -131,7 +131,9 @@ export function formatStageDraft(stage, res) {
   } else if (stage === "settlement") {
     name = res.settlement_name;
     const craft = pub.micro_craft || {};
-    const npcs = (pub.key_npcs || []).map(n => `・${n.name} (${n.role}): ${n.personality}${n.want ? ` / 望み: ${n.want}` : ""}`).join("\n");
+    const npcs = (pub.key_npcs || [])
+      .map(n => `・${n.name ?? ""} (${n.role ?? ""})${n.personality ? `: ${n.personality}` : ""}${n.want ? ` / 望み: ${n.want}` : ""}`)
+      .join("\n");
     publicText = sections([
       section("建築と街並み", pub.architecture_and_scenery),
       section("一次産業", pub.primary_industries),

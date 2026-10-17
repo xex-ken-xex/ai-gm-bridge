@@ -8,8 +8,10 @@ from tools.scenario_decks import DECKS, draw_cards
 from tools.scenario_prompts import (
     PLAN_LABELS,
     build_context_block,
+    build_settlement_secrets_prompt,
     build_site_rooms_prompt,
     build_stage_prompt,
+    build_wilderness_landmarks_prompt,
     name_ledger,
     plan_site_rooms,
     to_prompt_text,
@@ -94,7 +96,7 @@ def test_every_stage_prompt_renders(stage):
         light_presets=["dark", "torch_warm"],
     )
     assert "【共通ルール: 整合性】" in prompt and "【出力前の自己点検】" in prompt
-    assert '"canon"' in prompt and '"open_threads"' in prompt
+    assert '"canon"' in prompt and '"resolved_threads"' in prompt
     if stage == "site_lore":
         assert "アリア (エルフ): 塩の研究者" in prompt
 
@@ -151,3 +153,23 @@ def test_site_rooms_prompt_lists_whole_plan_and_only_the_chunk():
     assert [r["id"] for r in rooms] == [t["id"] for t in topos[:3]]
     assert all(r["plan"] in prompt for r in rooms)
     assert "廃墟" in prompt and PLAN_LABELS["start"] in prompt
+
+
+def test_settlement_secrets_prompt_carries_the_core():
+    core = {"settlement_name": "塩見の里", "public_lore": {"key_npcs": [{"name": "エドガー", "want": "道を取り戻す"}]}}
+    prompt = build_settlement_secrets_prompt(CONTEXT, core)
+    assert "集落『塩見の里』" in prompt and '"エドガー"' in prompt
+    assert '"open_threads"' in prompt and '"npc_hidden_agenda"' in prompt
+    assert "【確定事項】" in prompt and "【発想カード】" not in prompt
+
+
+def test_wilderness_landmarks_prompt_lists_whole_plan_and_only_the_chunk():
+    topos = wilderness_topologies()
+    plan = {t["id"]: {"id": t["id"], "title": f"地点{t['id']}", "purpose": "役割", "sense": "音"} for t in topos}
+    core = {"wilderness_title": "塩の道", "public_lore": {"route_overview": "道"}, "landmark_plan": list(plan.values())}
+    prompt = build_wilderness_landmarks_prompt(CONTEXT, core, plan, topos[:3], ["dark"])
+    assert all(f"- 地点 {t['id']}: 地点{t['id']}" in prompt for t in topos)
+    points = json.loads(prompt.split("【あなたが書く地点】\n")[1].split("\n")[0])
+    assert [p["id"] for p in points] == [t["id"] for t in topos[:3]]
+    assert points[0]["plan"]["title"] == "地点0"
+    assert "landmark_plan" not in prompt.split("【この旅路の骨組み (確定)】")[1].split("【全地点")[0]
