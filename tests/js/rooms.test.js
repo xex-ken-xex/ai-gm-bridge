@@ -56,7 +56,7 @@ test("markRoomReached は情景テキストの先頭に <到達済> を付け、
   const html = page();
   assert.equal(isRoomReached(html), false);
   const marked = markRoomReached(html);
-  assert.ok(marked.includes('class="ai-gm-room-flavor" style="margin-bottom: 12px; font-style: italic; color: #222;">&lt;到達済&gt; '));
+  assert.match(marked, /class="ai-gm-room-flavor" style="[^"]*">&lt;到達済&gt; 冷たい風/);
   assert.equal(isRoomReached(marked), true);
   // 2 回付けない
   assert.equal(markRoomReached(marked), marked);

@@ -150,3 +150,11 @@ test("roomRole は role を優先し、無ければ type を使う (M2)", () => 
   const pages = buildJournalPages({ rooms: [{ ...data.rooms[1], type: "sub_goal" }] });
   assert.ok(pages[0].text.content.includes("中目標ギミック"));
 });
+
+test("部屋ページの情景テキストはダークテーマでも読める明るい文字色と暗い背景", () => {
+  const html = buildJournalPages({ rooms: [data.rooms[1]] })[0].text.content;
+  const style = html.match(/class="ai-gm-room-flavor" style="([^"]*)"/)[1];
+  assert.ok(style.includes("color: #f3e9d2"));
+  assert.ok(style.includes("background: rgba(30, 24, 20"));
+  assert.ok(!html.includes("color: #222"));
+});

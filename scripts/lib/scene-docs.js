@@ -222,10 +222,10 @@ export function buildRoomPage(r, consts) {
     text: {
       content: `
       <div class="ai-gm-room-note" style="font-family: inherit; line-height: 1.6; font-size: 14px;">
-        <div style="font-size: 16px; font-weight: bold; color: #782e22; border-bottom: 2px solid #782e22; margin-bottom: 8px; padding-bottom: 4px;">
+        <div style="font-size: 16px; font-weight: bold; color: #e06c4f; border-bottom: 2px solid #e06c4f; margin-bottom: 8px; padding-bottom: 4px;">
           ${escapeHtml(r.name)} ${restBadge}
         </div>
-        <p class="ai-gm-room-flavor" style="margin-bottom: 12px; font-style: italic; color: #222;">
+        <p class="ai-gm-room-flavor" style="margin-bottom: 12px; font-style: italic; color: #f3e9d2; background: rgba(30, 24, 20, 0.88); border-left: 4px solid #e06c4f; padding: 8px 10px; border-radius: 4px;">
           ${textToHtml(r.flavor)}
         </p>
         ${gmNoteHtml}
