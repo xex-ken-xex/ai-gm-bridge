@@ -196,75 +196,96 @@ function options(entries, selectedId, emptyLabel) {
   return head + entries.map(e => `<option value="${escapeHtml(e.id)}" ${e.id === selectedId ? "selected" : ""}>${escapeHtml(e.name)}</option>`).join("");
 }
 
-function textFields(tab, d, labels) {
+function field(label, control, cls = "") {
+  return `<div class="aib-field ${cls}"><span class="aib-label">${label}</span>${control}</div>`;
+}
+
+function select(name, inner) {
+  return `<select data-field="${name}">${inner}</select>`;
+}
+
+function checkList(title, items, open = false) {
+  const count = items.filter(i => i.checked).length;
+  const boxes = items.map(i => `<label class="aib-check"><input type="checkbox" ${i.attr}="${escapeHtml(i.id)}" ${i.checked ? "checked" : ""}><span>${escapeHtml(i.label)}</span></label>`).join("");
   return `
-    <div class="aib-row">
-      <label>名前<input type="text" data-field="name" value="${escapeHtml(d.name)}" placeholder="空欄なら AI の案を使います"></label>
-      <label>GM 指示 (最優先)<input type="text" data-field="prompt" value="${escapeHtml(d.prompt)}" placeholder="${escapeHtml(labels.prompt)}"></label>
+    <details class="aib-box" ${open ? "open" : ""}>
+      <summary>${title} (<span class="aib-count">${count}</span> 件選択中)</summary>
+      <div class="aib-checks">${boxes || "<span>候補がありません</span>"}</div>
+    </details>`;
+}
+
+function textFields(d, labels) {
+  return `
+    <div class="aib-grid aib-two">
+      ${field("名前", `<input type="text" data-field="name" value="${escapeHtml(d.name)}" placeholder="空欄なら AI の案を使います">`)}
+      ${field("GM 指示 (最優先)", `<input type="text" data-field="prompt" value="${escapeHtml(d.prompt)}" placeholder="${escapeHtml(labels.prompt)}">`)}
     </div>
-    <div class="aib-split">
-      <label class="aib-pub">📖 プレイヤー公開情報<textarea data-field="public" rows="9">${escapeHtml(d.public)}</textarea></label>
-      <label class="aib-dm">🔒 DM 専用情報<textarea data-field="dm" rows="9">${escapeHtml(d.dm)}</textarea></label>
+    <div class="aib-grid aib-two">
+      ${field("📖 プレイヤー公開情報", `<textarea data-field="public" class="aib-tall">${escapeHtml(d.public)}</textarea>`, "aib-pub")}
+      ${field("🔒 DM 専用情報", `<textarea data-field="dm" class="aib-tall">${escapeHtml(d.dm)}</textarea>`, "aib-dm")}
     </div>
-    <div class="aib-split">
-      <label class="aib-canon">📌 確定事項 (後の段階で変更しない。1 行 1 件・編集可)<textarea data-field="canon" rows="4">${escapeHtml(d.canon)}</textarea></label>
-      <label class="aib-canon">🧵 未回収の伏線 (次の段階が回収する。1 行 1 件)<textarea data-field="threads" rows="4">${escapeHtml(d.threads)}</textarea></label>
+    <div class="aib-grid aib-two">
+      ${field("📌 確定事項 (後で変えない事実。1 行 1 件)", `<textarea data-field="canon" class="aib-short">${escapeHtml(d.canon)}</textarea>`, "aib-canon")}
+      ${field("🧵 未回収の伏線 (次の段階が回収)", `<textarea data-field="threads" class="aib-short">${escapeHtml(d.threads)}</textarea>`, "aib-canon")}
     </div>`;
 }
 
 function panelHtml(tab) {
   const d = state.drafts[tab.id] ?? {};
-  const openSelect = `
-    <label>既存の地図帳を開く<select data-field="open">${options(atlasEntries(STAGE_CATEGORY[tab.stage]), state.openIds[tab.id], "(新規作成)")}</select></label>`;
-  let extra = "";
+  const settings = [
+    field("既存の地図帳を開く", select("open", options(atlasEntries(STAGE_CATEGORY[tab.stage]), state.openIds[tab.id], "(新規作成)"))),
+  ];
+  let extraBlock = "";
   let labels = { prompt: "雰囲気・地形・テーマなど" };
   let buttons = `
     <button type="button" class="aib-gen" data-action="generate">🤖 AI で下書き</button>
     <button type="button" class="aib-save" data-action="save">💾 地図帳に保存</button>`;
 
   if (tab.id === "settlement") {
-    extra = `
-      <label>上位の地域<select data-field="parentRegion">${options(atlasEntries("region"), d.parentRegion, "(なし: ワールド資料のみ)")}</select></label>
-      <label>規模<select data-field="scale">${SETTLEMENT_SCALES.map(s => `<option ${s === d.scale ? "selected" : ""}>${escapeHtml(s)}</option>`).join("")}</select></label>`;
+    settings.push(
+      field("上位の地域", select("parentRegion", options(atlasEntries("region"), d.parentRegion, "(なし: ワールド資料のみ)"))),
+      field("規模", select("scale", SETTLEMENT_SCALES.map(s => `<option ${s === d.scale ? "selected" : ""}>${escapeHtml(s)}</option>`).join(""))),
+    );
     labels = { prompt: "生業・雰囲気など (空欄なら地域の資源から)" };
   } else if (tab.id === "wilderness") {
-    extra = `
-      <label>上位の地域<select data-field="parentRegion">${options(atlasEntries("region"), d.parentRegion, "(集落の地域を使う)")}</select></label>
-      <label>出発地の集落<select data-field="parentSettlement">${options(atlasEntries("settlement"), d.parentSettlement, "(なし)")}</select></label>`;
+    settings.push(
+      field("上位の地域", select("parentRegion", options(atlasEntries("region"), d.parentRegion, "(集落の地域を使う)"))),
+      field("出発地の集落", select("parentSettlement", options(atlasEntries("settlement"), d.parentSettlement, "(なし)"))),
+    );
     labels = { prompt: "道中の地形や中継地のイメージ" };
     buttons += `<button type="button" class="aib-build" data-action="build">🌲 保存して旅路シーンを構築</button>`;
   } else if (tab.id === "site") {
     const actors = game.actors?.contents ?? [];
     const pcs = actors.filter(a => a.type === "character" || a.hasPlayerOwner);
-    const npcs = actors.filter(a => a.type === "npc").slice(0, 12);
+    const npcs = actors.filter(a => a.type === "npc" && !a.hasPlayerOwner);
     const checked = new Set(d.actorIds ?? pcs.map(a => a.id));
-    const actorChecks = [
-      ...pcs.map(a => ({ a, mark: "👤", kind: "PC" })),
-      ...npcs.map(a => ({ a, mark: "🎭", kind: "NPC" })),
-    ].map(({ a, mark, kind }) => `<label class="aib-check"><input type="checkbox" data-actor="${escapeHtml(a.id)}" ${checked.has(a.id) ? "checked" : ""}> ${mark}${escapeHtml(a.name)} (${kind})</label>`).join("");
-    extra = `
-      <label>上位の集落<select data-field="parentSettlement">${options(atlasEntries("settlement"), d.parentSettlement, "(なし)")}</select></label>
-      <label>道中の旅路<select data-field="parentWilderness">${options(atlasEntries("wilderness"), d.parentWilderness, "(なし)")}</select></label>
-      <label>空間の種類<select data-field="siteMode">
-        <option value="ruins" ${d.siteMode !== "underground" ? "selected" : ""}>⛰️ 地上の廃墟 (崩れた壁越しに見通せる)</option>
-        <option value="underground" ${d.siteMode === "underground" ? "selected" : ""}>🕳️ 地下迷宮 (閉鎖空間)</option>
-      </select></label>
-      <label>規模<select data-field="size">
-        <option value="small" ${d.size !== "medium" ? "selected" : ""}>小 (100x100マス)</option>
-        <option value="medium" ${d.size === "medium" ? "selected" : ""}>中 (500x500マス・重い)</option>
-      </select></label>
-      <label>部屋密度 <input type="range" data-field="density" min="0.2" max="1.0" step="0.1" value="${escapeHtml(d.density ?? "0.5")}"></label>
-      <label>周回路 <input type="range" data-field="loop" min="0" max="0.5" step="0.05" value="${escapeHtml(d.loop ?? "0.25")}"></label>
-      <div class="aib-actors"><span>🎯 物語に絡める PC / NPC</span>${actorChecks || "Actor がいません"}</div>`;
+    const items = [
+      ...pcs.map(a => ({ id: a.id, label: `👤 ${a.name}`, checked: checked.has(a.id), attr: "data-actor" })),
+      ...npcs.map(a => ({ id: a.id, label: `🎭 ${a.name}`, checked: checked.has(a.id), attr: "data-actor" })),
+    ];
+    settings.push(
+      field("上位の集落", select("parentSettlement", options(atlasEntries("settlement"), d.parentSettlement, "(なし)"))),
+      field("道中の旅路", select("parentWilderness", options(atlasEntries("wilderness"), d.parentWilderness, "(なし)"))),
+      field("空間の種類", select("siteMode", `
+        <option value="ruins" ${d.siteMode !== "underground" ? "selected" : ""}>⛰️ 地上の廃墟</option>
+        <option value="underground" ${d.siteMode === "underground" ? "selected" : ""}>🕳️ 地下迷宮</option>`)),
+      field("規模", select("size", `
+        <option value="small" ${d.size !== "medium" ? "selected" : ""}>小 (100x100)</option>
+        <option value="medium" ${d.size === "medium" ? "selected" : ""}>中 (500x500・重い)</option>`)),
+      field(`部屋密度 <span data-value-for="density">${escapeHtml(d.density ?? "0.5")}</span>`, `<input type="range" data-field="density" min="0.2" max="1.0" step="0.1" value="${escapeHtml(d.density ?? "0.5")}">`),
+      field(`周回路 <span data-value-for="loop">${escapeHtml(d.loop ?? "0.25")}</span>`, `<input type="range" data-field="loop" min="0" max="0.5" step="0.05" value="${escapeHtml(d.loop ?? "0.25")}">`),
+    );
+    extraBlock = checkList("🎯 物語に絡める PC / NPC", items);
     labels = { prompt: "シチュエーションや仕掛けの要望" };
-    buttons += `<button type="button" class="aib-build" data-action="build">🏰 保存して全区画を配置・シーン構築</button>`;
+    buttons += `<button type="button" class="aib-build" data-action="build">🏰 保存してシーン構築</button>`;
   }
 
   const busy = state.pending[tab.id] ? `<p class="aib-busy">⏳ AI が下書きを作成中です…</p>` : "";
   return `
     <section class="aib-panel ${state.activeTab === tab.id ? "active" : ""}" data-tab="${tab.id}">
-      <div class="aib-row">${openSelect}${extra}</div>
-      ${textFields(tab, d, labels)}
+      <div class="aib-grid aib-settings">${settings.join("")}</div>
+      ${extraBlock}
+      ${textFields(d, labels)}
       ${busy}
       <div class="aib-actions">${buttons}</div>
     </section>`;
@@ -273,36 +294,45 @@ function panelHtml(tab) {
 function dialogHtml() {
   const refs = new Set(referenceIds());
   const atlasIds = new Set(atlasEntries().map(e => e.id));
-  const refChecks = (game.journal?.contents ?? [])
+  const refItems = (game.journal?.contents ?? [])
     .filter(j => !atlasIds.has(j.id) && !j.name.startsWith("【探索録】"))
-    .slice(0, 40)
-    .map(j => `<label class="aib-check"><input type="checkbox" data-reference="${escapeHtml(j.id)}" ${refs.has(j.id) ? "checked" : ""}> ${escapeHtml(j.name)}</label>`)
-    .join("");
+    .map(j => ({ id: j.id, label: j.name, checked: refs.has(j.id), attr: "data-reference" }));
+  // FVTT のフォーム用 CSS (label・textarea・button の幅や並び) に負けないよう、レイアウトは !important で固定する
   return `
   <style>
-    .aib { color: #f0f0e0; background: #1a1a20; padding: 10px; border-radius: 6px; font-size: 12px; }
-    .aib label { display: flex; flex-direction: column; gap: 3px; flex: 1; color: #f39c12; font-weight: bold; }
-    .aib input[type=text], .aib textarea, .aib select { background: #101014; color: #f0f0f0; border: 1px solid #555; border-radius: 4px; padding: 5px; font-family: inherit; font-size: 12px; font-weight: normal; }
-    .aib .aib-tabs { display: flex; gap: 4px; border-bottom: 2px solid #e67e22; margin-bottom: 8px; }
-    .aib .aib-tab { flex: 1; padding: 6px; background: #2a2a32; color: #ccc; border: none; border-radius: 4px 4px 0 0; cursor: pointer; font-weight: bold; }
-    .aib .aib-tab.active { background: #e67e22; color: #111; }
-    .aib .aib-panel { display: none; flex-direction: column; gap: 8px; max-height: 600px; overflow-y: auto; }
-    .aib .aib-panel.active { display: flex; }
-    .aib .aib-row { display: flex; gap: 8px; flex-wrap: wrap; }
-    .aib .aib-split { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .aib { color: #f0f0e0 !important; background: #1a1a20; padding: 10px; border-radius: 6px; font-size: 13px; display: flex !important; flex-direction: column !important; gap: 8px; }
+    .aib * { box-sizing: border-box; }
+    .aib .aib-grid { display: grid !important; gap: 8px 10px; align-items: start; }
+    .aib .aib-settings { grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)) !important; }
+    .aib .aib-two { grid-template-columns: 1fr 1fr !important; }
+    .aib .aib-field { display: flex !important; flex-direction: column !important; gap: 3px; min-width: 0; margin: 0 !important; }
+    .aib .aib-label { color: #f39c12; font-weight: bold; font-size: 12px; line-height: 1.3; }
+    .aib input[type=text], .aib textarea, .aib select { width: 100% !important; max-width: none !important; min-width: 0 !important; background: #101014 !important; color: #f0f0f0 !important; border: 1px solid #555 !important; border-radius: 4px; padding: 5px 6px; font-family: inherit; font-size: 12px; margin: 0 !important; }
+    .aib input[type=text], .aib select { height: 28px !important; }
+    .aib input[type=range] { width: 100% !important; margin: 4px 0 0 0 !important; }
+    .aib textarea { resize: vertical !important; line-height: 1.5; }
+    .aib textarea.aib-tall { height: 190px !important; min-height: 120px; }
+    .aib textarea.aib-short { height: 90px !important; min-height: 60px; }
     .aib .aib-pub { border-left: 3px solid #2ecc71; padding-left: 6px; }
     .aib .aib-dm { border-left: 3px solid #e74c3c; padding-left: 6px; }
     .aib .aib-canon { border-left: 3px solid #3498db; padding-left: 6px; }
-    .aib .aib-check { display: inline-flex; flex-direction: row; align-items: center; gap: 3px; margin-right: 8px; color: #f0f0e0; font-weight: normal; }
-    .aib .aib-refs, .aib .aib-actors { background: #101014; padding: 5px 8px; border-radius: 4px; border: 1px solid #333; max-height: 64px; overflow-y: auto; width: 100%; }
-    .aib .aib-refs > span, .aib .aib-actors > span { color: #f39c12; font-weight: bold; margin-right: 8px; }
-    .aib .aib-actions { display: flex; gap: 6px; padding-top: 8px; border-top: 1px solid #333; }
-    .aib .aib-actions button { flex: 1; color: #fff; border: none; padding: 7px; border-radius: 4px; cursor: pointer; font-weight: bold; }
-    .aib .aib-gen { background: #8e44ad; } .aib .aib-save { background: #2980b9; } .aib .aib-build { background: #27ae60; flex: 1.5; }
+    .aib .aib-tabs { display: flex !important; flex-direction: row !important; gap: 4px; border-bottom: 2px solid #e67e22; }
+    .aib .aib-tab { flex: 1 1 0 !important; width: auto !important; margin: 0 !important; padding: 6px; background: #2a2a32 !important; color: #ccc !important; border: none !important; border-radius: 4px 4px 0 0; cursor: pointer; font-weight: bold; }
+    .aib .aib-tab.active { background: #e67e22 !important; color: #111 !important; }
+    .aib .aib-panel { display: none !important; flex-direction: column; gap: 10px; max-height: 620px; overflow-y: auto; padding-right: 4px; }
+    .aib .aib-panel.active { display: flex !important; }
+    .aib .aib-box { background: #101014; border: 1px solid #333; border-radius: 4px; padding: 4px 8px; }
+    .aib .aib-box > summary { cursor: pointer; color: #f39c12; font-weight: bold; font-size: 12px; }
+    .aib .aib-checks { display: grid !important; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)) !important; gap: 2px 10px; max-height: 120px; overflow-y: auto; margin-top: 4px; }
+    .aib .aib-check { display: flex !important; flex-direction: row !important; align-items: center; gap: 4px; margin: 0 !important; color: #f0f0e0; font-weight: normal; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .aib .aib-check input { flex: none; width: 14px !important; height: 14px !important; margin: 0 !important; }
+    .aib .aib-actions { display: flex !important; flex-direction: row !important; gap: 6px; padding-top: 8px; border-top: 1px solid #333; }
+    .aib .aib-actions button { flex: 1 1 0 !important; width: auto !important; margin: 0 !important; color: #fff !important; border: none !important; padding: 7px; border-radius: 4px; cursor: pointer; font-weight: bold; white-space: nowrap; }
+    .aib .aib-gen { background: #8e44ad !important; } .aib .aib-save { background: #2980b9 !important; } .aib .aib-build { background: #27ae60 !important; }
     .aib .aib-busy { color: #f1c40f; margin: 0; }
   </style>
   <div class="aib">
-    <div class="aib-refs"><span>📚 ワールド資料として参照するジャーナル (全段階で矛盾しないよう AI に渡します)</span>${refChecks || "ジャーナルがありません"}</div>
+    ${checkList("📚 ワールド資料として AI に渡すジャーナル", refItems)}
     <div class="aib-tabs">
       ${TABS.map(t => `<button type="button" class="aib-tab ${state.activeTab === t.id ? "active" : ""}" data-target="${t.id}">${t.label}</button>`).join("")}
     </div>
@@ -378,6 +408,14 @@ function bindEvents(root) {
   root.addEventListener("keydown", ev => {
     if (ev.key === "Enter" && ev.target?.tagName === "INPUT") ev.preventDefault();
   });
+  root.querySelectorAll('input[type="range"]').forEach(el => el.addEventListener("input", () => {
+    const label = el.closest(".aib-field")?.querySelector(`[data-value-for="${el.dataset.field}"]`);
+    if (label) label.textContent = el.value;
+  }));
+  root.querySelectorAll(".aib-box").forEach(box => box.addEventListener("change", () => {
+    const count = box.querySelector(".aib-count");
+    if (count) count.textContent = String(box.querySelectorAll('input[type="checkbox"]:checked').length);
+  }));
   root.querySelectorAll(".aib-tab").forEach(btn => btn.addEventListener("click", () => {
     state.activeTab = btn.dataset.target;
     root.querySelectorAll(".aib-tab").forEach(b => b.classList.toggle("active", b === btn));
