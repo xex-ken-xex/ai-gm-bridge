@@ -26,6 +26,12 @@ import {
   sendDialogueIfHeard,
   setNpcSender,
 } from "./scripts/npc.js";
+import {
+  isNpcTurnMessage,
+  registerNpcCombatHooks,
+  registerNpcCombatSettings,
+  setCombatSender,
+} from "./scripts/npc-combat.js";
 
 let connection = null;
 
@@ -77,6 +83,7 @@ function registerAiCommands() {
 // モジュール評価時および init フックで即座にコマンド登録
 registerAiCommands();
 Hooks.once("init", registerAiCommands);
+Hooks.once("init", registerNpcCombatSettings);
 
 // FVTTのチャット入力直接インターセプト (/ai, /agy スラッシュコマンド)
 Hooks.on("chatMessage", (chatLog, messageText) => {
@@ -161,6 +168,9 @@ Hooks.once("ready", async function() {
   connection.connect();
   setBuilderSender(payload => connection.send(payload));
   setNpcSender(payload => connection.send(payload));
+  setCombatSender(payload => connection.send(payload));
+  // 戦闘トラッカーで NPC の手番になったら AI に行動を頼む (設定「NPC の自律戦闘」で切り替え)
+  registerNpcCombatHooks();
 
   // FVTTのチャット投稿を検知してPythonへ転送するフック (通常発言)
   Hooks.on("createChatMessage", (message) => {
@@ -177,6 +187,9 @@ Hooks.once("ready", async function() {
       if (connection.isOpen) handleNpcCheckRoll(message);
       return;
     }
+
+    // AI が動かしている NPC のアイテムのカードなどは発言として転送しない
+    if (isNpcTurnMessage(message)) return;
 
     const content = playerMessageToForward({
       alias: message.speaker?.alias,

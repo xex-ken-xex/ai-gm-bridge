@@ -122,11 +122,11 @@ npm test                   # FVTT 側の純粋関数 (tests/js, Node 18+ の nod
 | H7 | 高 | 1310 | DM 秘密のヒントを公開カードの `data-hint` 属性に出している (プレイヤーが開発者ツールで読める) | ✅ Phase 3: ヒントは GM のクライアントのメモリだけに置き、GM 宛てのウィスパー (NPC メモ) にだけ出す |
 | M1 | 中 | 2083 | AmbientSound の `radius` は距離単位 (ft) なのにピクセル値を入れている (音が非常に遠くまで届く) | ✅ Phase 1: `buildRoomSounds` で `マス数 × grid.distance × 0.85` |
 | M2 | 中 | 2128 | `r.role === "sub_goal"` は常に false (生成器は `type` キーに入れる) | ✅ Phase 1: 生成器が `role` と `type` に同じ値を入れ、FVTT は `roomRole()` で読む |
-| M3 | 中 | 1196, 1255, 1630, 2329 | 対象シーンを `game.scenes.active` で取るが、衝突判定は GM が表示中のシーンの壁を使う | 🔜 `combat.scene` / `tokenDoc.parent` を引き回す |
+| M3 | 中 | 1196, 1255, 1630, 2329 | 対象シーンを `game.scenes.active` で取るが、衝突判定は GM が表示中のシーンの壁を使う | ✅ Phase 4: 戦闘のシーンは `combat.scene`、知覚と移動は `tokenDoc.parent`。壁はキャンバスに表示中のシーンでしか判定できないため、表示していなければ動かさない |
 | M4 | 中 | 2287-2338 | 技能判定ボタンがプレイヤーには効かず、GM が押しても `1d20+3` 固定 | ✅ Phase 3: ボタンは誰でも押せ、押した人のキャラクターで `1d20 + @skills.<技能>.total` を振る。GM 側がその結果を拾って続きを頼む (目標値は GM 側の記録を使う) |
-| M5 | 中 | 1655-1663 | `item.use()` の失敗時に Roll へフォールバックしない (§6 #13 の記述は誤り)。カードが二重投稿。AI の `dice_formula` を検証しない | 🔜 catch で Roll、`Roll.validate` で検証 |
-| M6 | 中 | 2341-2357 | AI 応答待ちの間に手番が進んでも古い行動を実行。行動不能・非表示の NPC も対象 | 🔜 `combat_id/round/turn` を付けて受信時に照合、`combatTurnChange` へ移行 |
-| M7 | 中 | 1590-1622 | 移動探索に現在地が候補として無く、隣接済みでも 3 マス動く。`flank` は接近と同じ。シーン外判定なし | 🔜 純粋関数 `planSteps` に切り出してテスト |
+| M5 | 中 | 1655-1663 | `item.use()` の失敗時に Roll へフォールバックしない (§6 #13 の記述は誤り)。カードが二重投稿。AI の `dice_formula` を検証しない | ✅ Phase 4: 使用に失敗したらダイスで代用。式はサーバー (`sanitize_formula`) と FVTT (`sanitizeFormula` + `Roll.validate`) で検める。ダイスで振るときはカードを flavor に入れて 1 通 |
+| M6 | 中 | 2341-2357 | AI 応答待ちの間に手番が進んでも古い行動を実行。行動不能・非表示の NPC も対象 | ✅ Phase 4: `combat` の id / round / turn を往復させ `isSameTurn` で照合。`combatTurnChange` (v12+) と `updateCombat` (v11) を同じ手番 1 回にまとめる。行動不能・非表示・HP 0 は `shouldTakeTurn` で除く |
+| M7 | 中 | 1590-1622 | 移動探索に現在地が候補として無く、隣接済みでも 3 マス動く。`flank` は接近と同じ。シーン外判定なし | ✅ Phase 4: `planSteps` (幅優先で壁を回り込む。いまの位置も候補で、隣接済みなら動かない。挟み撃ちは味方の反対側。シーンの外は通らない) |
 | M8 | 中 | 1181-1187 + 1144-1151 | 重要度 4 以上の記憶が長期記憶に二重登録される | ✅ Phase 3: 重要な記憶は短期記憶に `promoted` の印を付け、押し出されても二重に移さない (`scripts/lib/npc-brain.js`) |
 | M9 | 中 | 1156-1157 | 鮮明度を毎回 0.01 単位に丸めるため、減衰量が 0.005 未満だと永久に変化しない。下限 0.1 の直後に 0.15 未満を削除しており下限が無意味 | ✅ Phase 3: 鮮明度は丸めず、`FORGET_BELOW` (0.15) 未満で忘れる |
 | M10 | 中 | 1176-1191 | `setFlag` を連続 2 回、読み書きに排他なし。並行応答で記憶が消える | ✅ Phase 3: 読み→作り直し→1 回の `setFlag` を actor ごとに直列化 |
@@ -140,7 +140,7 @@ npm test                   # FVTT 側の純粋関数 (tests/js, Node 18+ の nod
 | L6 | 低 | 1471-1477 | 保存のたびに全長期記憶の timestamp を上書き | ✅ Phase 3: 文が変わらない記憶は元の時刻を残す (`brainFromForm`) |
 | L7 | 低 | 1148 / 1158 | 重要度の既定値が 2 と 3 で不一致、範囲チェックなし | ✅ Phase 3: `IMPORTANCE` 定数と `clampImportance` (1〜5、既定 3) |
 | L8 | 低 | 1210 | 発言者不在時に全 NPC を 10ft 扱い。発言者 NPC 自身も聴き手に入る | ✅ Phase 3: 発言者が分からなければ NPC 会話にしない (AI GM へ)。発言者自身は聴き手に入れない |
-| L9 | 低 | 1275 | `leave_scene` が `alpha: 0.3` だけでトークンが残る | 🔜 `hidden: true` |
+| L9 | 低 | 1275 | `leave_scene` が `alpha: 0.3` だけでトークンが残る | ✅ Phase 4: `hidden: true` (`applyDialogueMovement`) |
 | L10 | 低 | 106, 276 | `localStorage` の JSON.parse 例外未処理、吹き出しタイマー未解除 | 🔜 |
 | L11 | 低 | 1854, 1033 | ランドマークを `window` に置いておりリロードで消える | ✅ Phase 2: 旅路の seed とランドマークを地図帳の `atlas_meta` flag に保存し、構築時に seed から地点グラフを再生成 |
 | L13 | 低 | 56-57 | 照明アニメーション `type: "none"` は存在しないキー (⚠️ 未確認) | ✅ Phase 1: `null` |
@@ -153,7 +153,7 @@ npm test                   # FVTT 側の純粋関数 (tests/js, Node 18+ の nod
 | `player_message` | reference クライアントは送らない (本番は送る) | H4 で経路を決める |
 | `ai_command.actors_context` / `user` | サーバーが読まない | 移植時にプロンプトへ組み込む |
 | `room_entered.token_name` | サーバーが読まない (ログのみ) | 維持 |
-| `execute_npc_turn.thought` | サーバー側は `internal_thought`。`action_type` はクライアント未使用 | 名前を統一 |
+| `execute_npc_turn.thought` | サーバー側は `internal_thought`。`action_type` はクライアント未使用 | ✅ Phase 4: `internal_thought` に統一 (GM メモに出す)。`action_type` はプロンプトの思考の手がかりとして残す |
 | `create_dungeon_scene.density` | クライアント未使用 | 削除候補 |
 | `size_key: "xlarge"` | サーバーは対応、GUI に選択肢なし | どちらかに揃える |
 
@@ -168,8 +168,8 @@ npm test                   # FVTT 側の純粋関数 (tests/js, Node 18+ の nod
 | **0 (完了)** | モジュール分割・テスト基盤・本番の不具合修正・Reference のユーティリティ移植 (TTS 声色・JSON 取得) | §2.1, §3.1 | — |
 | **1 (完了)** | 生成器の拡張: `scene_mode` (underground / ruins / wilderness)・壁タイプ (扉・隠し扉・低い壁)・照明プリセット・部屋データへの `light_preset` / `ambient_sound_src` | R1, R5, R11, H5, M1, M2, L13 | — |
 | **2 (完了)** | 4 段階シナリオビルダー (サーバー: `builder_generate_stage` / `builder_build_scene`、FVTT: アトラスジャーナル、DialogV2 化) | R4, R9, R10, M12, L11 | Phase 1 |
-| **3 (PR 済み)** | NPC 会話システム (聴取範囲・記憶と忘却) | H1-H4, H7, M4, M8-M10, L4-L8 | — |
-| 4 | NPC 自律戦闘 | M3, M5-M7 | Phase 3 の知覚処理 |
+| **3 (完了)** | NPC 会話システム (聴取範囲・記憶と忘却) | H1-H4, H7, M4, M8-M10, L4-L8 | — |
+| **4 (PR 済み)** | NPC 自律戦闘 (会話の `physical_action` の移動も) | M3, M5-M7, L9 | Phase 3 の知覚処理 |
 | 5 | 集落 BGM (別 WSL オーディオ生成) と環境音 | — | Phase 1 |
 | 6 | アシスタント DM マスコット UI (`game.socket`、`module.json` に `"socket": true`) | L10 | — |
 

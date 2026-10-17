@@ -4,6 +4,7 @@
 //   npc_dialogue_request、いなければ player_message の 1 経路だけで送る (H4。bridge.js)
 // - 判定のヒントと NPC の内心は GM のクライアントのメモリだけに置き、チャットには GM 宛てのウィスパーでだけ出す (H7)
 // - 判定ボタンは誰でも押せる。押した人のキャラクターで振り、その結果のメッセージを GM 側が拾って続きの会話を頼む (M4)
+// - physical_action (近づく・下がる・立ち去る・敵対する) はカードを出したあとに実行する (scripts/npc-move.js)
 // 純粋関数は scripts/lib/npc-brain.js・npc-listen.js・cards.js (tests/js)
 
 import { escapeHtml } from "./lib/html.js";
@@ -28,6 +29,7 @@ import {
   speakerTokenId,
 } from "./lib/npc-listen.js";
 import { findRoomAt, tokenCenter } from "./lib/rooms.js";
+import { applyDialogueMovement } from "./npc-move.js";
 
 const BRAIN_FLAG = "npc_brain";
 const CHECK_FLAG = "npc_check";
@@ -105,7 +107,8 @@ function listenerPayload(doc, distanceFt) {
   return { id: doc.id, name: doc.name, distance_ft: distanceFt, ...brainForPrompt(brain), voice: brain.voice };
 }
 
-function roomOf(scene, doc) {
+/** トークンのいる部屋 (シーンの rooms flag から。部屋の外なら null) */
+export function roomOf(scene, doc) {
   const rooms = scene.getFlag?.(MODULE_ID, "rooms");
   if (!rooms?.length || !doc) return null;
   const gridSize = scene.grid?.size ?? 100;
@@ -188,7 +191,16 @@ export async function handleNpcDialogueResponse(data) {
     flags: generatedFlags(),
   });
 
-  const note = buildNpcGmNoteHtml(res, { npcName, trust: brain?.trust ?? null });
+  // 近づく・下がる・立ち去る・敵対する (Phase 4 で移動に対応)
+  let movement = null;
+  try {
+    movement = await applyDialogueMovement(scene, npcDoc, speakerDoc, res.physical_action);
+  } catch (e) {
+    console.warn("AI GM Bridge | NPC の移動に失敗しました", e);
+    movement = "移動に失敗しました";
+  }
+
+  const note = buildNpcGmNoteHtml(res, { npcName, trust: brain?.trust ?? null, movement });
   if (note) {
     await ChatMessage.create({
       speaker: { alias: "AI GM (NPC メモ)" },
