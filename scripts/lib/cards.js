@@ -1,6 +1,7 @@
 // チャットカードの HTML 組み立て (純粋関数)。差し込む値はすべてエスケープする
 
 import { escapeHtml, textToHtml } from "./html.js";
+import { MOVE_INTENT_LABELS } from "./npc-tactics.js";
 
 /** interactive_card: 選択肢ボタン付きカード */
 export function buildChoiceCardHtml({ title, message, choices }) {
@@ -114,7 +115,7 @@ export function buildNpcDialogueHtml(res, { offerId = null, actorId = null } = {
 }
 
 /** NPC 会話の GM 専用メモ (内心・信頼度の変化・判定の成功時に打ち明ける内容)。GM にだけウィスパーする */
-export function buildNpcGmNoteHtml(res, { npcName = "NPC", trust = null } = {}) {
+export function buildNpcGmNoteHtml(res, { npcName = "NPC", trust = null, movement = null } = {}) {
   const rows = [];
   if (res.internal_thought) rows.push(`<p style="margin: 2px 0;">💭 <strong>内心:</strong> ${escapeHtml(res.internal_thought)}</p>`);
   const delta = Number(res.trust_delta) || 0;
@@ -122,7 +123,8 @@ export function buildNpcGmNoteHtml(res, { npcName = "NPC", trust = null } = {}) 
     rows.push(`<p style="margin: 2px 0;">🤝 <strong>信頼度:</strong> ${delta > 0 ? "+" : ""}${delta}${trust !== null ? ` (いま ${Number(trust)})` : ""}</p>`);
   }
   if (res.physical_action && res.physical_action !== "stay") {
-    rows.push(`<p style="margin: 2px 0;">🚶 <strong>動きたがっている:</strong> ${escapeHtml(PHYSICAL_ACTION_LABELS[res.physical_action] ?? res.physical_action)}</p>`);
+    const label = PHYSICAL_ACTION_LABELS[res.physical_action] ?? res.physical_action;
+    rows.push(`<p style="margin: 2px 0;">🚶 <strong>動き:</strong> ${escapeHtml(label)}${movement ? ` (${escapeHtml(movement)})` : ""}</p>`);
   }
   if (res.check_offer?.target_secret_hint) {
     rows.push(`<p style="margin: 2px 0;">🔑 <strong>判定に成功したら:</strong> ${escapeHtml(res.check_offer.target_secret_hint)}</p>`);
@@ -141,3 +143,32 @@ export const PHYSICAL_ACTION_LABELS = Object.freeze({
   leave_scene: "この場を立ち去る",
   turn_hostile: "敵対する",
 });
+
+/**
+ * NPC の手番のカード (execute_npc_turn)。全員に見えるため、内心は入れない。
+ * 振る式があればダイスのメッセージの flavor に入れて 1 通にまとめる (M5: カードの二重投稿をしない)
+ */
+export function buildNpcTurnHtml(decision) {
+  const badge = decision.action_name ? `<span style="background: #782e22; color: #fff; padding: 1px 6px; border-radius: 3px; font-size: 11px;">${escapeHtml(decision.action_name)}</span>` : "";
+  return `
+  <div class="ai-npc-turn" style="border-left: 3px solid #e67e22; padding-left: 8px;">
+    <div>${decision.emote ? `<em>${escapeHtml(decision.emote)}</em> ` : ""}${badge}</div>
+    ${decision.speech ? `<div style="margin-top: 4px; font-weight: bold; color: #d35400;">「${escapeHtml(decision.speech)}」</div>` : ""}
+  </div>`;
+}
+
+/** NPC の手番の GM 専用メモ (内心・移動の意図・狙い・実行できなかったこと)。GM にだけウィスパーする */
+export function buildNpcTurnGmNoteHtml(decision, { npcName = "NPC", targetName = null, notes = [] } = {}) {
+  const rows = [];
+  if (decision.internal_thought) rows.push(`<p style="margin: 2px 0;">💭 <strong>内心:</strong> ${escapeHtml(decision.internal_thought)}</p>`);
+  const move = MOVE_INTENT_LABELS[decision.move_intent] ?? decision.move_intent;
+  if (move) rows.push(`<p style="margin: 2px 0;">🚶 <strong>移動:</strong> ${escapeHtml(move)}${targetName ? ` (狙い: ${escapeHtml(targetName)})` : ""}</p>`);
+  if (decision.fallback) rows.push(`<p style="margin: 2px 0;">⚠️ AI の応答を読めなかったため、既定の行動にしました</p>`);
+  for (const n of notes) rows.push(`<p style="margin: 2px 0;">⚠️ ${escapeHtml(n)}</p>`);
+  if (!rows.length) return "";
+  return `
+  <div class="ai-npc-gm-note" style="font-size: 12px; background: #fff8e7; border-left: 4px solid #f39c12; padding: 6px 10px; color: #7f5200; border-radius: 2px;">
+    <div style="font-weight: bold; margin-bottom: 2px;">🔒 GM 専用: ${escapeHtml(npcName)} の手番</div>
+    ${rows.join("")}
+  </div>`;
+}

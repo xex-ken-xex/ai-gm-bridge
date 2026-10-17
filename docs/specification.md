@@ -82,6 +82,12 @@ flowchart TD
   35ft 以内で、壁で音が遮られていない NPC (character 以外・プレイヤー非所有・非表示でない) がいれば `npc_dialogue_request`、
   いなければ `player_message` を送る。どちらか 1 経路だけ (二重応答を防ぐ)。発言者のトークンが分からないときは `player_message`。
 
+#### フック処理 (`combatTurnChange` / `updateCombat`)
+- **NPC の自律戦闘**: 戦闘トラッカーで手番が NPC (character 以外・プレイヤー非所有・非表示でない・HP 0 や戦闘不能・行動不能の状態でない) に
+  回ったら、その NPC の知覚を集めて `npc_turn_request` を送る。同じ手番には 1 回だけ (v12 以降の `combatTurnChange` と v11 の `updateCombat` の両方で拾う)。
+- 設定「NPC の自律戦闘」(ワールド設定、既定は有効) で止められる。
+- AI が動かしている NPC のアイテムのカードなどは、発言として `player_message` / `npc_dialogue_request` に回さない。
+
 ---
 
 ### 3.2 Python バックエンドサーバー側
@@ -217,6 +223,28 @@ FVTT のビルダー画面にも同じ内容を 2 行で出します (`builder_p
 
 判定ボタンで振った結果を受けたときは、`check_result_context` に「説得判定 成功 (出目の合計 16 / 目標値 14)。打ち明けてよい内容: …」を入れて同じ形で送ります
 (ヒントと目標値は GM のクライアントが覚えている値を使い、プレイヤー側の値は使いません)。
+
+#### NPC の手番イベント (`npc_turn_request`)
+戦闘で NPC の手番になったときに送ります。`combat` は頼んだときの手番で、サーバーはそのまま `execute_npc_turn` に付けて返します。
+
+```json
+{
+  "event": "npc_turn_request", "scene_id": "戦闘のシーン id",
+  "combat": { "id": "戦闘 id", "round": 2, "turn": 3 },
+  "perception": {
+    "token_id": "手番の NPC のトークン id", "npc_name": "オークの戦士", "npc_role": "humanoid",
+    "npc_bio": "伝記 (HTML を除いて 300 文字まで)", "npc_goal": "npc_brain の目的",
+    "hp_current": 4, "hp_max": 15, "health_status": "健在・余裕あり | 負傷・消耗 | 瀕死・危機的 | 倒れている",
+    "move_speed": 30, "available_actions": [{ "name": "グレートアックス", "type": "weapon | feat | spell" }],
+    "room_name": "NPC がいる部屋 (部屋の外ならシーン名)", "room_flavor": "…", "room_gm_notes": "…",
+    "perceived_targets": [{ "token_id": "…", "name": "アリア", "distance_ft": 5, "adjacent": true,
+                            "has_los": true, "health_status": "…" }],
+    "voice": { "name": "ja-JP-KeitaNeural", "rate": "+0%", "pitch": "+0Hz" }
+  }
+}
+```
+
+- 距離は 5e の数え方 (斜めも 1 マス) で、大きいトークンは端どうし。`has_los` は戦闘のシーンをキャンバスに表示しているときだけ判定し、それ以外は `null`。
 
 #### GM `/ai` コマンドイベント (`ai_command`)
 GM がチャット欄で `/ai <プロンプト>` を実行した際に送信されます。
@@ -400,13 +428,43 @@ PC のトークン (プレイヤー所有、または所有者未設定の `char
 
 - サーバーは AI の応答を検める: `primary_npc_id` / `ambient_reactions` は聴き手の id だけ、数値は範囲内に丸め、読めなければ最も近い NPC の既定の反応 (`fallback: true`)。
 - FVTT は、NPC を発言者にした小説風カード (地の文・セリフ・脇役の仕草・判定ボタン) を全員に、内心・信頼度・動きたがっている行動・判定成功時のヒントを GM にだけウィスパーで出し、吹き出しを表示する。
-  NPC の記憶 (`new_memory`) と信頼度 (`trust_delta`) を `npc_brain` に書く。`physical_action` は GM へのメモだけ (トークンは動かさない。移動は Phase 4)。
+  NPC の記憶 (`new_memory`) と信頼度 (`trust_delta`) を `npc_brain` に書く。
+  `physical_action` は実行し、結果を GM へのメモに添える: 近づく (2 マス) / 下がる (1 マス) は壁を避けてマス単位で動かし、立ち去るはトークンを非表示に、敵対するはトークンの立場を「敵対」にする。
 - セリフは NPC の声色 (`voice`) で読み上げ、`play_sound` (字幕付き) を続けて送る。
 
 **NPC の記憶と忘却** (`scripts/lib/npc-brain.js`)
 - 短期記憶は最新 5 件。あふれた古いものは鮮明度 0.9 で長期記憶へ移す。重要度 4 以上はすぐ長期記憶にも入れる (二重には移さない)。
 - 「⏳ 時間を進める」で長期記憶を 1 段階風化させる: 鮮明度 × (1 − (5 − 重要度) × (1 − 記憶力) × 0.35)。重要度 5 は忘れない。0.15 未満で忘れる。
 - AI には鮮明度を [鮮明] (0.8 以上) / [うろ覚え] (0.4 以上) / [ほぼ忘却] の印で渡す。
+
+#### 5-4. NPC の手番の行動 (`execute_npc_turn`)
+
+```json
+{
+  "action": "execute_npc_turn", "token_id": "…", "scene_id": "…",
+  "combat": { "id": "…", "round": 2, "turn": 3 },
+  "decision": {
+    "internal_thought": "GM だけが読む内心",
+    "move_intent": "approach_target | flank_target | retreat_from_enemies | seek_cover_or_gimmick | hold_position",
+    "target_token_id": "perceived_targets の token_id | null",
+    "action_type": "attack | skill_or_spell | interact_environment | dodge_or_flee | parley",
+    "action_name": "available_actions の名前 | null", "dice_formula": "1d20+5 | null",
+    "emote": "行動の描写", "speech": "セリフか咆哮 (かぎ括弧なし)", "fallback": false
+  }
+}
+```
+
+- サーバーは AI の応答を検める: 狙いは知覚した PC の id だけ、`action_name` は一覧の名前だけ (大文字小文字は無視)、`dice_formula` は数字・`d`・`k`/`h`/`l`・四則演算・括弧だけの式。
+  接近・挟み撃ちで狙いが無ければ、倒れていない最寄りの PC。読めなければ最寄りの PC に詰め寄る既定の行動 (`fallback: true`)。
+- FVTT は届いたときに `combat` の手番 (id・round・turn と手番のトークン) がまだ同じか確かめ、進んでいたら実行しない。シーンは `combat.scene` (表示中・アクティブのシーンとは限らない)。
+- **移動**: `move_intent` に沿って、1 手番の移動力 (`移動速度 ÷ マスの距離`、最大 12 マス) の分だけマス単位で動かす (`scripts/lib/npc-tactics.js` の `planSteps`)。
+  - 歩いて行けるマスを幅優先で調べ (斜めも 1 マス。壁・他のトークン・シーンの外は通らない)、評価が最も良いマスへの最短の道を進む。いまの位置より良いマスが無ければ動かない。
+  - 接近: 狙いに隣接するまで (隣接済みなら動かない)。挟み撃ち: 狙いに隣接している味方 (同じ立場の NPC) の反対側のマス。味方がいなければ接近と同じ。接近と挟み撃ちは 30 マス先まで道を探して回り込む。
+  - 後退: 最も近い敵 (倒れていない PC) から離れる。遮蔽: 敵の誰からも視線が通らないマスに入ったら止まる。どちらも 1 手番で行けるマスだけ。
+  - 壁はキャンバスに表示中のシーンでしか判定できないため、戦闘のシーンを表示していなければ動かさず、GM へのメモにその旨を出す。
+- **行動**: `action_name` のアイテムがあれば NPC のカード (描写・セリフ) を出してから `item.use()`。使用に失敗したら `dice_formula` (無ければ `1d20`) で代用する。
+  アイテムが無く `dice_formula` があれば、カードを flavor に入れたダイスのメッセージ 1 通にする。どちらも無ければカードだけ。式は FVTT 側でも `Roll.validate` で確かめる。
+- 吹き出し (セリフ、無ければ描写) を表示し、内心・移動の意図・狙い・実行できなかったことを GM にだけウィスパーで出す。セリフは NPC の声色で読み上げる (`play_sound`)。
 
 #### 6. シナリオビルダーの下書き (`builder_stage_result`)
 

@@ -3,6 +3,7 @@
 
 import { handleBuilderProgress, handleBuilderStageResult } from "./builder.js";
 import { handleNpcDialogueResponse } from "./npc.js";
+import { handleExecuteNpcTurn } from "./npc-combat.js";
 import { generatedFlags } from "./lib/chat-filter.js";
 import { buildChoiceCardHtml, buildSceneSuccessCardHtml } from "./lib/cards.js";
 import {
@@ -204,6 +205,7 @@ export const ACTION_HANDLERS = {
   builder_stage_result: handleBuilderStageResult,
   builder_progress: handleBuilderProgress,
   npc_dialogue_response: handleNpcDialogueResponse,
+  execute_npc_turn: handleExecuteNpcTurn,
 };
 
 export async function handleServerAction(data) {
