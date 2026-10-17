@@ -30,7 +30,8 @@ ai-gm-bridge/
 │   ├── net/connection.js # WebSocket 接続・自動再接続・受信の直列処理
 │   └── lib/             # Foundry 非依存の純粋関数 (html / commands / chat-filter / rooms / scene-docs / cards / atlas)
 ├── ai_gm_server.py      # サーバー起動スクリプト (実装は gm_server/)
-├── gm_server/           # バックエンド実装 (config / text / protocol / tts / llm / progress / deadline / dungeon_scene / builder / handlers / router / app)
+├── gm_server/           # バックエンド実装 (config / logs / text / protocol / tts / llm / progress / deadline / dungeon_scene / builder / handlers / router / app)
+├── log/                 # 詳細ログ (<日付>/server.log、10 日分。git 管理外)
 ├── tests/
 │   ├── python/          # pytest (python3 -m pytest)
 │   └── js/              # node:test (npm test)

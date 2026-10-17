@@ -2,8 +2,11 @@
 
 import asyncio
 import json
+import logging
+import time
 from typing import Awaitable, Callable, Optional, Tuple, Union
 
+from gm_server import logs
 from gm_server.config import AGY_TIMEOUT, GEMINI_MODEL, GEMINI_TIMEOUT
 from gm_server.progress import log, progress
 from gm_server.text import first_sentence, newlines_to_br
@@ -48,6 +51,9 @@ async def call_agy(
         cmd.extend(["--conversation", conversation_id])
 
     log(f"[agy 実行中] プロンプト長: {len(prompt)}文字")
+    shown = " ".join(f"<プロンプト {len(prompt)}文字>" if a is prompt else a for a in cmd)
+    rid = logs.ai_request("agy", prompt, command=f"「{shown}」", conversation=conversation_id)
+    started = time.monotonic()
     try:
         proc = await asyncio.create_subprocess_exec(
             *cmd,
@@ -56,6 +62,7 @@ async def call_agy(
         )
     except FileNotFoundError:
         print("agy CLI が見つかりません (PATH を確認してください)")
+        logs.ai_error(rid, "agy", "agy CLI が見つかりません", time.monotonic() - started)
         return "", conversation_id or ""
     limit = (AGY_TIMEOUT if timeout is None else timeout) or None
     try:
@@ -63,16 +70,22 @@ async def call_agy(
             stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=limit)
     except asyncio.CancelledError:
         # 打ち切り (延長確認で「打ち切る」) のときは agy プロセスも止める
+        logs.ai_error(rid, "agy", "打ち切り (キャンセル)", time.monotonic() - started)
         proc.kill()
         await proc.wait()
         raise
     except asyncio.TimeoutError:
         # 応答しないまま止まると後続の受信処理がすべて待たされるため打ち切る
         log(f"agy が {limit:.0f} 秒以内に応答しなかったため打ち切りました (AI_GM_AGY_TIMEOUT で変更可)")
+        logs.ai_error(rid, "agy", f"{limit:.0f} 秒以内に応答なし", time.monotonic() - started)
         proc.kill()
         await proc.wait()
         return "", conversation_id or ""
     out_str = stdout.decode("utf-8", errors="replace").strip()
+    err_str = stderr.decode("utf-8", errors="replace").strip()
+    logs.ai_response(rid, "agy", out_str, time.monotonic() - started, exit_code=proc.returncode)
+    if err_str:
+        logs.ai_note(rid, f"agy の標準エラー出力:\n{err_str}", level=logging.WARNING)
 
     try:
         res = json.loads(out_str)
@@ -80,7 +93,7 @@ async def call_agy(
         conv_id = res.get("conversation_id") or conversation_id or ""
         return response_text, conv_id
     except Exception:
-        return out_str or stderr.decode("utf-8", errors="replace").strip(), conversation_id or ""
+        return out_str or err_str, conversation_id or ""
 
 
 AgyRunner = Callable[[str, Optional[str]], Awaitable[Tuple[str, str]]]
@@ -132,6 +145,11 @@ class LLMService:
         if not self.client:
             raise ValueError("GEMINI_API_KEY が環境変数に設定されていません。")
         for attempt in range(retries):
+            rid = logs.ai_request(
+                "Gemini", contents, model=self.model, attempt=f"{attempt + 1}/{retries}",
+                system_instruction=f"{len(system_instruction)}文字" if system_instruction else None,
+            )
+            started = time.monotonic()
             try:
                 # 同期 SDK 呼び出しでイベントループを止めないよう別スレッドで実行
                 # 応答が無いまま待ち続けないよう上限を設ける (超えたら TimeoutError → 呼び出し側で agy へ)
@@ -142,8 +160,13 @@ class LLMService:
                         asyncio.to_thread(self._generate, contents, system_instruction),
                         timeout=limit,
                     )
+                logs.ai_response(rid, "Gemini", response.text, time.monotonic() - started)
                 return extract_json_from_response(response.text)
+            except asyncio.CancelledError:
+                logs.ai_error(rid, "Gemini", "打ち切り (キャンセル)", time.monotonic() - started)
+                raise
             except Exception as e:
+                logs.ai_error(rid, "Gemini", e, time.monotonic() - started)
                 if is_retryable_error(e) and attempt < retries - 1:
                     wait_sec = 2 ** (attempt + 1)
                     print(f"Geminiサーバー混雑中。{wait_sec}秒後に再試行します... (試行 {attempt + 1}/{retries})")
@@ -168,7 +191,10 @@ class LLMService:
             resp_text, _ = await self.agy_runner(prompt, None, timeout=0)
         else:
             resp_text, _ = await self.agy_runner(prompt, None)
-        return extract_json_from_response(resp_text)
+        parsed = extract_json_from_response(resp_text)
+        if parsed is None:
+            logs.ai_logger.warning(f"agy の応答を JSON として読めませんでした ({len(resp_text or '')}文字)")
+        return parsed
 
     async def query_ai_gm(self, player_input: str) -> dict:
         """通常プレイヤー発言に対するGM応答 {narrative, speech, dice} を生成"""

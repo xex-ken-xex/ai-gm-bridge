@@ -5,7 +5,7 @@ import traceback
 from typing import Awaitable, Callable, Dict
 
 from gm_server.deadline import is_timeout_choice
-from gm_server import builder
+from gm_server import builder, logs
 from gm_server.handlers import ai_command, player_message, room_entered
 
 Handler = Callable[[object, dict], Awaitable[None]]
@@ -43,6 +43,7 @@ async def dispatch(ctx, raw_message) -> bool:
         return False
 
     event_type = data.get("event")
+    logs.logger.info(f"受信 {event_type}: {logs.clip_for_log(raw_message)}")
     handler = HANDLERS.get(event_type)
     if handler is None:
         print(f"未対応のイベントを無視します: {event_type}")

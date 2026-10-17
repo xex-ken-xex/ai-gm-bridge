@@ -24,6 +24,15 @@ PORT = int(os.environ.get("AI_GM_PORT", "8765"))
 # シーン構築ペイロード (壁・部屋情報) が大きくなるため受信上限を拡張
 MAX_MESSAGE_SIZE = 15 * 1024 * 1024
 
+# 詳細ログ (log/<日付>/server.log)。既定はこのモジュールのフォルダの log/
+LOG_DIR = os.path.expanduser(os.environ.get(
+    "AI_GM_LOG_DIR", os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "log")
+))
+# 残す日数 (今日を含む)。これより古い日付フォルダは削除する
+LOG_RETENTION_DAYS = max(1, int(os.environ.get("AI_GM_LOG_DAYS", "10")))
+# 1 日分のログファイルの上限。超えたら server.log.1 … に回す
+LOG_MAX_BYTES = int(os.environ.get("AI_GM_LOG_MAX_BYTES", str(20 * 1024 * 1024)))
+
 # 音声
 DEFAULT_VOICE = "ja-JP-NanamiNeural"
 

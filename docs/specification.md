@@ -97,6 +97,13 @@ flowchart TD
 #### エラーハンドリング & レジリエンス
 - **HTML クリーニング**: FVTT チャットに含まれる `<p>...</p>` などの HTML タグを正規表現で事前除去。
 - **API 再試行 (Exponential Backoff)**: Gemini API が 503 過負荷を返した場合、最大 3 回まで指数関数的待機時間（2秒、4秒）を設けて自動再試行。
+- **詳細ログ**: `log/<YYYY-MM-DD>/server.log` に書く (`gm_server/logs.py`)。
+  - AI への問い合わせ (agy のコマンド・プロンプト全文) と応答 (全文・所要時間・終了コード) に `[AI #番号]` を付けて突き合わせられるようにする。
+  - FVTT との送受信 (4000 文字まで) と、コンソールに出した行もすべて書く。
+  - 日付が変わると新しいフォルダに切り替え、今日を含めて 10 日より古い日付フォルダは削除する。1 日分が 20MB を超えたら `server.log.1` … に回す。
+  - コンソールとログファイルの各行には「日時 レベル」(INFO / WARNING / ERROR) を付ける。
+  - `GEMINI_API_KEY` と、名前に KEY / TOKEN / SECRET / PASSWORD を含む環境変数の値、Google API キーの形の文字列は `***` に伏せる。
+  - 環境変数: `AI_GM_LOG_DIR` (出力先)、`AI_GM_LOG_DAYS` (残す日数)、`AI_GM_LOG_MAX_BYTES` (1 ファイルの上限)。
 - **再接続をまたぐ送信**: 処理中に依頼元の接続が閉じたら (FVTT の再読み込みなど)、いま繋がっている接続へ送る。
   どこにも繋がっていなければ最大 20 件まで溜め、次の接続時に送る (`progress` は溜めない)。`gm_server/context.py` の `ConnectionHub`。
 

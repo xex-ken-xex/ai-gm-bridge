@@ -5,6 +5,7 @@ import json
 from dataclasses import dataclass, field
 from typing import Any, Awaitable, Callable, Dict, List
 
+from gm_server import logs
 from gm_server.config import DATA_DIR
 from gm_server.llm import LLMService
 from gm_server.tts import SpeechSynthesizer
@@ -58,6 +59,8 @@ class ConnectionHub:
     async def send(self, message: Dict, origin=None) -> bool:
         """送れたら True。送れなければ (途中経過以外は) 溜めて False"""
         text = json.dumps(message, ensure_ascii=False)
+        if message.get("action") not in NO_BACKLOG_ACTIONS:
+            logs.logger.info(f"送信 {message.get('action')}: {logs.clip_for_log(text)}")
         targets = [origin] if origin is not None else []
         targets += [ws for ws in reversed(self.connections) if ws is not origin]
         for ws in targets:
