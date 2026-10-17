@@ -11,11 +11,16 @@ GEMINI_MODEL = os.environ.get("AI_GM_GEMINI_MODEL", "gemini-3.8-flash")
 
 # agy CLI の応答待ち上限 (秒)。超えたら打ち切り、呼び出し側のフォールバックに任せる
 AGY_TIMEOUT = float(os.environ.get("AI_GM_AGY_TIMEOUT", "300"))
+# agy に渡すモデル (`agy models` で一覧)・推論の深さ (low|medium|high|xhigh|max)。空なら agy の既定
+AGY_MODEL = os.environ.get("AI_GM_AGY_MODEL", "").strip()
+AGY_EFFORT = os.environ.get("AI_GM_AGY_EFFORT", "").strip()
+# agy を同時に何本まで動かすか。agy は同時に複数起動すると応答が返らなくなることがあるため既定は 1 (順番に実行)
+AGY_CONCURRENCY = max(1, int(os.environ.get("AI_GM_AGY_CONCURRENCY", "1")))
 # Gemini API 1 回あたりの応答待ち上限 (秒)。超えたら agy へフォールバック
 GEMINI_TIMEOUT = float(os.environ.get("AI_GM_GEMINI_TIMEOUT", "120"))
 # ダンジョンの幾何生成と PNG 書き出しの待ち上限 (秒)
 MAPGEN_TIMEOUT = float(os.environ.get("AI_GM_MAPGEN_TIMEOUT", "300"))
-# 部屋の情景を分割して問い合わせるときの同時実行数
+# 部屋の情景を分割して問い合わせるときの同時実行数 (Gemini のとき。agy は AGY_CONCURRENCY)
 LLM_CONCURRENCY = max(1, int(os.environ.get("AI_GM_LLM_CONCURRENCY", "3")))
 
 # WebSocket サーバー

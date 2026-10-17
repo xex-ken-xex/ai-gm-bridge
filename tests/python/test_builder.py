@@ -241,3 +241,31 @@ def test_apply_room_plan_overrides_ai_roles():
     assert result[0]["role"] == "start" and result[0]["safe_rest"] is True
     assert result[1]["role"] == "empty" and result[1]["is_empty"] is True and result[1]["title"] == "倉"
     assert result[2]["role"] == "sub_goal" and "鍵" in result[2]["gm_notes"]
+
+
+async def test_wilderness_details_run_one_at_a_time_on_agy(make_ctx, sent):
+    """agy は同時に起動すると応答が返らなくなるため、地点の描写も 1 本ずつ問い合わせる"""
+    import asyncio
+
+    topos = builder.make_wilderness_generator(99).get_room_topologies()
+    running, peak = 0, 0
+
+    class OneAtATime(PromptLLM):
+        concurrency = 1
+
+        async def query_json(self, prompt, unbounded=False):
+            nonlocal running, peak
+            running += 1
+            peak = max(peak, running)
+            await asyncio.sleep(0)
+            running -= 1
+            return await super().query_json(prompt, unbounded)
+
+    def answer(prompt):
+        if "【あなたが書く地点】" not in prompt:
+            return wilderness_core(topos)
+        return [{"id": i, "tts_narration": "音"} for i in chunk_ids(prompt)]
+
+    await builder.handle_generate_stage(make_ctx(OneAtATime(answer)), {"stage": "wilderness", "seed": 99})
+    assert peak == 1
+    assert all(lm.get("tts_narration") == "音" for lm in sent[-1]["result"]["landmarks"])

@@ -142,3 +142,21 @@ async def test_gemini_timeout_falls_back_to_agy():
     agy = make_agy([('{"ok": true}', "c")])
     llm = LLMService(gemini_client=SlowClient(), agy_runner=agy, sleep=no_sleep, gemini_timeout=0.05)
     assert await llm.query_json("x") == {"ok": True}
+
+
+def test_build_agy_command_adds_model_and_effort_only_when_set():
+    from gm_server.llm import build_agy_command
+
+    assert build_agy_command("hi", None, model="", effort="") == ["agy", "-p", "hi", "--output-format", "json"]
+    assert build_agy_command("hi", "c1", model="gemini-x", effort="low") == [
+        "agy", "-p", "hi", "--output-format", "json", "--model", "gemini-x", "--effort", "low", "--conversation", "c1",
+    ]
+
+
+def test_concurrency_depends_on_engine(monkeypatch):
+    from gm_server import llm as llm_mod
+
+    monkeypatch.setattr(llm_mod, "AGY_CONCURRENCY", 1)
+    monkeypatch.setattr(llm_mod, "LLM_CONCURRENCY", 3)
+    assert LLMService(gemini_client=None).concurrency == 1
+    assert LLMService(gemini_client=object()).concurrency == 3

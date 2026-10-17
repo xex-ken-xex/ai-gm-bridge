@@ -4,10 +4,18 @@ import asyncio
 import json
 import logging
 import time
-from typing import Awaitable, Callable, Optional, Tuple, Union
+from typing import Awaitable, Callable, List, Optional, Tuple, Union
 
 from gm_server import logs
-from gm_server.config import AGY_TIMEOUT, GEMINI_MODEL, GEMINI_TIMEOUT
+from gm_server.config import (
+    AGY_CONCURRENCY,
+    AGY_EFFORT,
+    AGY_MODEL,
+    AGY_TIMEOUT,
+    GEMINI_MODEL,
+    GEMINI_TIMEOUT,
+    LLM_CONCURRENCY,
+)
 from gm_server.progress import log, progress
 from gm_server.text import first_sentence, newlines_to_br
 from tools.prompt_manager import extract_json_from_response
@@ -39,16 +47,45 @@ def is_retryable_error(err: Exception) -> bool:
     return any(m in msg for m in _RETRYABLE_MARKERS)
 
 
+def build_agy_command(prompt: str, conversation_id: Optional[str] = None,
+                      model: str = AGY_MODEL, effort: str = AGY_EFFORT) -> List[str]:
+    cmd = ["agy", "-p", prompt, "--output-format", "json"]
+    if model:
+        cmd.extend(["--model", model])
+    if effort:
+        cmd.extend(["--effort", effort])
+    if conversation_id:
+        cmd.extend(["--conversation", conversation_id])
+    return cmd
+
+
+# agy の同時実行数の上限 (イベントループ上で作るため、最初の呼び出しで用意する)
+_agy_slots: Optional[asyncio.Semaphore] = None
+
+
+def _agy_semaphore() -> asyncio.Semaphore:
+    global _agy_slots
+    if _agy_slots is None:
+        _agy_slots = asyncio.Semaphore(AGY_CONCURRENCY)
+    return _agy_slots
+
+
 async def call_agy(
+    prompt: str, conversation_id: Optional[str] = None, timeout: Optional[float] = None
+) -> Tuple[str, str]:
+    """agy を呼ぶ。同時に動かす本数は AGY_CONCURRENCY まで (空きを待つ間もタイムアウトの時間に含む)"""
+    async with _agy_semaphore():
+        return await _call_agy(prompt, conversation_id, timeout)
+
+
+async def _call_agy(
     prompt: str, conversation_id: Optional[str] = None, timeout: Optional[float] = None
 ) -> Tuple[str, str]:
     """
     Antigravity Agent (agy) CLI を非同期呼び出し。
     timeout: None なら AGY_TIMEOUT、0 なら上限なし (呼び出し側が run_with_deadline で管理する場合)
     """
-    cmd = ["agy", "-p", prompt, "--output-format", "json"]
-    if conversation_id:
-        cmd.extend(["--conversation", conversation_id])
+    cmd = build_agy_command(prompt, conversation_id)
 
     log(f"[agy 実行中] プロンプト長: {len(prompt)}文字")
     shown = " ".join(f"<プロンプト {len(prompt)}文字>" if a is prompt else a for a in cmd)
@@ -123,7 +160,17 @@ class LLMService:
 
     @property
     def engine_name(self) -> str:
-        return "Gemini API" if self.client else "agy (Antigravity Agent) [GEMINI_API_KEY 不要]"
+        if self.client:
+            return f"Gemini API ({self.model})"
+        detail = ", ".join(x for x in (
+            f"モデル: {AGY_MODEL or 'agy の既定'}", f"effort: {AGY_EFFORT}" if AGY_EFFORT else "", f"同時実行: {AGY_CONCURRENCY}",
+        ) if x)
+        return f"agy (Antigravity Agent) [GEMINI_API_KEY 不要] ({detail})"
+
+    @property
+    def concurrency(self) -> int:
+        """分割した問い合わせを同時に何本まで投げるか (agy は同時起動に弱いため別の上限)"""
+        return LLM_CONCURRENCY if self.client else AGY_CONCURRENCY
 
     def _generate(self, contents: str, system_instruction: Optional[str]):
         from google.genai import types

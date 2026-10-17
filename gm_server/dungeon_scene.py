@@ -233,7 +233,8 @@ async def query_room_flavors(
     label: str = "部屋の情景",
 ) -> Optional[List[Dict]]:
     """
-    部屋の情景を ROOMS_PER_JOB 部屋ずつのジョブに分け、LLM_CONCURRENCY 本まで並列に問い合わせる。
+    部屋の情景を ROOMS_PER_JOB 部屋ずつのジョブに分け、ctx.llm.concurrency 本まで並列に問い合わせる
+    (Gemini は LLM_CONCURRENCY、agy は AGY_CONCURRENCY。agy の既定は 1 本ずつ)。
     返す id は 0 始まり。全ジョブ失敗なら None (呼び出し側は既定のノートを使う)。
     prompt_for_chunk を渡すと、1 ジョブ分の部屋からプロンプトを作る処理を差し替えられる (シナリオビルダー用)。
     label は進捗表示とログに使う名前 (旅路の地点にも使うため)。
@@ -248,7 +249,8 @@ async def query_room_flavors(
     chunks = [selected[i:i + ROOMS_PER_JOB] for i in range(0, len(selected), ROOMS_PER_JOB)]
     if not chunks:
         return None
-    sem = asyncio.Semaphore(LLM_CONCURRENCY)
+    concurrency = max(1, int(getattr(ctx.llm, "concurrency", LLM_CONCURRENCY)))
+    sem = asyncio.Semaphore(concurrency)
     done = 0
     # 打ち切りになっても、それまでに終わったジョブの結果は使う
     flavors: List[Dict] = []
@@ -268,7 +270,7 @@ async def query_room_flavors(
         flavors.extend(_normalize_chunk_ids(items, [t["id"] for t in chunk]))
 
     # タイムアウト: 1 ジョブの上限 × 並列で回す段数
-    rounds = -(-len(chunks) // LLM_CONCURRENCY)
+    rounds = -(-len(chunks) // concurrency)
     try:
         await run_with_deadline(
             ctx, label, asyncio.gather(*(run(c) for c in chunks)),

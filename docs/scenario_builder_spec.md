@@ -125,7 +125,7 @@ AI の応答が使えない形 (名前や公開情報が無い) のときは、�
 | 段階 | 1 回目 (骨組み) | 2 回目 (細部) |
 |---|---|---|
 | 集落 | 名前・公開情報・NPC の名前/立場/望み・悲しみの真相 (1〜2 文)・canon | NPC の人柄・隠し事・手仕事の品の手がかり・BGM・open_threads (`builder_settlement_secrets_prompt.txt`) |
-| 旅路 | 全体像・天候表・秘密・canon・`landmark_plan` (全地点の名前/役割/野営可/主役の感覚) | 地点ごとの読み上げ・GM メモ・照明・アイコン。5 地点ずつ並列 (`builder_wilderness_landmarks_prompt.txt`) |
+| 旅路 | 全体像・天候表・秘密・canon・`landmark_plan` (全地点の名前/役割/野営可/主役の感覚) | 地点ごとの読み上げ・GM メモ・照明・アイコン。5 地点ずつ (Gemini は並列、agy は 1 本ずつ) (`builder_wilderness_landmarks_prompt.txt`) |
 
 - 2 回目は骨組みの内容を上書きしません (NPC は名前で突き合わせて人柄だけ足す。`sorrow_truth` は骨組みが優先)。
 - 2 回目が失敗・打ち切りになっても骨組みは返し、「細部の一部を受け取れなかった」と GM に知らせます。

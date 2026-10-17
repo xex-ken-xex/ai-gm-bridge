@@ -15,7 +15,7 @@ FVTT API との互換性は [`reference/foundry_vtt_api_spec.md`](../reference/f
 
 | モジュール | 役割 | テスト |
 |---|---|---|
-| `config.py` | 環境変数・定数 (`AI_GM_DATA_DIR`, `AI_GM_HOST`, `AI_GM_PORT`, `AI_GM_GEMINI_MODEL`, `AI_GM_AGY_TIMEOUT`, `AI_GM_GEMINI_TIMEOUT`, `AI_GM_MAPGEN_TIMEOUT`) | — |
+| `config.py` | 環境変数・定数 (`AI_GM_DATA_DIR`, `AI_GM_HOST`, `AI_GM_PORT`, `AI_GM_GEMINI_MODEL`, `AI_GM_AGY_TIMEOUT`, `AI_GM_AGY_MODEL`, `AI_GM_AGY_EFFORT`, `AI_GM_AGY_CONCURRENCY`, `AI_GM_GEMINI_TIMEOUT`, `AI_GM_MAPGEN_TIMEOUT`) | — |
 | `text.py` | HTML 除去・ダイス式抽出・TTS 話速/音高の正規化 (純粋関数) | `test_text.py` |
 | `protocol.py` | FVTT へ送る action メッセージの組み立て | `test_handlers.py` |
 | `tts.py` | edge-tts 音声合成 (`SpeechSynthesizer`、声色指定対応) | `test_handlers.py` |
