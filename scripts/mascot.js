@@ -30,6 +30,7 @@ const IMAGE_SETTING = "mascotImage";
 const STATE_IMAGE_SETTINGS = Object.freeze({
   thinking: { key: "mascotImageThinking", label: "考え中" },
   speaking: { key: "mascotImageSpeaking", label: "話し中" },
+  listening: { key: "mascotImageListening", label: "聞いている" },
   offline: { key: "mascotImageOffline", label: "切断" },
 });
 

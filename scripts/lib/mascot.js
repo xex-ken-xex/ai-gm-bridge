@@ -86,7 +86,7 @@ export function mascotForAction(data = {}) {
     case "npc_dialogue_response":
       return { state: "listening", text: `👀 ${data.result?.primary_npc_name ?? "NPC"}が答えるみたい…`, durationMs: 5000, public: true };
     case "execute_npc_turn":
-      return { state: "listening", text: "⚔️ 敵が動くよ、気をつけて！", durationMs: 5000, public: true };
+      return { state: "listening", text: "⚔️ NPC の手番だよ！", durationMs: 5000, public: true };
     case "builder_stage_result":
       return { state: "speaking", text: "下書きができたよ！内容を確認・修正してみてね。", durationMs: 6000, public: false };
     case "create_dungeon_scene":
