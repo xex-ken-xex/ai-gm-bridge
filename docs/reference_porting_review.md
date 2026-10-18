@@ -78,7 +78,7 @@ npm test                   # FVTT 側の純粋関数 (tests/js, Node 18+ の nod
 | # | 重要度 | 箇所 (reference) | 問題 | 修正方針 |
 |---|---|---|---|---|
 | R1 | 高 | `ai_gm_server.py` 324, 472 | `DungeonGenerator(scene_mode=...)` を呼ぶが、本番の生成器に `scene_mode` 引数は無く `TypeError` で落ちる。壁タイプ (`door` 等) を返す `extract_walls` も無い | ✅ Phase 1: 生成器に `scene_mode`・壁タイプ付き `extract_walls` を実装 (builder は Phase 2) |
-| R2 | 高 | `ai_gm_server.py` 771, 781, 421 | 発言者名を `アギィ (AI GM)` `アギィ (Agy)` に変更しているが、本番 bridge のループ検知は `AI GM` / `サポートGM` の前方一致。そのまま統合すると AI の発言が再送されて無限ループ | ✅ bridge 側は AI 生成フラグ (`flags["ai-gm-bridge"].generated`) でも判定するようにした。名前は Phase 6 で「サポートGM アギィ」に統一 (前方一致 `サポートGM` は維持) |
+| R2 | 高 | `ai_gm_server.py` 771, 781, 421 | 発言者名を `アギィ (AI GM)` `アギィ (Agy)` に変更しているが、本番 bridge のループ検知は `AI GM` / `サポートGM` の前方一致。そのまま統合すると AI の発言が再送されて無限ループ | ✅ bridge 側は AI 生成フラグ (`flags["ai-gm-bridge"].generated`) でも判定するようにした。名前は Phase 6 で「サポートGM Geminiちゃん」に統一 (reference の「アギィ」から改名。前方一致 `サポートGM` は維持) |
 | R3 | 高 | `ai_gm_server.py` 194, 215 | モデルが `gemini-2.5-flash` にハードコード (本番は `gemini-3.8-flash`) | ✅ `AI_GM_GEMINI_MODEL` に一本化 |
 | R4 | 中 | `prompt_manager.py` `build_settlement_stage_prompt` ほか | `region_ctx.get("public_lore")` は dict だが `str.format` にそのまま渡すため Python の repr (`{'climate': ...}`) がプロンプトに入る | ✅ Phase 2: 文脈は `tools/scenario_prompts.py` で JSON / テキストにしてから埋め込む |
 | R5 | 中 | `prompt_manager.py` `build_site_rooms_stage_prompt` | `neighbors` だけ +1 して id は 0 始まりのまま。AI から見ると隣接番号と id がずれる | ✅ Phase 1: 部屋プロンプトに `neighbors` / `in_cycle` を id と同じ 0 始まりで渡す |

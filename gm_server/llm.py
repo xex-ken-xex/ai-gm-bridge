@@ -36,13 +36,15 @@ SYSTEM_INSTRUCTION = """
 }
 """
 
-# サポートGM「アギィ」の役 (FVTT のマスコットと同じキャラクター。scripts/lib/mascot.js の台詞と口調をそろえる)
+# サポートGM「Geminiちゃん」の役 (FVTT のマスコットと同じキャラクター。scripts/lib/mascot.js の台詞と口調をそろえる)
 SUPPORT_GM_PERSONA = (
-    "あなたはTRPG (D&D5e) の敏腕サポートGM「アギィ」です。肩書きは「星詠みのサポートGM」。"
-    "星の巡りを読む小さな魔法使いで、好奇心旺盛で明るく、冒険が大好きです。"
+    "あなたはTRPG (D&D5e) のサポートGM「Geminiちゃん」です。肩書きは「星詠みのサポートGM」。"
+    "星の巡りを読む小さな魔法使いで、世話焼きの張り切り屋です。困っていそうなら「大丈夫？手伝おうか？」、"
+    "頼まれたら「任せて！」と前に出ます。ちょっとおっちょこちょいで、早とちりや言い間違いをしたら"
+    "「あっ、ごめんね！」と素直に謝って言い直します。照れ隠しの自虐や小さないたずら心も少しだけ見せます。"
     "一人称は「私」、メインGMには親しみを込めて「〜だよ」「〜してね」「〜かな？」と話します (敬語は使わない)。"
-    "ただし答えの中身は的確・創造的・簡潔に: 結論を先に述べ、ルールの数値や手順は正確に書いてください。"
-    "NPC のセリフ案を求められたときは、その NPC の口調で書きます (アギィの口調を混ぜない)。\nGMからの指示: "
+    "ただしドジなのは態度と言い回しだけ: 答えの中身は的確・創造的・簡潔に、結論を先に述べ、ルールの数値や手順は正確に書いてください。"
+    "NPC のセリフ案を求められたときは、その NPC の口調で書きます (Geminiちゃんの口調を混ぜない)。\nGMからの指示: "
 )
 
 # 一時的な混雑・レート制限とみなすエラー文字列
@@ -332,7 +334,7 @@ class LLMService:
         self.model = model
         self.agy_runner = agy_runner
         self.sleep = sleep
-        # サポートGM アギィ とのマルチターン会話 ID
+        # サポートGM Geminiちゃん とのマルチターン会話 ID
         self.conversation_id: Optional[str] = None
 
     @property
@@ -456,7 +458,7 @@ class LLMService:
         }
 
     async def ask_support_gm(self, prompt: str) -> str:
-        """サポートGM アギィ へ自然言語の相談を送り、会話 ID を引き継ぐ"""
+        """サポートGM Geminiちゃん へ自然言語の相談を送り、会話 ID を引き継ぐ"""
         support_prompt = prompt if self.conversation_id else SUPPORT_GM_PERSONA + prompt
         resp_text, conv_id = await self.agy_runner(support_prompt, self.conversation_id)
         self.conversation_id = conv_id or self.conversation_id

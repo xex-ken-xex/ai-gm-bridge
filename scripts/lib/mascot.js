@@ -1,17 +1,17 @@
-// アシスタント DM マスコット (アギィ) の純粋関数 (Foundry 非依存): 状態の切り替えと吹き出しのタイマー・
+// アシスタント DM マスコット (Geminiちゃん) の純粋関数 (Foundry 非依存): 状態の切り替えと吹き出しのタイマー・
 // 送受信ごとの台詞・保存位置の読み込み・内蔵 SVG
 // GM の画面での状態を game.socket で全員に配る (scripts/mascot.js)。プレイヤーに見せてよいものだけを配る
 
-// 呼び名は 1 つにそろえる: チャットの発言者名は「サポートGM アギィ」(gm_server/config.py の SPEAKER_SUPPORT)、名札は「アギィ」
-export const MASCOT_NAME = "アギィ";
+// 呼び名は 1 つにそろえる: チャットの発言者名は「サポートGM Geminiちゃん」(gm_server/config.py の SPEAKER_SUPPORT)、名札は「Geminiちゃん」
+export const MASCOT_NAME = "Geminiちゃん";
 export const MASCOT_TITLE = "星詠みのサポートGM";
-// listening: ほかの役 (AI GM のナレーション・NPC) が話している間。アギィは口を動かさずに聞いている
+// listening: ほかの役 (AI GM のナレーション・NPC) が話している間。Geminiちゃんは口を動かさずに聞いている
 export const MASCOT_STATES = Object.freeze(["idle", "thinking", "speaking", "listening", "offline"]);
-// アギィ自身の発言の発言者名 (gm_server/config.py の SPEAKER_SUPPORT。前方一致)
+// Geminiちゃん自身の発言の発言者名 (gm_server/config.py の SPEAKER_SUPPORT。前方一致)
 export const SUPPORT_SPEAKER_PREFIX = "サポートGM";
 export const DEFAULT_POSITION = Object.freeze({ left: 110, top: 90 });
 // ウィジェットの大きさ (画面の外に出さないための目安)
-export const WIDGET_SIZE = Object.freeze({ width: 90, height: 110 });
+export const WIDGET_SIZE = Object.freeze({ width: 100, height: 110 });
 const MAX_BUBBLE_CHARS = 120;
 const MAX_DURATION_MS = 60_000;
 
@@ -54,7 +54,7 @@ export function clampPosition({ left, top }, { width = Infinity, height = Infini
 export function mascotForEvent(payload = {}) {
   switch (payload.event) {
     case "ai_command":
-      return { state: "thinking", text: "指示を解析しているよ…", durationMs: 15000, public: false };
+      return { state: "thinking", text: "任せて！指示を読んでいるよ…", durationMs: 15000, public: false };
     case "room_entered":
       return { state: "thinking", text: "部屋の様子を語る準備をしているよ…", durationMs: 8000, public: true };
     case "player_message":
@@ -64,9 +64,9 @@ export function mascotForEvent(payload = {}) {
     case "npc_turn_request":
       return { state: "thinking", text: `${payload.perception?.npc_name ?? "NPC"}の戦術を考えているよ…`, durationMs: 15000, public: true };
     case "builder_generate_stage":
-      return { state: "thinking", text: "シナリオの下書きを考えているよ…", durationMs: 30000, public: false };
+      return { state: "thinking", text: "任せて！シナリオの下書きを考えるね…", durationMs: 30000, public: false };
     case "builder_build_scene":
-      return { state: "thinking", text: "シーンを組み立てているよ…", durationMs: 30000, public: false };
+      return { state: "thinking", text: "よーし、シーンを組み立てるよ…", durationMs: 30000, public: false };
     default:
       return null;
   }
@@ -76,28 +76,28 @@ export function mascotForEvent(payload = {}) {
 export function mascotForAction(data = {}) {
   switch (data.action) {
     case "chat":
-      // 「話し中」(口を開ける) はアギィ自身の発言だけ。AI GM のナレーションなどは聞いている
+      // 「話し中」(口を開ける) はGeminiちゃん自身の発言だけ。AI GM のナレーションなどは聞いている
       return String(data.speaker ?? "").startsWith(SUPPORT_SPEAKER_PREFIX)
         ? { state: "speaking", text: "", durationMs: 4000, public: true }
         : { state: "listening", text: "", durationMs: 6000, public: true };
     case "play_sound":
-      // 声はナレーションか NPC (アギィは声を持たない)
+      // 声はナレーションか NPC (Geminiちゃんは声を持たない)
       return { state: "listening", text: "", durationMs: 8000, public: true };
     case "npc_dialogue_response":
       return { state: "listening", text: `👀 ${data.result?.primary_npc_name ?? "NPC"}が答えるみたい…`, durationMs: 5000, public: true };
     case "execute_npc_turn":
       return { state: "listening", text: "⚔️ NPC の手番だよ！", durationMs: 5000, public: true };
     case "builder_stage_result":
-      return { state: "speaking", text: "下書きができたよ！内容を確認・修正してみてね。", durationMs: 6000, public: false };
+      return { state: "speaking", text: "下書きができたよ！見落としがあるかもだから、確認・修正してね。", durationMs: 6000, public: false };
     case "create_dungeon_scene":
       return { state: "speaking", text: "シーンができたよ！", durationMs: 5000, public: false };
     case "interactive_card":
-      return { state: "speaking", text: "GM に確認したいことがあるよ。", durationMs: 6000, public: false };
+      return { state: "speaking", text: "ねえ、ちょっと確認させて！", durationMs: 6000, public: false };
     case "progress":
       return { state: "thinking", text: data.message ?? "", durationMs: 15000, public: false };
     case "builder_progress":
       return data.finished
-        ? { state: "speaking", text: "シーンの構築が終わったよ！", durationMs: 5000, public: false }
+        ? { state: "speaking", text: "シーンの構築が終わったよ！うまくできたかな？", durationMs: 5000, public: false }
         : { state: "thinking", text: "", durationMs: 30000, public: false };
     default:
       return null;

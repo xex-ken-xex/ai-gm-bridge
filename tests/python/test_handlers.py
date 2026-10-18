@@ -93,7 +93,7 @@ def test_is_dungeon_intent(prompt, expected):
 async def test_ai_command_routes_to_support_gm(make_ctx, sent):
     llm = FakeLLM(support_responses=["了解です。\n次の手を考えます"])
     await dispatch(make_ctx(llm), json.dumps({"event": "ai_command", "prompt": "敵の作戦を考えて"}))
-    assert sent == [{"action": "chat", "speaker": "サポートGM アギィ", "content": "了解です。<br>次の手を考えます"}]
+    assert sent == [{"action": "chat", "speaker": "サポートGM Geminiちゃん", "content": "了解です。<br>次の手を考えます"}]
 
 
 async def test_ai_command_empty_support_reply_shows_warning(make_ctx, sent):
@@ -129,7 +129,7 @@ async def test_wilderness_wizard_skips_density(make_ctx, sent):
     await dispatch(ctx, json.dumps({"event": "ai_choice", "value": "dungeon_mode:wilderness", "label": "野外"}))
     await dispatch(ctx, json.dumps({"event": "ai_choice", "value": "dungeon_size:small", "label": "小"}))
     assert sent[-1]["choices"][0]["value"].startswith("dungeon_loop:small:")
-    assert "サイズ「小」" in sent[-1]["message"]
+    assert "サイズは「小」" in sent[-1]["message"]
 
 
 async def test_new_ai_command_resets_scene_mode(make_ctx, sent):
@@ -229,7 +229,7 @@ async def test_map_generation_timeout_without_answer_aborts(make_ctx, sent, monk
     assert await dungeon_scene.generate_and_create_dungeon_scene(ctx, "small", 0.2) is None
     assert actions(sent) == ["interactive_card", "chat", "chat"]
     assert sent[0]["title"] == "タイムアウト確認"
-    assert "打ち切りました" in sent[-1]["content"]
+    assert "打ち切った" in sent[-1]["content"]
     assert ctx.state.timeout_requests == {}
 
 
@@ -279,3 +279,12 @@ async def test_long_steps_send_progress_to_fvtt(make_ctx, sent, monkeypatch):
     assert any(m.startswith("[伝承]") for m in progress_msgs)
     assert any(m.startswith("[部屋の情景] 部屋 ") for m in progress_msgs)
     assert "create_dungeon_scene" in actions(sent)
+
+
+def test_support_gm_persona_matches_the_mascot():
+    # マスコットと同じキャラクター (名前・肩書き・世話焼きでちょっとドジ・中身は正確)
+    from gm_server.config import SPEAKER_SUPPORT
+    from gm_server.llm import SUPPORT_GM_PERSONA
+    assert SPEAKER_SUPPORT == "サポートGM Geminiちゃん"
+    for word in ("Geminiちゃん", "星詠みのサポートGM", "任せて！", "ごめんね", "敬語は使わない", "正確"):
+        assert word in SUPPORT_GM_PERSONA

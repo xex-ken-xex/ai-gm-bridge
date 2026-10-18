@@ -1,5 +1,5 @@
-// アシスタント DM マスコット UI (Foundry 依存): GM・プレイヤー全員の画面に出すミニキャラ「アギィ」
-// (チャットの発言者名「サポートGM アギィ」と同じキャラクター)
+// アシスタント DM マスコット UI (Foundry 依存): GM・プレイヤー全員の画面に出すミニキャラ「Geminiちゃん」
+// (チャットの発言者名「サポートGM Geminiちゃん」と同じキャラクター)
 //
 // - GM のクライアントでの状態 (待機・考え中・話し中・切断) と台詞を game.socket で全員に配る (module.json の "socket": true)。
 //   GM だけの操作・確認 (ビルダーの下書き・/ai の相談・接続の状態など) は状態も台詞も配らない
@@ -43,7 +43,7 @@ let gmActions = { openBuilder: null, openBrain: null };
 export function registerMascotSettings() {
   game.settings.register(MODULE_ID, SHOW_SETTING, {
     name: "マスコットを表示",
-    hint: "画面にアシスタント DM のミニキャラ (アギィ) を表示します。この設定はユーザーごとです。",
+    hint: "画面にアシスタント DM のミニキャラ (Geminiちゃん) を表示します。この設定はユーザーごとです。",
     scope: "client",
     config: true,
     type: Boolean,
@@ -169,7 +169,7 @@ export function initMascot({ openBuilder = null, openBrain = null } = {}) {
       return;
     }
     if (game.user?.isGM && gmActions.openBuilder) gmActions.openBuilder();
-    else controller?.set({ state: "speaking", text: `私は${MASCOT_TITLE}、アギィだよ！冒険のサポートはお任せあれ！`, durationMs: 4000 });
+    else controller?.set({ state: "speaking", text: `私は${MASCOT_TITLE}、${MASCOT_NAME}だよ！困ったことがあったら手伝うね、任せて！`, durationMs: 4000 });
   });
   widget.addEventListener("contextmenu", ev => {
     if (!game.user?.isGM || !gmActions.openBrain) return;
@@ -230,7 +230,7 @@ function apply(reaction) {
 /** サーバーへ送ったとき (bridge.js の送信関数から呼ぶ) */
 export function mascotOnSend(payload, ok) {
   if (!ok) {
-    setMascotState("offline", "サーバーと通信できないみたい…", 4000, { isPublic: false });
+    setMascotState("offline", "あれれ、サーバーと通信できないみたい…", 4000, { isPublic: false });
     return;
   }
   apply(mascotForEvent(payload));
@@ -248,6 +248,6 @@ export function mascotOnConnecting() {
 
 /** 接続と切断 */
 export function mascotOnConnection(open) {
-  if (open) setMascotState("idle", "準備完了！ダブルクリックでビルダー、右クリックで NPC ブレイン管理が開くよ！", 5000, { isPublic: false });
-  else setMascotState("offline", "サーバーとの接続が切れたみたい…再接続するね。", 5000, { isPublic: false });
+  if (open) setMascotState("idle", "準備完了！困ったら手伝うよ。ダブルクリックでビルダー、右クリックで NPC ブレイン管理だよ！", 5000, { isPublic: false });
+  else setMascotState("offline", "あっ、サーバーとの接続が切れちゃった…ごめんね、つなぎ直すね。", 5000, { isPublic: false });
 }

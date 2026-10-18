@@ -432,12 +432,12 @@ async def handle_generate_stage(ctx, data: dict) -> None:
     if fallback:
         result = fallback_stage_result(stage)
         await ctx.send(protocol.chat(
-            f"⚠️ {stage_label}の下書きを AI から受け取れなかったため、手直し用の骨組みを入れました。",
+            f"⚠️ ごめんね、{stage_label}の下書きを AI から受け取れなかったの。代わりに手直し用の骨組みを入れておいたよ。",
             speaker=SPEAKER_SUPPORT,
         ))
     elif partial:
         await ctx.send(protocol.chat(
-            f"⚠️ {stage_label}の細部の一部を AI から受け取れませんでした。骨組みは届いているので、空いた所を手直ししてください。",
+            f"⚠️ あっ、{stage_label}の細部が一部届かなかったみたい…骨組みはあるから、空いた所を手直ししてね。",
             speaker=SPEAKER_SUPPORT,
         ))
     if stage == "wilderness":
@@ -470,7 +470,7 @@ async def handle_build_scene(ctx, data: dict) -> None:
             # 下書きの地点グラフが分からないので、ランドマークは使えない
             seed, landmarks = new_seed(), []
             await ctx.send(protocol.chat(
-                "⚠️ 旅路の地図情報 (seed) が無いため、新しい地形で構築します。ランドマークの下書きは使いません。",
+                "⚠️ 旅路の地図情報 (seed) が見つからないから、新しい地形で作るね。ランドマークの下書きは使えないよ。",
                 speaker=SPEAKER_SUPPORT,
             ))
         size_key = WILDERNESS_MAP["size_key"]
@@ -537,13 +537,13 @@ async def build_scene(ctx, data, scene_mode, name, site_public, site_dm, seed, s
     rooms = gen.get_room_flavor_notes(grid_size=100, custom_flavors=apply_room_plan(None, plan) or None, id_base=0)
     if steps == 1:
         # スクリプト: AI に区画の情景を頼まずに終える
-        speech_text = f"{mode_name}『{name}』のシーンを構築しました。全{len(gen.rooms)}区画は仮の名前なので、探索録で書き足してください。"
+        speech_text = f"{mode_name}『{name}』のシーンができたよ！全{len(gen.rooms)}区画は仮の名前だから、探索録で書き足してね。"
         await send_scene(ctx, name, scene_mode, png_filename, gen, walls, lore, rooms, density, speech_text)
         return
     await send_scene(ctx, name, scene_mode, png_filename, gen, walls, lore, rooms, density, None, scene_key=scene_key)
     await ctx.send(protocol.chat(
-        f"🏰 <b>{mode_name}『{name}』のマップを作りました</b> (区画数: {len(gen.rooms)})<br>"
-        f"各区画の情景は AI が書き終えたものから順に反映します ({len(selected)} 区画)。",
+        f"🏰 <b>{mode_name}『{name}』のマップができたよ！</b> (区画数: {len(gen.rooms)})<br>"
+        f"各区画の情景は、書き終わったところから順に入れていくね ({len(selected)} 区画)。",
         speaker=SPEAKER_SUPPORT,
     ))
 
@@ -570,7 +570,7 @@ async def build_scene(ctx, data, scene_mode, name, site_public, site_dm, seed, s
         auto_extend=auto_extend, on_chunk=on_chunk,
     )
     got = len(flavors or [])
-    speech_text = f"{mode_name}『{name}』の全{len(selected)}区画のうち{got}区画に情景を設定しました。"
+    speech_text = f"{mode_name}『{name}』の全{len(selected)}区画のうち、{got}区画に情景を入れたよ！"
     await ctx.send(protocol.chat(f"🏰 {speech_text}", speaker=SPEAKER_SUPPORT))
     file_name = voice_filename("voice_dungeon")
     if await ctx.tts.synthesize(speech_text, file_name):

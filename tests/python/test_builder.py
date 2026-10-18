@@ -168,7 +168,7 @@ async def test_wilderness_keeps_the_plan_when_details_fail(make_ctx, sent):
     llm = PromptLLM(lambda p: None if "【あなたが書く地点】" in p else wilderness_core(topos))
     await builder.handle_generate_stage(make_ctx(llm), {"stage": "wilderness", "seed": 99})
     assert actions(sent) == ["chat", "builder_stage_result"]
-    assert "細部の一部" in sent[0]["content"]
+    assert "細部が一部" in sent[0]["content"]
     msg = sent[-1]
     assert msg["fallback"] is False
     assert [lm["gm_notes"] for lm in msg["result"]["landmarks"]] == [f"役割{t['id']}" for t in topos]

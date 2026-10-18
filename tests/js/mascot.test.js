@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   clampPosition,
   DEFAULT_POSITION,
+  WIDGET_SIZE,
   MascotController,
   mascotForAction,
   mascotForEvent,
@@ -26,7 +27,7 @@ test("parseSavedPosition は壊れた JSON でも既定の位置にし、画面�
   assert.deepEqual(parseSavedPosition("{oops"), DEFAULT_POSITION);
   assert.deepEqual(parseSavedPosition(null), DEFAULT_POSITION);
   assert.deepEqual(parseSavedPosition('{"left":"x","top":40}'), { left: DEFAULT_POSITION.left, top: 40 });
-  assert.deepEqual(parseSavedPosition('{"left":5000,"top":-20}', { width: 1000, height: 800 }), { left: 910, top: 0 });
+  assert.deepEqual(parseSavedPosition('{"left":5000,"top":-20}', { width: 1000, height: 800 }), { left: 1000 - WIDGET_SIZE.width, top: 0 });
   assert.deepEqual(clampPosition({ left: 10.4, top: 20.6 }), { left: 10, top: 21 });
 });
 
@@ -80,10 +81,10 @@ test("mascotSvgDataUri は状態ごとの SVG を返す", () => {
   assert.notEqual(mascotSvgDataUri("thinking"), mascotSvgDataUri("idle"));
 });
 
-test("名札とチャットの発言者名は同じキャラクター (サポートGM アギィ)", async () => {
+test("名札とチャットの発言者名は同じキャラクター (サポートGM Geminiちゃん)", async () => {
   const { MASCOT_NAME, MASCOT_TITLE } = await import("../../scripts/lib/mascot.js");
   const { isAiAlias } = await import("../../scripts/lib/chat-filter.js");
-  assert.equal(MASCOT_NAME, "アギィ");
+  assert.equal(MASCOT_NAME, "Geminiちゃん");
   assert.match(MASCOT_TITLE, /サポートGM/);
   assert.ok(isAiAlias(`サポートGM ${MASCOT_NAME}`));
 });
@@ -96,8 +97,8 @@ test("内蔵の顔: 考え中は「…」、切断は「z」、話し中だけ�
   assert.ok(!svg("idle").includes("#c0392b"));
 });
 
-test("口を開けて話すのはアギィ自身の発言だけ。ナレーション・NPC の声は聞いている", () => {
-  assert.equal(mascotForAction({ action: "chat", speaker: "サポートGM アギィ" }).state, "speaking");
+test("口を開けて話すのはGeminiちゃん自身の発言だけ。ナレーション・NPC の声は聞いている", () => {
+  assert.equal(mascotForAction({ action: "chat", speaker: "サポートGM Geminiちゃん" }).state, "speaking");
   assert.equal(mascotForAction({ action: "chat", speaker: "AI GM" }).state, "listening");
   assert.equal(mascotForAction({ action: "chat" }).state, "listening");
   assert.equal(mascotForAction({ action: "play_sound" }).state, "listening");

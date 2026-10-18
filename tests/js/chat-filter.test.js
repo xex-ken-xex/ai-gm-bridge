@@ -5,8 +5,9 @@ import { generatedFlags, isAiAlias, playerMessageToForward } from "../../scripts
 test("isAiAlias は AI GM / サポートGM を検知する", () => {
   assert.ok(isAiAlias("AI GM"));
   assert.ok(isAiAlias("AI GM (判定)"));
-  assert.ok(isAiAlias("サポートGM アギィ"));
+  assert.ok(isAiAlias("サポートGM Geminiちゃん"));
   assert.ok(isAiAlias("サポートGM (agy)")); // 名前をそろえる前のメッセージも
+  assert.ok(isAiAlias("サポートGM アギィ")); // 改名前のメッセージも
   assert.ok(!isAiAlias("ゴブリン"));
   assert.ok(!isAiAlias(undefined));
 });
@@ -17,7 +18,7 @@ test("通常のプレイヤー発言はタグを除去して転送する", () =>
 
 test("AI 由来・コマンド・ロール・空の発言は転送しない", () => {
   assert.equal(playerMessageToForward({ alias: "AI GM", content: "描写" }), null);
-  assert.equal(playerMessageToForward({ alias: "アギィ", content: "描写", flags: generatedFlags() }), null);
+  assert.equal(playerMessageToForward({ alias: "Geminiちゃん", content: "描写", flags: generatedFlags() }), null);
   assert.equal(playerMessageToForward({ alias: "PL", content: "/r 1d20" }), null);
   assert.equal(playerMessageToForward({ alias: "PL", content: "[[1d20]]" }), null);
   assert.equal(playerMessageToForward({ alias: "PL", content: "攻撃", isRoll: true }), null);
