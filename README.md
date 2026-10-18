@@ -12,6 +12,8 @@ Foundry Virtual Tabletop (FVTT) と Python の AI GM サーバーを WebSocket �
 </div>
 
 > この README は **Windows 11 + WSL2** で動かす前提で書いています。
+>
+> **動作環境**: Windows 11 + WSL2（Ubuntu） · Python 3.12+ · Foundry VTT v11–v14 · Irodori-TTS を使うときは NVIDIA の GPU
 
 ---
 
@@ -193,7 +195,7 @@ Foundry Virtual Tabletop (FVTT) と Python の AI GM サーバーを WebSocket �
 | `AI_GM_IRODORI_TIMEOUT` / `_FIRST_TIMEOUT` | `20` / `180` | Irodori の待ち時間（秒、2 つ目は初回） |
 | `AI_GM_IRODORI_RETRY_AFTER` | `60` | Irodori に繋がらなかった後、もう一度試すまで（秒） |
 
-全部の一覧は `gm_server/config.py` にあります。
+全部の一覧は [`docs/specification.md` の環境変数の表](docs/specification.md#環境変数) と `gm_server/config.py` にあります。Irodori の声の設定（語り手やサポートGM の声の説明文など）は [`docs/irodori_tts_setup.md`](docs/irodori_tts_setup.md) を見てください。
 
 ### WSL のターミナルから直接起動する
 
