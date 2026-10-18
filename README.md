@@ -19,6 +19,7 @@ Foundry Virtual Tabletop (FVTT) とローカル Python サーバーを WebSocket
 ### 3. トークン部屋進入時の情景表示 & 音声ナレーション
 - プレイヤーやトークンが未探索の部屋に足を踏み入れると、チャット欄に情景描写カードが自動表示されます。
 - 同時に `edge-tts`（日本語音声 `ja-JP-NanamiNeural`）により、五感に訴える情景ナレーションが自動読み上げされます。
+- `AI_GM_TTS_ENGINE=irodori` にすると、声の説明文から声を作る Irodori-TTS で読み上げます（入れ方は [`docs/irodori_tts_setup.md`](docs/irodori_tts_setup.md)。繋がらないときは edge-tts に戻ります）。
 
 ### 4. サポートGMとの相談・NPCセリフ提案
 - チャット欄で `/ai [相談・指示]` と入力することで、NPC のセリフ提案やロールプレイの相談、D&D 5e のルール確認などをサポートGM Geminiちゃん と行えます。

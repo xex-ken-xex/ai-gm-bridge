@@ -35,7 +35,7 @@ ai-gm-bridge/
 │   ├── net/connection.js # WebSocket 接続・自動再接続・受信の直列処理
 │   └── lib/             # Foundry 非依存の純粋関数 (html / commands / chat-filter / rooms / scene-docs / cards / atlas / npc-brain / npc-listen / npc-tactics / mascot)
 ├── ai_gm_server.py      # サーバー起動スクリプト (実装は gm_server/)
-├── gm_server/           # バックエンド実装 (config / logs (詳細ログ: ~/ai-gm-logs/<日付>/server.log) / text / protocol / tts / llm / progress / deadline / dungeon_scene / builder / handlers (npc_dialogue / npc_turn ほか) / router / app)
+├── gm_server/           # バックエンド実装 (config / logs (詳細ログ: ~/ai-gm-logs/<日付>/server.log) / text / protocol / tts (edge-tts と Irodori-TTS の切り替え) / llm / progress / deadline / dungeon_scene / builder / handlers (npc_dialogue / npc_turn ほか) / router / app)
 ├── tests/
 │   ├── python/          # pytest (python3 -m pytest)
 │   └── js/              # node:test (npm test)
@@ -63,7 +63,8 @@ ai-gm-bridge/
     ├── reference_porting_review.md # reference/ 移植レビュー (問題点リスト・移植フェーズ)
     ├── dungeon_math_investigation.md # ダンジョン生成の数学的モデリング調査・仕様化検討レポート
     ├── ai_dungeon_flavor_spec.md # AI ダンジョン階層フレーバー生成仕様 & DMノウハウ調査レポート
-    └── scenario_builder_spec.md  # 4 段階シナリオビルダー仕様 (整合性とマンネリ防止のしくみ)
+    ├── scenario_builder_spec.md  # 4 段階シナリオビルダー仕様 (整合性とマンネリ防止のしくみ)
+    └── irodori_tts_setup.md      # Irodori-TTS-Server を WSL に入れる手順 (AI_GM_TTS_ENGINE=irodori)
 ```
 
 ### 各ファイルの役割
