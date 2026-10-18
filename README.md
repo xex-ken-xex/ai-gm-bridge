@@ -70,7 +70,7 @@ python3 ai_gm_server.py
 
 ```
   0) 最新の main を取ってきて起動 (Enter でもこれ)
-  1) claude/xxxx      ← 検証したい PR のブランチ (新しい順)
+  1) claude/xxxx      ← 検証したい PR のブランチ (新しい順に最大 10 件)
        10/18 06:59  コミットの説明
   ...
   c) 今のブランチのまま起動 (git を触らない)
@@ -82,15 +82,7 @@ python3 ai_gm_server.py
 - 手元のブランチにリモートに無いコミットがあるときは、捨ててよいか確認します。
 - コードが切り替わったら、FVTT を開いているブラウザを再読み込み (F5) してください。`requirements.txt` が変わっていればライブラリも自動で更新します。
 
-Windows のデスクトップから起動するときは、次のバッチファイル (`start-ai-gm.bat`) を置くとダブルクリックで起動できます。`FVTT` は `wsl -l -v` に出る WSL のディストリビューション名です。違う名前で入れている場合は書き換えてください。`-i` は `~/.bashrc` の `GEMINI_API_KEY` を読み込むために付けています。
-
-```bat
-@echo off
-chcp 65001 > nul
-title AI GM Server
-wsl -d FVTT -- bash -lic "~/foundrydata/Data/modules/ai-gm-bridge/start_server.sh"
-pause
-```
+Windows のデスクトップから起動するときは、リポジトリにある `start-ai-gm.bat` をデスクトップにコピーしてください。ダブルクリックで上のメニューが開きます。中の `FVTT` は `wsl -l -v` に出る WSL のディストリビューション名なので、違う名前で入れている場合は書き換えてください。`bash -lic` の `-i` は、`~/.bashrc` の `GEMINI_API_KEY` を読み込むために付けています。
 
 バックグラウンド常駐起動する場合:
 ```bash
@@ -130,6 +122,7 @@ npm test            # FVTT 側の純粋関数 (Node 18+)
 ai-gm-bridge/
 ├── Setup.sh                  # 冪等セットアップスクリプト
 ├── start_server.sh           # 対話式のサーバー起動スクリプト (main / ブランチを選んで起動)
+├── start-ai-gm.bat           # Windows から start_server.sh を開くバッチ (デスクトップにコピーして使う)
 ├── README.md                 # 本ドキュメント
 ├── AGENTS.md                 # エージェント・開発者向け詳細仕様書
 ├── module.json               # FVTT モジュール定義ファイル

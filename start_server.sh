@@ -45,12 +45,17 @@ main() {
   while IFS= read -r line; do
     [ -n "$line" ] && branches+=("$line")
   done < <(git for-each-ref --sort=-committerdate --format='%(refname:lstrip=3)' refs/remotes/origin \
-             | grep -v -x -e 'HEAD' -e 'main')
+             | grep -v -x -e 'HEAD' -e 'main' | head -n 10)
 
   echo ""
   echo "今のブランチ: ${current}"
+  if [ -n "$dirty" ]; then
+    echo "[注意] 編集中のファイルがあるため、ブランチは切り替えられません (c だけ選べます)。"
+    git status --short --untracked-files=no
+  fi
   echo ""
   echo "  0) 最新の main を取ってきて起動 (Enter でもこれ)"
+  echo "     ブランチ (新しい順に最大 10 件):"
   local i b info
   for i in "${!branches[@]}"; do
     b="${branches[$i]}"
