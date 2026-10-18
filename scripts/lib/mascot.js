@@ -100,6 +100,8 @@ export function mascotForEvent(payload = {}) {
       return { state: "thinking", text: "任せて！シナリオの下書きを考えるね…", durationMs: 30000, public: false };
     case "builder_build_scene":
       return { state: "thinking", text: "よーし、シーンを組み立てるよ…", durationMs: 30000, public: false };
+    case "adventure_log_request":
+      return { state: "thinking", text: "📖 冒険の記録を読み返してまとめているよ…", durationMs: 30000, public: true };
     default:
       return null;
   }
@@ -126,6 +128,8 @@ export function mascotForAction(data = {}) {
       return { state: "speaking", text: "シーンができたよ！", durationMs: 5000, public: false };
     case "interactive_card":
       return { state: "speaking", text: "ねえ、ちょっと確認させて！", durationMs: 6000, public: false };
+    case "adventure_log_write":
+      return { state: "speaking", text: "📖 冒険日誌に書いたよ！読み返してみてね。", durationMs: 6000, public: true };
     case "progress":
       return { state: "thinking", text: data.message ?? "", durationMs: 15000, public: false };
     case "builder_progress":

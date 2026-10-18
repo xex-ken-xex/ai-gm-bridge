@@ -177,3 +177,10 @@ test("MascotController.say は状態を変えずに台詞だけを出し、時�
   fire(live.find(t => t.ms === 10000));
   assert.deepEqual(c.current, { state: "idle", text: "" });
 });
+
+test("mascotForEvent / mascotForAction: 冒険記録はみんなの画面に出す", () => {
+  assert.equal(mascotForEvent({ event: "adventure_log_request" }).state, "thinking");
+  const done = mascotForAction({ action: "adventure_log_write" });
+  assert.equal(done.state, "speaking");
+  assert.equal(done.public, true);
+});

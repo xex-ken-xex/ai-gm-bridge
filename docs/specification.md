@@ -91,7 +91,7 @@ flowchart TD
 - GM の画面での状態を `game.socket` (`module.ai-gm-bridge`、`sync_mascot`) で全員に配る。`module.json` の `"socket": true` が必要 (変更後は Foundry の再起動が要る)。
   ビルダーの下書き・途中経過・`/ai` の相談・GM への確認・接続の状態など、GM だけの操作は状態も台詞も配らない。受信側は GM からのものだけを受け付け、台詞は `textContent` で表示する。
 - GM の画面では、サーバーにつながるまで「切断」で表示する (Python サーバーを起動していないと気づけるように)。
-- クリック (左でも右でも。ドラッグとは 5px 以上動いたかで分ける) でメニューを出す。GM は「シナリオビルダー」「NPC ブレイン管理」、全員が「あいさつ」「位置を戻す」(保存した位置も消す)「マスコットを隠す」(設定「マスコットを表示」を切る)。
+- クリック (左でも右でも。ドラッグとは 5px 以上動いたかで分ける) でメニューを出す。GM は「シナリオビルダー」「NPC ブレイン管理」「冒険記録を更新」(サーバー接続時)、全員が「あいさつ」「位置を戻す」(保存した位置も消す)「マスコットを隠す」(設定「マスコットを表示」を切る)。
   メニューの外を押すか Esc で閉じる。ほかの機能は `registerMascotMenuItem({ id, icon, label, gmOnly, onSelect })` で項目を足せる (あいさつの後ろに入る。声のテストなど)。
 - ウィンドウ (シート・ビルダー・ジャーナル) より下、キャンバスと画面の枠より上に出す (`z-index: 70`)。
 - 設定: 「マスコットを表示」(ユーザーごと)、「マスコットの画像」と状態ごとの「マスコットの画像 (考え中 / 話し中 / 聞いている / 切断)」(ワールド。空欄なら共通の画像、それも空なら内蔵の SVG)。
@@ -348,6 +348,21 @@ AI が区画の情景を書き終えたものから `update_dungeon_rooms` で�
 `builder_generate_stage` と `builder_build_scene` は `auto_extend` (bool。ビルダー画面の「⏱️ タイムアウトしたら自動で延長する」、既定 false) を送ります。
 true のときはタイムアウトしても GM に確認せず、同じ秒数だけ自動で延長します (最大 5 回。それ以降は通常どおりカードで確認します)。
 
+#### 冒険記録 (`adventure_log_request`)
+`/ai 記録を作って` (新しい回) / `/ai 記録を更新して` (最新の回に書き足す) に対してサーバーが `adventure_log_collect` を返すと、FVTT (GM) が材料を集めて送ります。
+マスコットのメニュー「冒険記録を更新」からも送ります (回が無ければ新しく作ります)。
+
+- `transcript`: 前の記録より後のチャット (古い順の `{speaker, text}`)。ウィスパー・サポートGM との相談・`/` のコマンドは除き、ダイスは「🎲 式 → 出目」にします。新しいものが無ければ送らず、GM に「まだない」と伝えます。
+- `inventory_changes`: プレイヤー所有の character の所持品が、前の記録から増えた分 (`{holder, name, quantity}`。初めての記録では空)。
+- `place_hints`: その間に発言があったシーンの名前。`previous_replay`: 更新のときの最新の回の本文 (HTML)。
+
+```json
+{ "event": "adventure_log_request", "mode": "create", "session_number": 2,
+  "transcript": [{ "speaker": "アリア", "text": "宿の女将に話を聞こう" }], "pcs": ["アリア"],
+  "place_hints": ["霧の港町"], "inventory_changes": [{ "holder": "アリア", "name": "灯台の鍵", "quantity": 1 }],
+  "previous_replay": "" }
+```
+
 集落と旅路の下書きは、AI の応答が長くタイムアウトしやすいため 2 回に分けて問い合わせます
 (集落: 骨組み → 人物と秘密、旅路: 骨組みと地点の一覧 → 地点の描写を 5 地点ずつ。Gemini は並列、agy は 1 本ずつ)。FVTT に返す `builder_stage_result` の形は 1 回のときと同じです。
 
@@ -541,6 +556,26 @@ PC のトークン (プレイヤー所有、または所有者未設定の `char
 { "action": "builder_progress", "kind": "build", "finished": false, "stage": "site_lore", "step": 2, "steps": 2,
   "step_label": "区画の情景", "detail": "完了 1/2", "elapsed": 40, "remaining": 260 }
 ```
+
+#### 8. 冒険記録 (`adventure_log_collect` / `adventure_log_write`)
+`adventure_log_collect` (`{"action": "adventure_log_collect", "mode": "create" | "update"}`) は、FVTT に `adventure_log_request` の材料を集めてもらう指示です。
+`adventure_log_write` は AI (`prompts/adventure_log_prompt.txt`) が書いたリプレイ風の本文と一覧です。
+AI の応答が読めなければ `fallback: true` で、チャットの終わりの方の抜粋と所持品の差分だけを返します。所持品の差分は AI が書き漏らしても `items` に入ります。
+
+```json
+{ "action": "adventure_log_write", "mode": "create", "session_number": 2, "title": "霧の港と灯台の噂",
+  "replay": "一行は霧の港町にたどり着いた。\n女将マルタ「北の灯台に近づいちゃいけないよ」",
+  "items": [{ "name": "灯台の鍵", "holder": "アリア", "note": "女将から預かった" }],
+  "people": [{ "name": "女将マルタ", "note": "宿の女将。灯台を恐れている" }],
+  "places": [{ "name": "霧の港町", "note": "最初に着いた町" }], "fallback": false }
+```
+
+FVTT は「📖 冒険日誌」ジャーナル (プレイヤーも閲覧可) に書きます (`scripts/adventure-log.js`)。
+
+- 回ごとのページ「第N回 見出し」: 新しい回は本文のページを作り、更新は最新の回の本文の後に `<hr>` を挟んで書き足します (GM が書き換えた本文は残ります)。
+- 一覧のページ「🎒 取得物」「🤝 知り合った人々」「🗺️ 訪れた場所」: 人物・場所は名前、取得物は名前と持ち主で 1 件にまとめ、初めて記録した回を添えます。
+- ジャーナルの flag `adventure_log` に、回の区切り (`sessions[].since` / `until`: どのメッセージまで読んだか)・一覧・PC の所持品の控えを保存します。
+- 書き終えたら、Geminiちゃんが GM 宛てに「冒険日誌を開く」ボタン付きで知らせます。
 
 ---
 
