@@ -44,10 +44,26 @@ import {
 
 let connection = null;
 
+let mascotWarned = false;
+
+/** マスコットの表示で失敗しても、サーバーとの接続やチャットの処理は止めない (画面への通知は最初の 1 回だけ) */
+function safely(label, fn) {
+  try {
+    return fn();
+  } catch (e) {
+    console.warn(`AI GM Bridge | マスコットの${label}に失敗しました (接続には影響しません)`, e);
+    if (!mascotWarned) {
+      mascotWarned = true;
+      ui.notifications?.warn("AI GM Bridge: マスコットを表示できませんでした。サーバーとの連携はそのまま使えます (詳細はコンソール)。");
+    }
+    return undefined;
+  }
+}
+
 /** サーバーへ送る (マスコットの「考え中」や「切断」も切り替える) */
 function sendToServer(payload) {
   const ok = Boolean(connection?.send(payload));
-  mascotOnSend(payload, ok);
+  safely("更新", () => mascotOnSend(payload, ok));
   return ok;
 }
 
@@ -81,7 +97,10 @@ function sendAiCommand(prompt) {
 
 // 1. FVTT スラッシュコマンド登録 (/ai, /agy)
 function registerAiCommands() {
-  if (typeof ChatLog === "undefined" || !ChatLog.CHAT_COMMANDS) return;
+  // v13 以降は foundry.applications.sidebar.tabs.ChatLog (グローバルの ChatLog は非推奨で、v15 で消える)
+  const ChatLogClass = globalThis.foundry?.applications?.sidebar?.tabs?.ChatLog
+    ?? (typeof ChatLog === "undefined" ? null : ChatLog);
+  if (!ChatLogClass?.CHAT_COMMANDS) return;
   const aiCmd = {
     rgx: AI_COMMAND_RGX,
     isRoll: false,
@@ -92,8 +111,8 @@ function registerAiCommands() {
       return false; // メッセージ生成を防止
     }
   };
-  ChatLog.CHAT_COMMANDS.ai = aiCmd;
-  ChatLog.CHAT_COMMANDS.agy = aiCmd;
+  ChatLogClass.CHAT_COMMANDS.ai = aiCmd;
+  ChatLogClass.CHAT_COMMANDS.agy = aiCmd;
 }
 
 // モジュール評価時および init フックで即座にコマンド登録
@@ -166,8 +185,8 @@ Hooks.once("ready", async function() {
   // NPC 会話の「本音を引き出す」判定ボタンはプレイヤーも押す (押した人のキャラクターで振る)
   document.addEventListener("click", onNpcCheckClick);
   // アシスタント DM マスコットは全員の画面に出す。GM の画面での状態が game.socket で配られる
-  initMascot(game.user.isGM ? { openBuilder: openScenarioBuilder, openBrain: () => openNpcBrainManager() } : {});
-  listenMascotSocket();
+  safely("表示", () => initMascot(game.user.isGM ? { openBuilder: openScenarioBuilder, openBrain: () => openNpcBrainManager() } : {}));
+  safely("同期", listenMascotSocket);
   if (!game.user.isGM) return;
 
   registerAiCommands();
@@ -180,17 +199,17 @@ Hooks.once("ready", async function() {
 
   connection = new BridgeConnection({
     onMessage: data => {
-      mascotOnAction(data);
+      safely("更新", () => mascotOnAction(data));
       return handleServerAction(data);
     },
-    onStatus: mascotOnConnection,
+    onStatus: open => safely("更新", () => mascotOnConnection(open)),
     notify: {
       info: msg => ui.notifications.info(msg),
       warn: msg => ui.notifications.warn(msg),
     },
   });
   // つながるまでは GM の画面のマスコットを「切断」にしておく (サーバーを起動していないと気づけるように)
-  mascotOnConnecting();
+  safely("更新", mascotOnConnecting);
   connection.connect();
   setBuilderSender(sendToServer);
   setNpcSender(sendToServer);

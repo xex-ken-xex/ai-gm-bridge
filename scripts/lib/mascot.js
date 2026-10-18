@@ -110,7 +110,9 @@ export function mascotForAction(data = {}) {
  * 切断 (offline) はつながるまで戻さない
  */
 export class MascotController {
-  constructor({ render, setTimer = setTimeout, clearTimer = clearTimeout } = {}) {
+  // setTimeout をそのまま this.setTimer に入れて呼ぶと、ブラウザでは this が window でないため
+  // 「Illegal invocation」になる (Node では起きない)。関数で包んで呼ぶ
+  constructor({ render, setTimer = (fn, ms) => setTimeout(fn, ms), clearTimer = id => clearTimeout(id) } = {}) {
     this.render = render;
     this.setTimer = setTimer;
     this.clearTimer = clearTimer;

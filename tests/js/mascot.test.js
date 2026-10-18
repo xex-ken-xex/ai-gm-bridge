@@ -106,3 +106,26 @@ test("口を開けて話すのはGeminiちゃん自身の発言だけ。ナレ�
   assert.equal(mascotForAction({ action: "execute_npc_turn" }).state, "listening");
   assert.equal(normalizeMascotState({ state: "listening" }).state, "listening");
 });
+
+test("MascotController の既定のタイマーは this を持たずに呼ぶ (ブラウザの Illegal invocation 対策)", () => {
+  const realSet = globalThis.setTimeout;
+  const realClear = globalThis.clearTimeout;
+  // ブラウザの setTimeout と同じく、this が window (globalThis) 以外なら例外にする
+  globalThis.setTimeout = function (fn, ms) {
+    if (this !== undefined && this !== globalThis) throw new TypeError("Illegal invocation");
+    return realSet(fn, ms);
+  };
+  globalThis.clearTimeout = function (id) {
+    if (this !== undefined && this !== globalThis) throw new TypeError("Illegal invocation");
+    return realClear(id);
+  };
+  try {
+    const c = new MascotController({ render: () => {} });
+    c.set({ state: "thinking", text: "考え中", durationMs: 1000 });
+    c.set({ state: "speaking", text: "できた", durationMs: 1000 });
+    c.dispose();
+  } finally {
+    globalThis.setTimeout = realSet;
+    globalThis.clearTimeout = realClear;
+  }
+});

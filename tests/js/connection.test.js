@@ -88,3 +88,23 @@ test("onStatus は接続と切断を 1 回ずつ知らせる (再接続の失敗
   retry.close();
   assert.deepEqual(status, [true, false]);
 });
+
+test("切断後の再接続の既定のタイマーは this を持たずに呼ぶ (ブラウザの Illegal invocation 対策)", () => {
+  const realSet = globalThis.setTimeout;
+  const scheduled = [];
+  // ブラウザの setTimeout と同じく、this が window (globalThis) 以外なら例外にする
+  globalThis.setTimeout = function (fn, ms) {
+    if (this !== undefined && this !== globalThis) throw new TypeError("Illegal invocation");
+    scheduled.push(ms);
+    return 0;
+  };
+  try {
+    const c = new BridgeConnection({ WebSocketImpl: FakeWebSocket, logger: silent, reconnectMs: 1234 });
+    const ws = c.connect();
+    ws.open();
+    ws.close();
+  } finally {
+    globalThis.setTimeout = realSet;
+  }
+  assert.deepEqual(scheduled, [1234]);
+});

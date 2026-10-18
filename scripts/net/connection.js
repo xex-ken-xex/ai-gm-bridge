@@ -16,7 +16,7 @@ export class BridgeConnection {
    * @param {Function} [opts.setTimeoutImpl]
    * @param {Function} [opts.onStatus]  (open: boolean) => void  接続・切断のたびに呼ばれる (マスコットの表示など)
    */
-  constructor({ url = DEFAULT_SERVER_URL, onMessage, WebSocketImpl = globalThis.WebSocket, reconnectMs = 5000, notify = {}, logger = console, setTimeoutImpl = setTimeout, onStatus = null } = {}) {
+  constructor({ url = DEFAULT_SERVER_URL, onMessage, WebSocketImpl = globalThis.WebSocket, reconnectMs = 5000, notify = {}, logger = console, setTimeoutImpl = (fn, ms) => setTimeout(fn, ms), onStatus = null } = {}) {
     this.url = url;
     this.onMessage = onMessage;
     this.WebSocketImpl = WebSocketImpl;
