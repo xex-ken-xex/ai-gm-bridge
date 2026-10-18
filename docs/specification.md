@@ -204,6 +204,8 @@ FVTT のビルダー画面にも同じ内容を 2 行で出します (`builder_p
 | `AI_GM_IRODORI_RETRY_AFTER` | `60` | Irodori に失敗したあと edge-tts だけを使う時間 (秒) |
 | `AI_GM_IRODORI_CAPTION_FEMALE` | 落ち着いた大人の女性の声。… | ナレーションと女性の NPC (ボイスが Keita 以外) の声の説明文 (VoiceDesign) |
 | `AI_GM_IRODORI_CAPTION_MALE` | 落ち着いた大人の男性の声。… | 男性の NPC (ボイスが Keita) の声の説明文 |
+| `AI_GM_IRODORI_SEED` | `1234` | 声の揺れを抑える乱数の種。ナレーターはこの値、NPC はこの値とボイス名・声の高さ・説明文から決めた値。空にすると毎回変わる |
+| `AI_GM_IRODORI_NARRATOR_VOICE` | (なし) | ナレーターの参照音声の ID (Irodori-TTS-Server の voices フォルダのファイル名)。設定するとナレーターはこの声だけで作る (説明文は付けない) |
 | `AI_GM_HOST` | `0.0.0.0` | WebSocket サーバーの待ち受けアドレス |
 | `AI_GM_PORT` | `8765` | WebSocket サーバーのポート |
 | `AI_GM_LOG_DIR` | `~/ai-gm-logs` | 詳細ログの出力先 (日付フォルダを作る) |

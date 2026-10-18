@@ -67,6 +67,12 @@ IRODORI_CAPTION_FEMALE = os.environ.get(
 IRODORI_CAPTION_MALE = os.environ.get(
     "AI_GM_IRODORI_CAPTION_MALE", "落ち着いた大人の男性の声。低めで、はっきりと聞き取りやすい話し方。"
 ).strip()
+# 声を作るときの乱数の種。同じ説明文でも作るたびに声が揺れないよう固定する (空にすると毎回変わる)。
+# ナレーターはこの値、NPC はこの値とボイス名・声の高さ・説明文から決めた値を使う
+_seed = os.environ.get("AI_GM_IRODORI_SEED", "1234").strip()
+IRODORI_SEED = int(_seed) if _seed.lstrip("-").isdigit() else None
+# ナレーターの参照音声の ID (Irodori-TTS-Server の voices フォルダに置いたファイル名)。空なら AI_GM_IRODORI_VOICE と説明文で作る
+IRODORI_NARRATOR_VOICE = os.environ.get("AI_GM_IRODORI_NARRATOR_VOICE", "").strip()
 
 # 発言者名 (bridge.js のループ検知 `AI GM` / `サポートGM` 前方一致と揃えること)
 SPEAKER_GM = "AI GM"

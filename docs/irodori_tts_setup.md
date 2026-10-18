@@ -157,7 +157,22 @@ python3 ai_gm_server.py
 - 話す速さ (NPC の `+10%` など) は Irodori の `speed` (1.1 など) に直して渡します。声の高さの数値は Irodori には渡せないため、説明文の一言だけで表します。
 - 他の設定は `docs/specification.md` の「環境変数」を見てください。
 
-## 6. 困ったとき
+## 6. ナレーターの声を固定する
+
+声の説明文だけで作ると、同じ説明文でも作るたびに声が少し揺れます。そこで、次の 2 段階でそろえます。
+
+1. **乱数の種 (seed) の固定** (既定で有効): ナレーターは `AI_GM_IRODORI_SEED` (既定 `1234`)、NPC はその値とボイス名・声の高さ・説明文から決めた値を使います。同じ設定の NPC は毎回同じ種になり、設定が違う NPC どうしは別の種になります。好みの声になる番号を探すときは、`AI_GM_IRODORI_SEED` を変えてサーバーを再起動します。ただし、種を固定しても文の長さが違えば声は少し揺れます。
+2. **参照音声** (いちばん確実): 気に入った声の音声ファイル (数秒〜2 分) を Irodori-TTS-Server の `voices` フォルダに置きます。ファイル名から拡張子を除いた部分が ID になります。
+
+   ```bash
+   # Irodori の WSL で。手順 4 で作った irodori_test.mp3 をナレーターの声にする例
+   mkdir -p ~/Irodori-TTS-Server/voices
+   cp /mnt/c/Users/<Windows のユーザー名>/Desktop/irodori_test.mp3 ~/Irodori-TTS-Server/voices/narrator.mp3
+   ```
+
+   AI GM のサーバーを起動する端末で `export AI_GM_IRODORI_NARRATOR_VOICE=narrator` にすると、ナレーターだけがこの声で話します。参照音声と説明文が食い違うと声が不安定になるため、このときナレーターには説明文を付けません。NPC は今までどおり説明文で作ります。`voices` フォルダの中身は、置いたらすぐ使われます (Irodori の再起動は不要)。
+
+## 7. 困ったとき
 
 | 症状 | 見るところ |
 | :--- | :--- |
