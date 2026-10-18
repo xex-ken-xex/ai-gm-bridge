@@ -60,6 +60,38 @@ Python サーバーを起動し、WebSocket 待機状態にします。
 python3 ai_gm_server.py
 ```
 
+#### 対話式の起動スクリプト (`start_server.sh`)
+
+どのコードでサーバーを動かすかを選んでから起動します。
+
+```bash
+./start_server.sh
+```
+
+```
+  0) 最新の main を取ってきて起動 (Enter でもこれ)
+  1) claude/xxxx      ← 検証したい PR のブランチ (新しい順)
+       10/18 06:59  コミットの説明
+  ...
+  c) 今のブランチのまま起動 (git を触らない)
+  q) やめる
+```
+
+- 番号を入れると、`git fetch` のあとそのブランチをリモートと同じ内容にしてから起動します。
+- 編集中のファイルがあるときは切り替えずに止まります (`c` なら今のまま起動できます)。
+- 手元のブランチにリモートに無いコミットがあるときは、捨ててよいか確認します。
+- コードが切り替わったら、FVTT を開いているブラウザを再読み込み (F5) してください。`requirements.txt` が変わっていればライブラリも自動で更新します。
+
+Windows のデスクトップから起動するときは、次のバッチファイル (`start-ai-gm.bat`) を置くとダブルクリックで起動できます。WSL の既定のディストリビューション以外に入れている場合は `wsl -d Ubuntu --` のように名前を指定してください。`-i` は `~/.bashrc` の `GEMINI_API_KEY` を読み込むために付けています。
+
+```bat
+@echo off
+chcp 65001 > nul
+title AI GM Server
+wsl -- bash -lic "~/foundrydata/Data/modules/ai-gm-bridge/start_server.sh"
+pause
+```
+
 バックグラウンド常駐起動する場合:
 ```bash
 nohup python3 ai_gm_server.py > ai_gm_server.log 2>&1 &
@@ -97,6 +129,7 @@ npm test            # FVTT 側の純粋関数 (Node 18+)
 ```text
 ai-gm-bridge/
 ├── Setup.sh                  # 冪等セットアップスクリプト
+├── start_server.sh           # 対話式のサーバー起動スクリプト (main / ブランチを選んで起動)
 ├── README.md                 # 本ドキュメント
 ├── AGENTS.md                 # エージェント・開発者向け詳細仕様書
 ├── module.json               # FVTT モジュール定義ファイル

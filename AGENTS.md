@@ -18,6 +18,7 @@
 ```text
 ai-gm-bridge/
 ├── Setup.sh             # 環境セットアップスクリプト (冪等実行可能)
+├── start_server.sh      # 対話式のサーバー起動 (最新 main / ブランチ番号を選んで起動)
 ├── README.md            # プロジェクト概要 & 利用ガイド
 ├── requirements.txt     # Python 依存ライブラリ一覧
 ├── AGENTS.md            # 本ドキュメント (AI エージェント向け仕様・規約)
