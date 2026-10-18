@@ -34,6 +34,7 @@ async def test_voice_test_with_edge_plays_only_for_gm(make_ctx, sent):
     await dispatch(make_ctx(), json.dumps({"event": "voice_test", "voice": "narrator"}))
     assert [m["action"] for m in sent] == ["play_sound", "progress"]
     assert sent[0]["gm_only"] is True and sent[0]["src"].startswith("voice_test")
+    assert "speaker" not in sent[0]  # ナレーターの声
     assert "edge-tts で読み上げました (AI_GM_TTS_ENGINE が edge です)" in sent[1]["message"]
     assert "ナレーター" in sent[1]["message"]
     assert FakeCommunicate.calls[0].text == sent[0]["subtitle"]
@@ -44,6 +45,7 @@ def test_voice_test_reports_irodori_and_voice(tmp_path):
     tts = make(tmp_path, post)
     run(dispatch(ctx_with(tts, sent), json.dumps({"event": "voice_test", "voice": "support"})))
     assert [m["action"] for m in sent] == ["play_sound", "progress"]
+    assert sent[0]["speaker"] == "support"
     body = post.calls[0][1]
     assert body["irodori"]["caption"] == support_voice()["caption"]
     message = sent[1]["message"]

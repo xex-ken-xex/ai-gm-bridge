@@ -190,4 +190,8 @@ test("声のテスト: GM のメニューにだけ出し、声の種類をサー
   assert.equal(mascotForEvent({ event: "voice_test" }).public, false);
   assert.equal(mascotForAction({ action: "play_sound", gm_only: true }).public, false);
   assert.equal(mascotForAction({ action: "play_sound" }).public, true);
+  // Geminiちゃん自身の声のときは「話し中」、ナレーションや NPC の声は「聞いている」
+  assert.equal(mascotForAction({ action: "play_sound", speaker: "support", gm_only: true }).state, "speaking");
+  assert.equal(mascotForAction({ action: "play_sound", speaker: "support" }).public, true);
+  assert.equal(mascotForAction({ action: "play_sound" }).state, "listening");
 });

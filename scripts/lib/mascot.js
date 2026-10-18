@@ -127,8 +127,11 @@ export function mascotForAction(data = {}) {
         ? { state: "speaking", text: "", durationMs: 4000, public: true }
         : { state: "listening", text: "", durationMs: 6000, public: true };
     case "play_sound":
-      // 声はナレーションか NPC (Geminiちゃんは声を持たない)。GM にだけ鳴らす音 (声のテスト) は配らない
-      return { state: "listening", text: "", durationMs: 8000, public: !data.gm_only };
+      // speaker が support ならGeminiちゃん自身の声 (話し中)。それ以外はナレーションか NPC (聞いている)。
+      // GM にだけ鳴らす音 (声のテスト) は配らない
+      return data.speaker === "support"
+        ? { state: "speaking", text: "", durationMs: 6000, public: !data.gm_only }
+        : { state: "listening", text: "", durationMs: 8000, public: !data.gm_only };
     case "npc_dialogue_response":
       return { state: "listening", text: `👀 ${data.result?.primary_npc_name ?? "NPC"}が答えるみたい…`, durationMs: 5000, public: true };
     case "execute_npc_turn":

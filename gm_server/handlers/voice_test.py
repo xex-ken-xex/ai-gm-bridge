@@ -36,8 +36,11 @@ async def handle(ctx, data: dict) -> None:
     # 繋がらなかった直後でも、テストでは Irodori をもう一度試す (起動し直した直後に押すことが多いため)
     ctx.tts.resume_irodori()
     file_name = voice_filename("voice_test")
-    if await ctx.tts.synthesize(text, file_name, **voice):
-        await ctx.send(protocol.play_sound(file_name, 1.0, subtitle=text, gm_only=True))
+    ok = await ctx.tts.synthesize(text, file_name, **voice)
+    # 送信を待つ間にほかの読み上げが終わっても混ざらないよう、結果はすぐ文にしておく
     message = result_message(label, ctx.tts, voice)
+    if ok:
+        speaker = protocol.SPEAKER_SOUND_SUPPORT if kind == "support" else None
+        await ctx.send(protocol.play_sound(file_name, 1.0, subtitle=text, gm_only=True, speaker=speaker))
     log_step(message)
     await ctx.send(protocol.progress(message))
