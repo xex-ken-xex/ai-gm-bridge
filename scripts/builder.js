@@ -283,8 +283,9 @@ function panelHtml(tab) {
         <option value="ruins" ${d.siteMode !== "underground" ? "selected" : ""}>⛰️ 地上の廃墟</option>
         <option value="underground" ${d.siteMode === "underground" ? "selected" : ""}>🕳️ 地下迷宮</option>`)),
       field("規模", select("size", `
-        <option value="small" ${d.size !== "medium" ? "selected" : ""}>小 (100x100)</option>
-        <option value="medium" ${d.size === "medium" ? "selected" : ""}>中 (500x500・重い)</option>`)),
+        <option value="small" ${d.size === "small" ? "selected" : ""}>小 (20x20)</option>
+        <option value="medium" ${!["small", "large"].includes(d.size) ? "selected" : ""}>中 (50x50)</option>
+        <option value="large" ${d.size === "large" ? "selected" : ""}>大 (100x100)</option>`)),
       field(`部屋密度 <span data-value-for="density">${escapeHtml(d.density ?? "0.5")}</span>`, `<input type="range" data-field="density" min="0.2" max="1.0" step="0.1" value="${escapeHtml(d.density ?? "0.5")}">`),
       field(`周回路 <span data-value-for="loop">${escapeHtml(d.loop ?? "0.25")}</span>`, `<input type="range" data-field="loop" min="0" max="0.5" step="0.05" value="${escapeHtml(d.loop ?? "0.25")}">`),
     );
@@ -489,7 +490,7 @@ function requestDraft(tab) {
   if (tab.id === "settlement") payload.settlement_scale = d.scale || SETTLEMENT_SCALES[0];
   if (tab.id === "site") {
     payload.site_mode = d.siteMode || "ruins";
-    payload.size_key = d.size || "small";
+    payload.size_key = d.size || "medium";
     payload.actors_context = selectedActors(d.actorIds ?? []);
   }
   if (state.send(payload)) {
@@ -641,7 +642,7 @@ async function buildScene(tab, useAi = true) {
   } else {
     Object.assign(payload, {
       scene_mode: d.siteMode || "ruins",
-      size_key: d.size || "small",
+      size_key: d.size || "medium",
       density: Number(d.density ?? 0.5),
       loop_ratio: Number(d.loop ?? 0.25),
       sub_objectives: meta.sub_objectives,

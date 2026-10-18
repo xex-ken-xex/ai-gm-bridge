@@ -13,10 +13,10 @@
     ★ : 最深部 / ゴール (Goal / Boss Room)
 
 サイズプリセット:
-    小 (small)  : 100 x 100
-    中 (medium) : 500 x 500
-    大 (large)  : 1000 x 1000
-    特大 (xlarge): 2000 x 2000
+    小 (small)  : 20 x 20
+    中 (medium) : 50 x 50
+    大 (large)  : 100 x 100
+    巨大 (xlarge): 200 x 200
 """
 
 import argparse
@@ -249,10 +249,7 @@ class DungeonGenerator:
         area = self.width * self.height
 
         # サイズに応じたスケール調整
-        # 100x100: ~15-25部屋
-        # 500x500: ~80-120部屋
-        # 1000x1000: ~150-250部屋
-        # 2000x2000: ~300-450部屋
+        # 20x20: ~4-6部屋 / 50x50: ~10-20部屋 / 100x100: ~20-50部屋 / 200x200: ~40-100部屋
         # 密度に応じた部屋数スケーリング
         # 100x100マス時:
         #   density=0.4 (標準)      : 約 21 部屋
@@ -260,14 +257,17 @@ class DungeonGenerator:
         #   density=1.0 (ギッシリ)  : 約 48 部屋
         scale_factor = (area / 10000) ** 0.5
         base_room_count = int(scale_factor * (10 + 38 * (self.density ** 1.3)))
-        base_room_count = max(8, min(500, base_room_count))
+        base_room_count = max(3, min(500, base_room_count))
         if target_room_count is not None:
             base_room_count = max(2, min(500, int(target_room_count)))
 
         # 部屋サイズの決定 (密度が高いほど部屋もやや広めに)
-        min_room_size = max(5, int(min(self.width, self.height) * (0.025 + 0.012 * self.density)))
+        # 小さいマップ (20x20 など) は部屋の最小辺を 3 マスまで下げて部屋数を確保する
+        room_floor = max(3, min(5, min(self.width, self.height) // 10))
+        min_room_size = max(room_floor, int(min(self.width, self.height) * (0.025 + 0.012 * self.density)))
         max_room_size = max(min_room_size + 3, int(min(self.width, self.height) * (0.055 + 0.020 * self.density)))
 
+        separate_rooms = min(self.width, self.height) < 60
         attempts = base_room_count * 10
         for _ in range(attempts):
             w = self.rng.randint(min_room_size, max_room_size)
@@ -282,6 +282,12 @@ class DungeonGenerator:
                 if abs(cx - ecx) < min_room_size and abs(cy - ecy) < min_room_size:
                     too_close = True
                     break
+            # 小さいマップでは部屋どうしの重なりを許すと 1 つの大部屋に潰れるので、1 マスの隙間を空ける
+            if not too_close and separate_rooms:
+                too_close = any(
+                    x < ex + ew + 1 and ex < x + w + 1 and y < ey + eh + 1 and ey < y + h + 1
+                    for ex, ey, ew, eh in self.rooms
+                )
             if too_close and len(self.rooms) > 0:
                 continue
 
@@ -858,13 +864,13 @@ def parse_size(size_str: str) -> Tuple[int, int]:
     """サイズ引数 ('small', 'medium', 'large', 'xlarge' または 'WxH') を解析"""
     preset = size_str.lower().strip()
     if preset in ["small", "s", "小"]:
-        return 100, 100
+        return 20, 20
     elif preset in ["medium", "m", "中"]:
-        return 500, 500
+        return 50, 50
     elif preset in ["large", "l", "大"]:
-        return 1000, 1000
-    elif preset in ["xlarge", "xl", "特大", "huge"]:
-        return 2000, 2000
+        return 100, 100
+    elif preset in ["xlarge", "xl", "巨大", "特大", "huge"]:
+        return 200, 200
     elif "x" in preset or "," in preset:
         sep = "x" if "x" in preset else ","
         parts = preset.split(sep)
@@ -872,7 +878,7 @@ def parse_size(size_str: str) -> Tuple[int, int]:
             return int(parts[0].strip()), int(parts[1].strip())
         except ValueError:
             pass
-    return 100, 100
+    return 20, 20
 
 
 def parse_density(density_str: Optional[str]) -> Optional[float]:
@@ -906,7 +912,7 @@ def main():
         "--size",
         type=str,
         default="small",
-        help="サイズプリセット: small/小(100x100), medium/中(500x500), large/大(1000x1000), xlarge/特大(2000x2000), または WxH (既定: small)"
+        help="サイズプリセット: small/小(20x20), medium/中(50x50), large/大(100x100), xlarge/巨大(200x200), または WxH (既定: small)"
     )
     parser.add_argument(
         "-w", "--width",

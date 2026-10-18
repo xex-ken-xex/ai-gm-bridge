@@ -175,7 +175,7 @@ async def test_dungeon_loop_choice_builds_scene_with_fallback_lore(make_ctx, sen
     assert actions(sent) == ["chat", "chat", "create_dungeon_scene", "play_sound"]
     scene = sent[2]
     assert scene["name"].startswith("黒水城塞")
-    assert scene["grid_width"] == 100 and scene["room_count"] == len(scene["rooms"])
+    assert scene["grid_width"] == 20 and scene["room_count"] == len(scene["rooms"])
     assert scene["walls"] and len(scene["start_pos"]) == 2
     assert scene["scene_mode"] == "underground"
     assert all(len(w) == 5 for w in scene["walls"])

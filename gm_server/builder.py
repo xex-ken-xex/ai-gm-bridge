@@ -55,9 +55,10 @@ STAGE_INFO = {
 }
 
 # ビルダーで選べるマップ規模 (M12: grid 100px 固定のため、大・特大はシーンが巨大になりすぎる)
-BUILDER_SIZE_KEYS = ("small", "medium")
+# 先頭が既定 (中 50x50)。巨大 (200x200) は情景を書く部屋が多すぎるので選ばせない
+BUILDER_SIZE_KEYS = ("medium", "small", "large")
 # 旅路の地点グラフの生成条件 (seed と合わせて再現に使う)
-WILDERNESS_MAP = {"size_key": "small", "density": 0.4, "loop_ratio": 0.3, "points": WILDERNESS_POINT_COUNT}
+WILDERNESS_MAP = {"size_key": "large", "density": 0.4, "loop_ratio": 0.3, "points": WILDERNESS_POINT_COUNT}
 
 LIST_KEYS = ("canon", "open_threads", "resolved_threads", "design_notes")
 

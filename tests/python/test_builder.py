@@ -67,10 +67,17 @@ def test_fallbacks_are_valid_results(stage):
 
 
 def test_builder_size_key_limits_large_maps():
-    """M12: ビルダーでは小・中だけ"""
-    assert builder.builder_size_key("medium") == "medium"
-    assert builder.builder_size_key("xlarge") == "small"
-    assert builder.builder_size_key(None) == "small"
+    """M12: ビルダーでは小・中・大だけ (既定は中)。巨大は中に丸める"""
+    assert builder.builder_size_key("small") == "small"
+    assert builder.builder_size_key("large") == "large"
+    assert builder.builder_size_key("xlarge") == "medium"
+    assert builder.builder_size_key(None) == "medium"
+
+
+def test_wilderness_map_keeps_100_squares():
+    """旅路の地点グラフはサイズの呼び名が変わっても 100x100 のまま (同じ seed で同じ地図)"""
+    gen = builder.make_wilderness_generator(1234)
+    assert (gen.width, gen.height) == (100, 100)
 
 
 def test_parse_seed():
@@ -265,7 +272,7 @@ async def test_build_site_assigns_roles_before_asking_ai(make_ctx, sent):
     assert voices == [tts.support_voice()]
     scene = main(sent)[0]
     assert scene["scene_key"].startswith("builder-8-")
-    assert scene["grid_width"] == 100  # xlarge は small に丸める (M12)
+    assert scene["grid_width"] == 50  # xlarge は既定の medium に丸める (M12)
     prompts = [p for kind, p in llm.prompts if kind == "json"]
     assert prompts and all("頭目は孤立している" in p and "香木の鈴" in p for p in prompts)
     assert all("中目標「閂を外す」の場所" in p for p in prompts)

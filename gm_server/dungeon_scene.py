@@ -21,10 +21,17 @@ from tools.prompt_manager import (
 
 # size_key -> (幅, 高さ, 表示名, PNG 1マスあたりのピクセル数)
 SIZE_PRESETS: Dict[str, Tuple[int, int, str, int]] = {
-    "small": (100, 100, "小", 14),
-    "medium": (500, 500, "中", 6),
-    "large": (1000, 1000, "大", 3),
-    "xlarge": (2000, 2000, "特大", 2),
+    "small": (20, 20, "小", 40),
+    "medium": (50, 50, "中", 20),
+    "large": (100, 100, "大", 14),
+    "xlarge": (200, 200, "巨大", 8),
+}
+# size_key -> 部屋密度 (標準 / 密集 / ギッシリ) ごとの部屋数の目安 (密度カードの表示用)
+ROOM_COUNT_HINTS: Dict[str, Tuple[str, str, str]] = {
+    "small": ("4", "5", "6"),
+    "medium": ("10", "16", "20"),
+    "large": ("20", "35", "50"),
+    "xlarge": ("40", "70", "100"),
 }
 DEFAULT_SIZE_KEY = "small"
 DEFAULT_DENSITY = 0.5
@@ -91,22 +98,21 @@ def size_card(mode_label: str = "") -> Dict:
         title="ダンジョン自動生成",
         message=f"{lead}マップの広さを選んでね：",
         choices=[
-            {"label": "小 (100x100マス)", "value": "dungeon_size:small"},
-            {"label": "中 (500x500マス)", "value": "dungeon_size:medium"},
-            {"label": "大 (1000x1000マス)", "value": "dungeon_size:large"},
-            {"label": "特大 (2000x2000マス)", "value": "dungeon_size:xlarge"},
+            {"label": f"{name} ({w}x{h}マス)", "value": f"dungeon_size:{key}"}
+            for key, (w, h, name, _) in SIZE_PRESETS.items()
         ],
     )
 
 
 def density_card(size_key: str, size_label: str) -> Dict:
+    std, dense, packed = ROOM_COUNT_HINTS.get(size_key, ROOM_COUNT_HINTS[DEFAULT_SIZE_KEY])
     return protocol.interactive_card(
         title="ダンジョン構造 (部屋の密度)",
         message=f"広さは「{size_label}」だね。部屋の密集度（部屋数）はどうする？",
         choices=[
-            {"label": "標準 (適度な部屋数 / 20部屋前後)", "value": f"dungeon_density:{size_key}:0.4"},
-            {"label": "密集 (部屋多め / 35部屋前後)", "value": f"dungeon_density:{size_key}:0.7"},
-            {"label": "ギッシリ (超高密度 / 50部屋前後)", "value": f"dungeon_density:{size_key}:1.0"},
+            {"label": f"標準 (適度な部屋数 / {std}部屋前後)", "value": f"dungeon_density:{size_key}:0.4"},
+            {"label": f"密集 (部屋多め / {dense}部屋前後)", "value": f"dungeon_density:{size_key}:0.7"},
+            {"label": f"ギッシリ (超高密度 / {packed}部屋前後)", "value": f"dungeon_density:{size_key}:1.0"},
         ],
     )
 

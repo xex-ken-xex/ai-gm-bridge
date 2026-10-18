@@ -331,13 +331,13 @@ GM が対話型チャットカード上の選択肢ボタンをクリックし�
   "actor_names": ["…"],
   "recent_cards": ["region.terrain.salt_flat"],
   "settlement_scale": "(settlement のみ)",
-  "site_mode": "(site_lore のみ) ruins | underground", "size_key": "small | medium",
+  "site_mode": "(site_lore のみ) ruins | underground", "size_key": "small | medium | large",
   "actors_context": { "pcs": [{ "name": "…", "info": "…", "bio": "…" }], "npcs": [] }
 }
 ```
 
 `builder_build_scene` は上記の文脈に加えて `scene_mode`, `name`, `public_lore`, `dm_secrets` を送ります。
-旅路は `map` (`{"seed": …}`) と `landmarks`、遺跡は `size_key` (small / medium)・`density`・`loop_ratio`・`sub_objectives` を送ります。
+旅路は `map` (`{"seed": …}`) と `landmarks`、遺跡は `size_key` (small 20x20 / medium 50x50 (既定) / large 100x100)・`density`・`loop_ratio`・`sub_objectives` を送ります。
 サーバーは `create_dungeon_scene` で応答します。
 遺跡は、ジェネレータ (`tools/dungeon_generator.py`) で地図・壁・区画を作った時点で仮の区画名のまま `scene_key` 付きの `create_dungeon_scene` を送り、
 AI が区画の情景を書き終えたものから `update_dungeon_rooms` で差し替えます (AI の応答を待たずにシーンを開けます)。
@@ -400,8 +400,10 @@ GM 向けに対話型の選択肢ボタンを含むチャットカードを表�
   "title": "ダンジョン自動生成",
   "message": "生成するダンジョンの規模を選択してください：",
   "choices": [
-    { "label": "小 (100x100マス)", "value": "dungeon_size:small" },
-    { "label": "中 (500x500マス)", "value": "dungeon_size:medium" }
+    { "label": "小 (20x20マス)", "value": "dungeon_size:small" },
+    { "label": "中 (50x50マス)", "value": "dungeon_size:medium" },
+    { "label": "大 (100x100マス)", "value": "dungeon_size:large" },
+    { "label": "巨大 (200x200マス)", "value": "dungeon_size:xlarge" }
   ]
 }
 ```
@@ -421,13 +423,13 @@ PC のトークン (プレイヤー所有、または所有者未設定の `char
 
 #### 5. ダンジョンシーン構築 (`create_dungeon_scene`)
 生成されたマップ画像とパラメータを元に、FVTT 内部で `Scene.create` を実行させます。
-`/ai ダンジョン` のウィザードは「舞台 (`dungeon_mode:<mode>`) → サイズ → 部屋密度 → 周回路」の順に選択カードを出します (野外は部屋密度を飛ばします)。
+`/ai ダンジョン` のウィザードは「舞台 (`dungeon_mode:<mode>`) → サイズ → 部屋密度 → 周回路」の順に選択カードを出します (野外は部屋密度を飛ばします)。サイズは小 20x20・中 50x50・大 100x100・巨大 200x200 マスです。
 
 ```json
 {
   "action": "create_dungeon_scene",
   "scene_mode": "underground",
-  "name": "地下迷宮 (小: 100x100)",
+  "name": "地下迷宮 (大: 100x100)",
   "background_src": "dungeon_underground_100x100_1728712345.png",
   "grid_width": 100,
   "grid_height": 100,
@@ -523,7 +525,7 @@ PC のトークン (プレイヤー所有、または所有者未設定の `char
   "cards": [{ "id": "wilderness.road.pilgrim", "axis": "道の性格", "text": "…" }],
   "seed": 1234,
   "fallback": false,
-  "map": { "seed": 1234, "size_key": "small", "density": 0.4, "loop_ratio": 0.3, "points": 9 }
+  "map": { "seed": 1234, "size_key": "large", "density": 0.4, "loop_ratio": 0.3, "points": 9 }
 }
 ```
 
