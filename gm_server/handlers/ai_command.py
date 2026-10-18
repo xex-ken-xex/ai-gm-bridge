@@ -47,7 +47,7 @@ async def handle_choice(ctx, data: dict) -> None:
     # ステップ1.5: モード選択完了 -> サイズ選択肢カード
     if choice.kind == "mode":
         pending["scene_mode"] = choice.scene_mode
-        await ctx.send(dungeon_scene.size_card(dungeon_scene.scene_mode_label(choice.scene_mode)))
+        await ctx.send(dungeon_scene.size_card(dungeon_scene.scene_mode_label(choice.scene_mode), choice.scene_mode))
         return
 
     # ステップ2: サイズ選択完了 -> 部屋の密度選択肢カード (野外は地点数固定のためループ率へ)

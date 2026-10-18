@@ -166,3 +166,24 @@ def test_flavor_notes_use_mode_labels(mode, label):
     notes = make(mode).get_room_flavor_notes()
     assert notes[0]["type"] == "start"
     assert any(n["name"].startswith(label) for n in notes)
+
+
+@pytest.mark.parametrize("density", [0.4, 1.0])
+def test_small_map_keeps_rooms_apart(density):
+    """20x20 では部屋を重ねず 1 マス空けて置く (重ねると 1 つの大部屋に潰れる)"""
+    g = DungeonGenerator(width=20, height=20, seed=3, density=density, loop_ratio=0.2)
+    g.generate()
+    assert len(g.rooms) >= 3
+    for i, (x, y, w, h) in enumerate(g.rooms):
+        for ex, ey, ew, eh in g.rooms[i + 1:]:
+            assert not (x < ex + ew + 1 and ex < x + w + 1 and y < ey + eh + 1 and ey < y + h + 1)
+
+
+def test_min_room_count_secures_rooms_for_sub_goals():
+    """遺跡の中目標用に部屋数の下限を指定できる (密度が低い 20x20 でも入口・最深部・中目標 3 件ぶん)"""
+    counts = []
+    for seed in range(10):
+        g = DungeonGenerator(width=20, height=20, seed=seed, density=0.2, loop_ratio=0.25)
+        g.generate(min_room_count=5)
+        counts.append(len(g.rooms))
+    assert sum(c >= 5 for c in counts) >= 8
