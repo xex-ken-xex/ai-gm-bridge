@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 import {
   clampPosition,
   DEFAULT_POSITION,
+  isClickMove,
+  mascotMenuItems,
   WIDGET_SIZE,
   MascotController,
   mascotForAction,
@@ -128,4 +130,24 @@ test("MascotController の既定のタイマーは this を持たずに呼ぶ (�
     globalThis.setTimeout = realSet;
     globalThis.clearTimeout = realClear;
   }
+});
+
+test("isClickMove は少し動いただけならクリック、しきい値を超えたらドラッグ", () => {
+  assert.ok(isClickMove({ x: 10, y: 10 }, { x: 13, y: 14 }));
+  assert.ok(!isClickMove({ x: 10, y: 10 }, { x: 20, y: 10 }));
+  assert.ok(!isClickMove(null, { x: 0, y: 0 }));
+});
+
+test("mascotMenuItems は GM だけの項目をプレイヤーに出さず、足された項目はあいさつの後ろに入れる", () => {
+  const ids = items => items.map(i => i.id);
+  assert.deepEqual(ids(mascotMenuItems({ isGM: true })), ["builder", "brain", "greet", "reset", "hide"]);
+  assert.deepEqual(ids(mascotMenuItems({ isGM: false })), ["greet", "reset", "hide"]);
+  const extra = [
+    { id: "voice-test", icon: "🔊", label: "声のテスト", gmOnly: true },
+    { id: "nolabel", label: " " },
+    { id: "greet", label: "上書きしようとしても既定が勝つ" },
+  ];
+  assert.deepEqual(ids(mascotMenuItems({ isGM: true, extra })), ["builder", "brain", "greet", "voice-test", "reset", "hide"]);
+  assert.deepEqual(ids(mascotMenuItems({ isGM: false, extra })), ["greet", "reset", "hide"]);
+  assert.equal(mascotMenuItems({ isGM: true, extra }).find(i => i.id === "greet").label, "あいさつ");
 });
