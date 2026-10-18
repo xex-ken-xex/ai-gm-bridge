@@ -1,6 +1,7 @@
 // サーバー → FVTT の action ごとの処理 (Foundry 依存)
 // プロトコルを変更する場合は gm_server/protocol.py も同時に更新すること
 
+import { handleAdventureLogCollect, handleAdventureLogWrite } from "./adventure-log.js";
 import { handleBuilderProgress, handleBuilderStageResult } from "./builder.js";
 import { handleNpcDialogueResponse } from "./npc.js";
 import { handleExecuteNpcTurn } from "./npc-combat.js";
@@ -206,6 +207,8 @@ export const ACTION_HANDLERS = {
   builder_progress: handleBuilderProgress,
   npc_dialogue_response: handleNpcDialogueResponse,
   execute_npc_turn: handleExecuteNpcTurn,
+  adventure_log_collect: handleAdventureLogCollect,
+  adventure_log_write: handleAdventureLogWrite,
 };
 
 export async function handleServerAction(data) {
