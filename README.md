@@ -82,13 +82,13 @@ python3 ai_gm_server.py
 - 手元のブランチにリモートに無いコミットがあるときは、捨ててよいか確認します。
 - コードが切り替わったら、FVTT を開いているブラウザを再読み込み (F5) してください。`requirements.txt` が変わっていればライブラリも自動で更新します。
 
-Windows のデスクトップから起動するときは、次のバッチファイル (`start-ai-gm.bat`) を置くとダブルクリックで起動できます。WSL の既定のディストリビューション以外に入れている場合は `wsl -d Ubuntu --` のように名前を指定してください。`-i` は `~/.bashrc` の `GEMINI_API_KEY` を読み込むために付けています。
+Windows のデスクトップから起動するときは、次のバッチファイル (`start-ai-gm.bat`) を置くとダブルクリックで起動できます。`FVTT` は `wsl -l -v` に出る WSL のディストリビューション名です。違う名前で入れている場合は書き換えてください。`-i` は `~/.bashrc` の `GEMINI_API_KEY` を読み込むために付けています。
 
 ```bat
 @echo off
 chcp 65001 > nul
 title AI GM Server
-wsl -- bash -lic "~/foundrydata/Data/modules/ai-gm-bridge/start_server.sh"
+wsl -d FVTT -- bash -lic "~/foundrydata/Data/modules/ai-gm-bridge/start_server.sh"
 pause
 ```
 
