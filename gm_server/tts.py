@@ -227,7 +227,11 @@ class SpeechSynthesizer:
             return ""
         except Exception as e:
             reason = str(e) or e.__class__.__name__
-            log(f"Irodori-TTS の準備に失敗しました ({reason})。読み上げのときにもう一度試します")
+            hint = ""
+            if config.IRODORI_NARRATOR_VOICE:
+                hint = (f"。AI_GM_IRODORI_NARRATOR_VOICE の名前 ({config.IRODORI_NARRATOR_VOICE}) が"
+                        "Irodori-TTS-Server の voices フォルダのファイル名 (拡張子を除く) と合っているか確かめてください")
+            log(f"Irodori-TTS の準備に失敗しました ({reason})。読み上げのときにもう一度試します{hint}")
             return reason
 
     @property
@@ -265,9 +269,13 @@ class SpeechSynthesizer:
             # ナレーターに参照音声があれば、その声だけで作る (説明文と食い違うと声が不安定になるため付けない)
             return {"voice": config.IRODORI_NARRATOR_VOICE, "caption": "",
                     "seed": seed if seed is not None else config.IRODORI_SEED}
+        # 種は差し替え前の説明文で決める (ナレーターは常に AI_GM_IRODORI_SEED のまま)
+        seed = seed if seed is not None else voice_seed(voice, pitch, caption)
+        if voice is None and not caption:
+            caption = config.IRODORI_CAPTION_NARRATOR
         return {
             "caption": caption or default_caption(voice or self.default_voice, pitch),
-            "seed": seed if seed is not None else voice_seed(voice, pitch, caption),
+            "seed": seed,
         }
 
     async def _synthesize_irodori(self, text, file_name, voice, rate, pitch, caption, seed) -> bool:

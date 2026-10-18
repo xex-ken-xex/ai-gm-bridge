@@ -299,3 +299,21 @@ def test_fallback_notice_mentions_loading(tmp_path):
     synth.notify = notify
     run(synth.synthesize("やあ", "v.mp3"))
     assert "準備中か繋がらない" in notices[0]
+
+
+def test_narrator_caption_can_differ_from_female_npc(tmp_path, monkeypatch):
+    monkeypatch.setattr(tts_mod.config, "IRODORI_CAPTION_NARRATOR", "渋い老人の語り部の声。")
+    post = FakePost()
+    synth = make(tmp_path, post)
+    run(synth.synthesize("ナレーション", "a.mp3"))
+    run(synth.synthesize("女性 NPC", "b.mp3", voice="ja-JP-NanamiNeural"))
+    assert post.calls[0][1]["irodori"]["caption"] == "渋い老人の語り部の声。"
+    assert post.calls[1][1]["irodori"]["caption"] == tts_mod.config.IRODORI_CAPTION_FEMALE
+
+
+def test_warm_up_failure_hints_narrator_voice_setting(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(tts_mod.config, "IRODORI_NARRATOR_VOICE", "narator")
+    synth = make(tmp_path, FakePost(fail=True), get=lambda *a: b"{}")
+    run(synth.check_irodori())
+    assert run(synth.warm_up_irodori())
+    assert "AI_GM_IRODORI_NARRATOR_VOICE の名前 (narator)" in capsys.readouterr().out

@@ -64,6 +64,8 @@ IRODORI_RETRY_AFTER = float(os.environ.get("AI_GM_IRODORI_RETRY_AFTER", "60"))
 IRODORI_CAPTION_FEMALE = os.environ.get(
     "AI_GM_IRODORI_CAPTION_FEMALE", "落ち着いた大人の女性の声。物語を語り聞かせるように、穏やかで聞き取りやすい話し方。"
 ).strip()
+# ナレーターの声の説明文。空なら AI_GM_IRODORI_CAPTION_FEMALE と同じ (女性の NPC と分けたいときに設定する)
+IRODORI_CAPTION_NARRATOR = os.environ.get("AI_GM_IRODORI_CAPTION_NARRATOR", "").strip() or IRODORI_CAPTION_FEMALE
 IRODORI_CAPTION_MALE = os.environ.get(
     "AI_GM_IRODORI_CAPTION_MALE", "落ち着いた大人の男性の声。低めで、はっきりと聞き取りやすい話し方。"
 ).strip()
