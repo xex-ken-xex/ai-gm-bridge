@@ -392,3 +392,16 @@ async def test_auto_extend_flag_is_passed_to_the_deadline(make_ctx, sent, monkey
     await builder.handle_generate_stage(ctx, {"stage": "region", "auto_extend": True})
     await builder.handle_generate_stage(ctx, {"stage": "region"})
     assert seen == [True, False]
+
+
+async def test_small_site_keeps_rooms_for_every_sub_goal(make_ctx, sent):
+    """小 (20x20) でも入口・最深部と中目標 3 件の区画を確保する"""
+    subs = [{"title": f"目標{i}", "target_topology": "dead_end"} for i in range(3)]
+    await builder.handle_build_scene(make_ctx(FakeLLM()), {
+        "scene_mode": "ruins", "name": "小屋", "size_key": "small", "density": 0.2, "loop_ratio": 0.2, "seed": 8,
+        "public_lore": "", "dm_secrets": "", "sub_objectives": subs,
+    })
+    scene = main(sent)[0]
+    assert scene["grid_width"] == 20 and scene["room_count"] >= 5
+    assert len([r for r in scene["rooms"] if r["role"] == "sub_goal"]) == 3
+    assert not any("中目標を" in m.get("content", "") for m in sent if m["action"] == "chat")

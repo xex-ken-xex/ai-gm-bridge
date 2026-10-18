@@ -240,16 +240,17 @@ class DungeonGenerator:
             self.grid[y][0] = WALL
             self.grid[y][self.width - 1] = WALL
 
-    def generate(self, target_room_count: Optional[int] = None):
+    def generate(self, target_room_count: Optional[int] = None, min_room_count: Optional[int] = None):
         """
         ダンジョンを生成 (MST + ループ付加 + 最短経路ゴール探索)
         target_room_count を指定すると密度による部屋数計算を上書きする (ワイルダネスのランドマーク数など)
+        min_room_count は部屋数の下限 (遺跡の中目標を置く区画を確保するため)。置ける場所が無ければ届かないこともある
         """
         t0 = time.time()
         area = self.width * self.height
 
         # サイズに応じたスケール調整
-        # 20x20: ~4-6部屋 / 50x50: ~10-20部屋 / 100x100: ~20-50部屋 / 200x200: ~40-100部屋
+        # 20x20: ~4-7部屋 / 50x50: ~10-23部屋 / 100x100: ~20-50部屋 / 200x200: ~40-100部屋
         # 密度に応じた部屋数スケーリング
         # 100x100マス時:
         #   density=0.4 (標準)      : 約 21 部屋
@@ -260,6 +261,8 @@ class DungeonGenerator:
         base_room_count = max(3, min(500, base_room_count))
         if target_room_count is not None:
             base_room_count = max(2, min(500, int(target_room_count)))
+        elif min_room_count is not None:
+            base_room_count = max(base_room_count, min(500, int(min_room_count)))
 
         # 部屋サイズの決定 (密度が高いほど部屋もやや広めに)
         # 小さいマップ (20x20 など) は部屋の最小辺を 3 マスまで下げて部屋数を確保する
@@ -268,7 +271,8 @@ class DungeonGenerator:
         max_room_size = max(min_room_size + 3, int(min(self.width, self.height) * (0.055 + 0.020 * self.density)))
 
         separate_rooms = min(self.width, self.height) < 60
-        attempts = base_room_count * 10
+        # 部屋を離して置く小さいマップは空き場所を探すのに試行が要る
+        attempts = base_room_count * (40 if separate_rooms else 10)
         for _ in range(attempts):
             w = self.rng.randint(min_room_size, max_room_size)
             h = self.rng.randint(min_room_size, max_room_size)

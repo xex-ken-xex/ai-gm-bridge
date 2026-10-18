@@ -503,9 +503,12 @@ async def build_scene(ctx, data, scene_mode, name, site_public, site_dm, seed, s
     (区画の情景をすべて待ってからシーンを作ると、GM はその間マップを見られないため)
     """
     mode_name = scene_mode_label(scene_mode)
+    # 遺跡は入口・最深部と中目標 (最大 3 件) の区画を確保する (小 20x20 だと密度次第で足りないため)
+    subs = data.get("sub_objectives") if isinstance(data.get("sub_objectives"), list) else []
+    min_rooms = 2 + len(subs[:3]) if scene_mode != "wilderness" else None
     built = await build_map(ctx, size_key, density, loop_ratio, seed, scene_mode,
                             on_status=stage_status(ctx, stage, 1, steps, "マップ生成", kind="build"),
-                            auto_extend=auto_extend)
+                            auto_extend=auto_extend, min_rooms=min_rooms)
     if built is None:
         return
     gen, walls, png_filename = built
@@ -530,6 +533,14 @@ async def build_scene(ctx, data, scene_mode, name, site_public, site_dm, seed, s
     sub_objectives = data.get("sub_objectives") if isinstance(data.get("sub_objectives"), list) else []
     plan = plan_site_rooms(selected, sub_objectives, random.Random(gen.seed))
     log_step(f"区画の役割を割り当てました (AI に書かせる {len(selected)} 区画、中目標 {len(sub_objectives)} 件)")
+    placed = sum(1 for p in plan.values() if p.get("role") == "sub_goal")
+    wanted = len([s for s in sub_objectives if isinstance(s, dict)][:3])
+    if placed < wanted:
+        log_step(f"区画が足りず、中目標を {wanted} 件中 {placed} 件しか置けませんでした")
+        await ctx.send(protocol.chat(
+            f"⚠️ ごめんね、マップが狭くて中目標を {wanted} 件中 {placed} 件しか置けなかったよ。規模を大きくするか、密度を上げて作り直してみてね。",
+            speaker=SPEAKER_SUPPORT,
+        ))
     world_fallback = get_active_world_info()
 
     # 先にマップだけのシーンを作る (区画は役割の割り当てと既定の文面)
