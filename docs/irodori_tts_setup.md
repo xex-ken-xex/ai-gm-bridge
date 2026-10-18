@@ -48,13 +48,29 @@ NVIDIA のサイトから、普段の Windows 用 GPU ドライバーを入れ�
 
 ### 毎回の起動
 
-Irodori-TTS-Server は、AI GM のサーバーとは別の端末で起動したままにします (手順 4)。
+Irodori-TTS-Server は、セッションで遊ぶときだけ起動します。Windows の起動時に自動で立ち上げるのはおすすめしません。動かしているあいだは、モデルの分だけ GPU のメモリ (数 GB) と WSL のメモリを使い続けるためです。
 
-```powershell
+デスクトップに次の 2 つのバッチファイルを置いておくと、ダブルクリックで起動と停止ができます (`Irodori` は `wsl -l -v` に出る名前)。
+
+`Irodori起動.bat`
+
+```bat
+@echo off
+title Irodori-TTS
 wsl -d Irodori -- bash -lc "cd ~/Irodori-TTS-Server && uv run --no-sync python -m irodori_openai_tts --host 127.0.0.1 --port 8088"
+pause
 ```
 
-PowerShell からこの 1 行で起動できます。Windows のショートカットにしておくと便利です。
+`Irodori停止.bat`
+
+```bat
+@echo off
+wsl --terminate Irodori
+```
+
+- 起動したウィンドウは開いたままにします。閉じるか Ctrl+C で止まります。
+- 停止のバッチは Irodori 用の WSL ごと止めるので、使っていたメモリがすぐに Windows に戻ります。AI GM と同じ Ubuntu に入れた場合は、`wsl --terminate` だと AI GM のサーバーも止まります。ウィンドウを閉じるだけにしてください。
+- 日本語のファイル名で文字化けするときは、`start-irodori.bat` のように英語の名前にします。
 
 ## 1. 必要なもの
 
