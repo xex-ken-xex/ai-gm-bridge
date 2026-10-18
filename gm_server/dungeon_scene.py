@@ -405,7 +405,7 @@ async def generate_and_create_dungeon_scene(
 
     # 8. FVTTへシーン作成コマンド送信 & 9. 音声報告
     scene_title = f"{lore_data.get('dungeon_name', default_scene_name)} - {lore_data.get('floor_title', f'第1層 ({size_name})')}"
-    speech_text = f"{mode_name}『{lore_data.get('dungeon_name', default_scene_name)}』のシーンを生成しました。全{len(gen.rooms)}部屋に生態系と情景ノートを設定しました。"
+    speech_text = f"{mode_name}『{lore_data.get('dungeon_name', default_scene_name)}』のシーンができたよ！全{len(gen.rooms)}部屋に生態系と情景ノートを入れておいたよ。"
     scene_msg = await send_scene(ctx, scene_title, scene_mode, png_filename, gen, walls, lore_data, rooms, density, speech_text)
     log_group("ダンジョンシーンの構築指示を送りました")
     return scene_msg

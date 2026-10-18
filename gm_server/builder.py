@@ -521,7 +521,7 @@ async def build_scene(ctx, data, scene_mode, name, site_public, site_dm, seed, s
     if scene_mode == "wilderness":
         custom = normalize_landmarks(landmarks, topologies)
         rooms = gen.get_room_flavor_notes(grid_size=100, custom_flavors=custom or None, id_base=0)
-        speech_text = f"{mode_name}『{name}』のシーンを構築しました。全{len(gen.rooms)}地点に情景を設定しました。"
+        speech_text = f"{mode_name}『{name}』のシーンができたよ！全{len(gen.rooms)}地点に情景を入れておいたよ。"
         await send_scene(ctx, name, scene_mode, png_filename, gen, walls, lore, rooms, density, speech_text)
         return
 
