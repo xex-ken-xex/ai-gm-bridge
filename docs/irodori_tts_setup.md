@@ -104,18 +104,26 @@ cd ~/Irodori-TTS-Server
 uv run --no-sync python -m irodori_openai_tts --host 127.0.0.1 --port 8088
 ```
 
-別の端末で確かめます。
+Windows の PowerShell で確かめます (WSL の中で動くサーバーには、Windows から `127.0.0.1` で繋がります)。
 
-```bash
-curl http://127.0.0.1:8088/health
-curl http://127.0.0.1:8088/v1/audio/speech \
-  -H "Content-Type: application/json" \
-  -d '{"model":"irodori-tts","input":"冒険者たちよ、よく来た。","voice":"none","response_format":"mp3",
-       "irodori":{"caption":"落ち着いた大人の女性の声。物語を語り聞かせるように、穏やかで聞き取りやすい話し方。"}}' \
-  --output test.mp3
+```powershell
+curl.exe http://127.0.0.1:8088/health
+
+$body = @{
+  model = "irodori-tts"; input = "冒険者たちよ、よく来た。"; voice = "none"; response_format = "mp3"
+  irodori = @{ caption = "落ち着いた大人の女性の声。物語を語り聞かせるように、穏やかで聞き取りやすい話し方。" }
+} | ConvertTo-Json
+$out = Join-Path ([Environment]::GetFolderPath("Desktop")) "irodori_test.mp3"
+Invoke-WebRequest http://127.0.0.1:8088/v1/audio/speech -Method Post `
+  -ContentType "application/json; charset=utf-8" -Body ([Text.Encoding]::UTF8.GetBytes($body)) -OutFile $out
+Start-Process $out
 ```
 
-`test.mp3` ができれば準備完了です。Windows のエクスプローラーで `\\wsl$\Irodori\home\<ユーザー名>\Irodori-TTS-Server` (今の Ubuntu に入れたなら、`Irodori` の部分を `wsl -l -v` に出る名前にします) を開くと再生できます。
+デスクトップに `irodori_test.mp3` ができて声が鳴れば準備完了です。
+
+- PowerShell の `curl` は別のコマンドの別名なので、`curl.exe` と書きます。
+- 日本語が文字化けしないよう、本文は UTF-8 のバイト列にして送っています。
+- `curl.exe` が「接続できません」になるときは、WSL の localhost の転送が切れています。手順 4 の起動を `--host 0.0.0.0` にして、もう一度試してください。
 
 ## 5. AI GM のサーバーで使う
 
