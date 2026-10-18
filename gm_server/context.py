@@ -17,6 +17,8 @@ class SessionState:
     pending_dungeon: Dict[str, Any] = field(default_factory=dict)
     # /ai のスキル判定で聞き返した選択肢 ({label, skill, params} のリスト。ボタンの番号で選ぶ)
     pending_skill_options: List[Dict[str, Any]] = field(default_factory=list)
+    # 最後に出した聞き返しカードの番号 (ボタンの値に入れ、古いカードの回答を見分ける)
+    skill_card_seq: int = 0
     # タイムアウト延長確認カードの回答待ち (request_id -> Future[bool])
     timeout_requests: Dict[str, Any] = field(default_factory=dict)
 

@@ -2,12 +2,12 @@
 
 from gm_server import deadline, dungeon_scene, protocol, skills
 from gm_server.handlers import adventure_log
-from gm_server.config import SPEAKER_SUPPORT
+from gm_server.config import ROUTER_TIMEOUT, SPEAKER_SUPPORT
 from gm_server.llm import SUPPORT_GM_CHARACTER
 from gm_server.text import newlines_to_br
 
 
-# スキル判定の聞き返しカードのボタンの値 (後ろに選択肢の番号が付く)
+# スキル判定の聞き返しカードのボタンの値 (ai_skill:<カード番号>:<選択肢の番号>)
 SKILL_CHOICE_PREFIX = "ai_skill:"
 NO_REPLY_MESSAGE = "⚠️ ごめんね、Geminiちゃんの返事が届かなかったみたい…(応答がありませんでした) サーバーのログを見てもらえるかな？"
 
@@ -72,14 +72,15 @@ async def run_skill(ctx, name: str, params: dict, prompt: str, say: str = "", te
     await runner(ctx, params, prompt, say, text)
 
 
-async def _keyword_fallback(ctx, prompt: str) -> None:
-    """agy から返事が無いとき: 今までのキーワード判定で動けるものだけ動かす"""
+async def _run_by_keywords(ctx, prompt: str) -> bool:
+    """今までのキーワード判定ではっきり当たる指示 (冒険記録・ダンジョン生成) を動かす。動かしたら True"""
     if adventure_log.is_adventure_log_intent(prompt):
         await adventure_log.request_log(ctx, prompt)
-    elif prompt and dungeon_scene.is_dungeon_intent(prompt):
+        return True
+    if prompt and dungeon_scene.is_dungeon_intent(prompt):
         await _run_generate_dungeon(ctx, {}, prompt, "", "")
-    else:
-        await _say(ctx, NO_REPLY_MESSAGE)
+        return True
+    return False
 
 
 async def handle_command(ctx, data: dict) -> None:
@@ -92,39 +93,51 @@ async def handle_command(ctx, data: dict) -> None:
         await run_skill(ctx, "help", {}, prompt)
         return
 
+    # 決まった言い方 (`/ai ダンジョン生成`・`/ai 記録を作って` など) は agy を待たずにすぐ動かす
+    if await _run_by_keywords(ctx, prompt):
+        return
+
     # スキル判定: 判定プロンプト + スキル一覧 + GM の文を agy に1回だけ送る (判定と回答をまとめる)
     persona = "" if getattr(ctx.llm, "conversation_id", None) else SUPPORT_GM_CHARACTER
     print(f"agyへスキル判定を依頼中: {prompt}")
-    resp = await ctx.llm.ask_support_gm(skills.build_router_prompt(prompt, persona), raw=True)
+    resp = await ctx.llm.ask_support_gm(skills.build_router_prompt(prompt, persona), raw=True, timeout=ROUTER_TIMEOUT)
     if not resp:
-        await _keyword_fallback(ctx, prompt)
+        await _say(ctx, NO_REPLY_MESSAGE)
         return
 
     result = skills.parse_router_response(resp)
     if result is None:
-        # JSON として読めなければ、返ってきた文をそのまま回答として表示する (今までと同じ)
-        await _say(ctx, resp)
+        # JSON として読めなければ、返ってきた文を回答として表示する (途中で切れた JSON なら text の中身だけ)
+        await _say(ctx, skills.salvage_text(resp) or NO_REPLY_MESSAGE)
     elif result["type"] == "skill":
         await run_skill(ctx, result["skill"], result["params"], prompt, result["say"], result["text"])
     elif result["type"] == "clarify":
-        ctx.state.pending_skill_options = [dict(o, prompt=prompt) for o in result["options"]]
+        # 前のカードのボタンが押されても今の選択肢を動かさないよう、カードごとに番号を振る
+        state = ctx.state
+        state.skill_card_seq += 1
+        card = state.skill_card_seq
+        state.pending_skill_options = [dict(o, prompt=prompt) for o in result["options"]]
         await ctx.send(protocol.interactive_card(
             title="サポートGM Geminiちゃん",
             message=result["question"],
-            choices=[{"label": o["label"], "value": f"{SKILL_CHOICE_PREFIX}{i}"} for i, o in enumerate(result["options"])],
+            choices=[{"label": o["label"], "value": f"{SKILL_CHOICE_PREFIX}{card}:{i}"} for i, o in enumerate(result["options"])],
         ))
     else:
         await _say(ctx, result["text"])
 
 
 async def _handle_skill_choice(ctx, value: str) -> None:
-    options = ctx.state.pending_skill_options
+    state = ctx.state
     try:
-        option = options[int(value[len(SKILL_CHOICE_PREFIX):])]
+        card, index = (int(x) for x in value[len(SKILL_CHOICE_PREFIX):].split(":"))
+        if card != state.skill_card_seq:
+            raise IndexError
+        option = state.pending_skill_options[index]
     except (ValueError, IndexError):
         print(f"古い選択肢か、範囲外の選択肢です: {value}")
+        await _say(ctx, "あっ、それは前のカードの古い選択肢だよ。もう一度 /ai で頼んでね！")
         return
-    ctx.state.pending_skill_options = []
+    state.pending_skill_options = []
     await run_skill(ctx, option["skill"], option["params"], option.get("prompt", ""))
 
 

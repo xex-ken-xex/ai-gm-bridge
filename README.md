@@ -192,6 +192,7 @@ Foundry Virtual Tabletop (FVTT) と Python の AI GM サーバーを WebSocket �
 | `AI_GM_MAPGEN_TIMEOUT` | `300` | マップ生成の待ち時間（秒） |
 | `AI_GM_AGY_MODEL` | `gemini-3.8-flash-medium` | agy のモデル |
 | `AI_GM_AGY_TIMEOUT` | `300` | agy の待ち時間（秒） |
+| `AI_GM_ROUTER_TIMEOUT` | `45` | `/ai` のスキル判定で agy を待つ秒数。過ぎたら「応答がなかった」と知らせる |
 | `AI_GM_AGY_CONCURRENCY` | `1` | agy を同時に動かす数 |
 | `AI_GM_HOST` / `AI_GM_PORT` | `0.0.0.0` / `8765` | AI GM サーバーの待ち受け |
 | `AI_GM_DATA_DIR` | `~/foundrydata/Data` | FVTT の Data フォルダ |

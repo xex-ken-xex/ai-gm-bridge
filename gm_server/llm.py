@@ -458,12 +458,16 @@ class LLMService:
             "dice": None,
         }
 
-    async def ask_support_gm(self, prompt: str, raw: bool = False) -> str:
+    async def ask_support_gm(self, prompt: str, raw: bool = False, timeout: Optional[float] = None) -> str:
         """
         サポートGM Geminiちゃん へ自然言語の相談を送り、会話 ID を引き継ぐ。
         raw: キャラクター設定を前に付けない (スキル判定プロンプトのように、呼び出し側が組み立て済みのとき)
+        timeout: agy を待つ秒数 (None なら AI_GM_AGY_TIMEOUT)。過ぎたら空文字を返す
         """
         support_prompt = prompt if self.conversation_id or raw else SUPPORT_GM_PERSONA + prompt
-        resp_text, conv_id = await self.agy_runner(support_prompt, self.conversation_id)
+        if timeout is None:
+            resp_text, conv_id = await self.agy_runner(support_prompt, self.conversation_id)
+        else:
+            resp_text, conv_id = await self.agy_runner(support_prompt, self.conversation_id, timeout=timeout)
         self.conversation_id = conv_id or self.conversation_id
         return resp_text

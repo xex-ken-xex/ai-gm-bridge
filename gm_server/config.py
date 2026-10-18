@@ -11,6 +11,8 @@ GEMINI_MODEL = os.environ.get("AI_GM_GEMINI_MODEL", "gemini-3.8-flash")
 
 # agy CLI の応答待ち上限 (秒)。超えたら打ち切り、呼び出し側のフォールバックに任せる
 AGY_TIMEOUT = float(os.environ.get("AI_GM_AGY_TIMEOUT", "300"))
+# /ai のスキル判定 (agy) を待つ秒数。過ぎたらキーワード判定に切り替える (GM を長く待たせないため短め)
+ROUTER_TIMEOUT = float(os.environ.get("AI_GM_ROUTER_TIMEOUT", "45"))
 # agy に渡すモデル (`agy models` で一覧。既定 gemini-3.8-flash-medium、空文字なら agy 自身の既定)・推論の深さ (low|medium|high|xhigh|max)
 AGY_MODEL = os.environ.get("AI_GM_AGY_MODEL", "gemini-3.8-flash-medium").strip()
 AGY_EFFORT = os.environ.get("AI_GM_AGY_EFFORT", "").strip()

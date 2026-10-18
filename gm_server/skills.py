@@ -6,6 +6,8 @@ GM が `/ai` に自由に書いた内容を agy が読み、ここに載って�
 詳しい設計: /mnt/project-files/design/ai_skill_router.md (プロジェクトのファイル)
 """
 
+import json
+import re
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
 
@@ -110,3 +112,25 @@ def parse_router_response(resp_text: str) -> Optional[Dict]:
         return {"type": "clarify", "question": _text(data.get("question")) or "どれにしようか？", "options": options}
     text = _text(data.get("text"))
     return {"type": "answer", "text": text} if text else None
+
+
+# 途中で切れた JSON から "text" の中身を拾う (閉じの " が無くても最後まで)
+_TEXT_FIELD = re.compile(r'"text"\s*:\s*"((?:[^"\\]|\\.)*)', re.S)
+
+
+def salvage_text(resp_text: str) -> str:
+    """
+    JSON として読めなかった応答を GM に見せる文にする。
+    `{"type":"answer","text":"…` のように JSON が途中で切れていたら text の中身だけを取り出す (生の JSON を出さない)
+    """
+    text = (resp_text or "").strip()
+    if not text.startswith("{"):
+        return text
+    m = _TEXT_FIELD.search(text)
+    if not m:
+        return ""
+    raw = m.group(1).rstrip("\\")
+    try:
+        return json.loads(f'"{raw}"').strip()
+    except ValueError:
+        return raw.replace("\\n", "\n").replace('\\"', '"').strip()
