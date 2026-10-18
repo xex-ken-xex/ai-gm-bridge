@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 import {
   clampPosition,
   DEFAULT_POSITION,
+  isClickMove,
+  mascotMenuItems,
   WIDGET_SIZE,
   MascotController,
   mascotForAction,
@@ -128,4 +130,50 @@ test("MascotController の既定のタイマーは this を持たずに呼ぶ (�
     globalThis.setTimeout = realSet;
     globalThis.clearTimeout = realClear;
   }
+});
+
+test("isClickMove は少し動いただけならクリック、しきい値を超えたらドラッグ", () => {
+  assert.ok(isClickMove({ x: 10, y: 10 }, { x: 13, y: 14 }));
+  assert.ok(!isClickMove({ x: 10, y: 10 }, { x: 20, y: 10 }));
+  assert.ok(!isClickMove(null, { x: 0, y: 0 }));
+});
+
+test("mascotMenuItems は GM だけの項目をプレイヤーに出さず、足された項目はあいさつの後ろに入れる", () => {
+  const ids = items => items.map(i => i.id);
+  assert.deepEqual(ids(mascotMenuItems({ isGM: true })), ["builder", "brain", "greet", "reset", "hide"]);
+  assert.deepEqual(ids(mascotMenuItems({ isGM: false })), ["greet", "reset", "hide"]);
+  const extra = [
+    { id: "voice-test", icon: "🔊", label: "声のテスト", gmOnly: true },
+    { id: "nolabel", label: " " },
+    { id: "greet", label: "上書きしようとしても既定が勝つ" },
+  ];
+  assert.deepEqual(ids(mascotMenuItems({ isGM: true, extra })), ["builder", "brain", "greet", "voice-test", "reset", "hide"]);
+  assert.deepEqual(ids(mascotMenuItems({ isGM: false, extra })), ["greet", "reset", "hide"]);
+  assert.equal(mascotMenuItems({ isGM: true, extra }).find(i => i.id === "greet").label, "あいさつ");
+});
+
+test("MascotController.say は状態を変えずに台詞だけを出し、時間が来たら台詞だけを消す", () => {
+  const timers = [];
+  const shown = [];
+  const c = new MascotController({
+    render: v => shown.push({ ...v }),
+    setTimer: (fn, ms) => timers.push({ fn, ms, live: true }) - 1,
+    clearTimer: id => { if (timers[id]) timers[id].live = false; },
+  });
+  c.set({ state: "offline" });
+  c.say("どうする？", 3000);
+  assert.deepEqual(c.current, { state: "offline", text: "どうする？" });
+  const fire = t => { t.live = false; t.fn(); };
+  timers.filter(t => t.live).forEach(fire);
+  assert.deepEqual(c.current, { state: "offline", text: "" });
+
+  // 考え中: 台詞が消えても、状態の戻るタイマーは残る
+  c.set({ state: "thinking", text: "", durationMs: 10000 });
+  c.say("どうする？", 3000);
+  const live = timers.filter(t => t.live);
+  assert.equal(live.length, 2);
+  fire(live.find(t => t.ms === 3000));
+  assert.deepEqual(c.current, { state: "thinking", text: "" });
+  fire(live.find(t => t.ms === 10000));
+  assert.deepEqual(c.current, { state: "idle", text: "" });
 });

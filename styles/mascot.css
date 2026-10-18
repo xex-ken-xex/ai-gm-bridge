@@ -35,3 +35,14 @@
   pointer-events: none; opacity: 0; transition: opacity 0.25s ease;
 }
 #ai-gm-mascot-widget .ai-mascot-bubble.show { opacity: 1; }
+
+/* クリックで出すメニュー (scripts/mascot.js の openMenu)。マスコットより 1 つ上 */
+#ai-gm-mascot-menu {
+  position: fixed; z-index: 71; display: flex; flex-direction: column; gap: 2px; min-width: 170px; padding: 4px;
+  background: rgba(20, 20, 28, 0.96); border: 1px solid #e67e22; border-radius: 8px; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.6);
+}
+#ai-gm-mascot-menu button {
+  display: block; width: 100%; margin: 0; padding: 5px 10px; text-align: left; white-space: nowrap;
+  background: transparent; border: none; border-radius: 5px; color: #f5f0e6; font-size: 13px; line-height: 1.4; cursor: pointer;
+}
+#ai-gm-mascot-menu button:hover, #ai-gm-mascot-menu button:focus-visible { background: rgba(230, 126, 34, 0.35); outline: none; }

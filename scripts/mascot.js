@@ -3,20 +3,23 @@
 //
 // - GM のクライアントでの状態 (待機・考え中・話し中・切断) と台詞を game.socket で全員に配る (module.json の "socket": true)。
 //   GM だけの操作・確認 (ビルダーの下書き・/ai の相談・接続の状態など) は状態も台詞も配らない
-// - ドラッグで動かせ、位置はブラウザごとに保存する。GM はダブルクリックでシナリオビルダー、右クリックで NPC ブレイン管理を開く
+// - ドラッグで動かせ、位置はブラウザごとに保存する
+// - クリック (左でも右でも) でメニューを出す: GM はシナリオビルダー・NPC ブレイン管理、全員があいさつ・位置を戻す・隠す。
+//   ほかの機能は registerMascotMenuItem で項目を足せる (声のテストなど)
 // - 設定「マスコットを表示」(ユーザーごと) で隠せる。「マスコットの画像」(ワールド。状態ごとにも) で画像を差し替えられる
-// - Shift + ダブルクリックで既定の位置に戻す
 // 純粋関数は scripts/lib/mascot.js (tests/js)。見た目は styles/mascot.css
 
 import { MODULE_ID } from "./lib/chat-filter.js";
 import {
   clampPosition,
   DEFAULT_POSITION,
+  isClickMove,
   MASCOT_NAME,
   MASCOT_TITLE,
   MascotController,
   mascotForAction,
   mascotForEvent,
+  mascotMenuItems,
   mascotSvgDataUri,
   normalizeMascotState,
   parseSavedPosition,
@@ -35,9 +38,21 @@ const STATE_IMAGE_SETTINGS = Object.freeze({
 });
 
 let widget = null;
+let menu = null;
 let controller = null;
 // GM の操作 (ビルダー・ブレイン管理を開く)。bridge.js から受け取る
 let gmActions = { openBuilder: null, openBrain: null };
+// ほかの機能が足したメニューの項目 (id → { icon, label, gmOnly, onSelect })
+const extraMenuItems = new Map();
+
+/**
+ * マスコットのメニューに項目を足す (同じ id なら置き換える)。
+ * 例: registerMascotMenuItem({ id: "voice-test", icon: "🔊", label: "声のテスト", gmOnly: true, onSelect: () => ... })
+ */
+export function registerMascotMenuItem({ id, icon = "✨", label, gmOnly = false, onSelect }) {
+  if (!id || !label || typeof onSelect !== "function") return;
+  extraMenuItems.set(id, { id, icon, label, gmOnly, onSelect });
+}
 
 /** 設定 (init フックで呼ぶ) */
 export function registerMascotSettings() {
@@ -121,11 +136,14 @@ function enableDrag(el) {
   el.addEventListener("pointerdown", ev => {
     if (ev.button !== 0) return;
     const rect = el.getBoundingClientRect();
-    start = { x: ev.clientX, y: ev.clientY, left: rect.left, top: rect.top };
+    start = { x: ev.clientX, y: ev.clientY, left: rect.left, top: rect.top, moved: false };
     el.setPointerCapture?.(ev.pointerId);
   });
   el.addEventListener("pointermove", ev => {
     if (!start) return;
+    if (!start.moved && isClickMove(start, { x: ev.clientX, y: ev.clientY })) return;
+    if (!start.moved) closeMenu();
+    start.moved = true;
     const pos = clampPosition(
       { left: start.left + ev.clientX - start.x, top: start.top + ev.clientY - start.y },
       { width: window.innerWidth, height: window.innerHeight },
@@ -133,13 +151,117 @@ function enableDrag(el) {
     el.style.left = `${pos.left}px`;
     el.style.top = `${pos.top}px`;
   });
-  const end = () => {
+  el.addEventListener("pointerup", () => {
     if (!start) return;
+    const moved = start.moved;
     start = null;
-    savePosition({ left: parseInt(el.style.left, 10), top: parseInt(el.style.top, 10) });
-  };
-  el.addEventListener("pointerup", end);
-  el.addEventListener("pointercancel", end);
+    // 動かさずに離したらクリック: メニューを開く (開いていれば閉じる)
+    if (moved) savePosition({ left: parseInt(el.style.left, 10), top: parseInt(el.style.top, 10) });
+    else toggleMenu();
+  });
+  el.addEventListener("pointercancel", () => {
+    if (start?.moved) savePosition({ left: parseInt(el.style.left, 10), top: parseInt(el.style.top, 10) });
+    start = null;
+  });
+}
+
+// 既定の項目の動作 (足された項目と同じく onSelect の形。項目の並びとラベルは scripts/lib/mascot.js)
+const BASE_MENU_ACTIONS = Object.freeze({
+  builder: () => gmActions.openBuilder?.(),
+  brain: () => gmActions.openBrain?.(),
+  // 自分の画面だけで話す (全員には配らない)。待機中だけ口を動かし、切断・考え中などの表示は消さない
+  greet: () => {
+    const text = `私は${MASCOT_TITLE}、${MASCOT_NAME}だよ！困ったことがあったら手伝うね、任せて！`;
+    if (controller?.current.state === "idle") controller.set({ state: "speaking", text, durationMs: 4000 });
+    else controller?.say(text, 4000);
+  },
+  reset: () => resetPosition(),
+  hide: () => {
+    ui.notifications?.info(`${MASCOT_NAME}を隠したよ。設定「マスコットを表示」でまた呼んでね！`);
+    return game.settings.set(MODULE_ID, SHOW_SETTING, false);
+  },
+});
+
+/** メニューの項目を選んだとき */
+function selectMenuItem(id) {
+  closeMenu();
+  const onSelect = BASE_MENU_ACTIONS[id] ?? extraMenuItems.get(id)?.onSelect;
+  return onSelect?.();
+}
+
+function toggleMenu() {
+  if (menu) closeMenu();
+  else openMenu();
+}
+
+function openMenu() {
+  if (!widget) return;
+  closeMenu();
+  const items = mascotMenuItems({ isGM: Boolean(game.user?.isGM), extra: [...extraMenuItems.values()] });
+  menu = document.createElement("div");
+  menu.id = "ai-gm-mascot-menu";
+  menu.setAttribute("role", "menu");
+  for (const item of items) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.setAttribute("role", "menuitem");
+    btn.dataset.id = item.id;
+    btn.textContent = `${item.icon} ${item.label}`;
+    btn.addEventListener("click", ev => {
+      ev.stopPropagation();
+      try {
+        const done = selectMenuItem(item.id);
+        done?.catch?.(e => console.warn("AI GM Bridge | マスコットのメニューで失敗しました", e));
+      } catch (e) {
+        console.warn("AI GM Bridge | マスコットのメニューで失敗しました", e);
+      }
+    });
+    menu.appendChild(btn);
+  }
+  document.body.appendChild(menu);
+  placeMenu();
+  // キーボードでも選べるように最初の項目へ。吹き出しで一言 (自分の画面だけ)
+  menu.querySelector("button")?.focus();
+  controller?.say("どうする？任せて！", 3000);
+  // メニューの外を押す・Esc で閉じる
+  setTimeout(() => {
+    document.addEventListener("pointerdown", onOutsidePointer, true);
+    document.addEventListener("keydown", onMenuKey, true);
+  }, 0);
+}
+
+/** マスコットの横 (右に入らなければ左) に出す */
+function placeMenu() {
+  if (!menu || !widget) return;
+  const w = widget.getBoundingClientRect();
+  const m = menu.getBoundingClientRect();
+  const right = w.right + 6;
+  const left = right + m.width > window.innerWidth ? Math.max(0, w.left - m.width - 6) : right;
+  const top = Math.max(0, Math.min(window.innerHeight - m.height, w.top));
+  menu.style.left = `${Math.round(left)}px`;
+  menu.style.top = `${Math.round(top)}px`;
+}
+
+function onOutsidePointer(ev) {
+  if (menu?.contains(ev.target) || widget?.contains(ev.target)) return;
+  closeMenu();
+}
+
+function onMenuKey(ev) {
+  if (ev.key === "Escape") return closeMenu();
+  if (!menu || !["ArrowDown", "ArrowUp"].includes(ev.key)) return;
+  const buttons = [...menu.querySelectorAll("button")];
+  const at = buttons.indexOf(document.activeElement);
+  const next = (at + (ev.key === "ArrowDown" ? 1 : -1) + buttons.length) % buttons.length;
+  buttons[next]?.focus();
+  ev.preventDefault();
+}
+
+function closeMenu() {
+  document.removeEventListener("pointerdown", onOutsidePointer, true);
+  document.removeEventListener("keydown", onMenuKey, true);
+  menu?.remove();
+  menu = null;
 }
 
 /** マスコットを表示する (ready で全員が呼ぶ。設定で隠しているときは何もしない) */
@@ -156,25 +278,14 @@ export function initMascot({ openBuilder = null, openBrain = null } = {}) {
     <div class="ai-mascot-avatar"></div>
     <div class="ai-mascot-nameplate"><span class="ai-mascot-dot"></span><span class="ai-mascot-name"></span></div>`;
   widget.querySelector(".ai-mascot-name").textContent = MASCOT_NAME;
-  widget.querySelector(".ai-mascot-nameplate").title = `${MASCOT_TITLE} ${MASCOT_NAME}\n` + (game.user?.isGM
-    ? "ドラッグ: 移動 / ダブルクリック: シナリオビルダー / 右クリック: NPC ブレイン管理 / Shift + ダブルクリック: 位置を戻す"
-    : "ドラッグ: 移動 / Shift + ダブルクリック: 位置を戻す");
+  widget.title = `${MASCOT_TITLE} ${MASCOT_NAME}\nクリック: メニュー / ドラッグ: 移動`;
   document.body.appendChild(widget);
   enableDrag(widget);
 
-  widget.addEventListener("dblclick", ev => {
-    // Shift + ダブルクリック: 既定の位置に戻す (誰でも)
-    if (ev.shiftKey) {
-      resetPosition();
-      return;
-    }
-    if (game.user?.isGM && gmActions.openBuilder) gmActions.openBuilder();
-    else controller?.set({ state: "speaking", text: `私は${MASCOT_TITLE}、${MASCOT_NAME}だよ！困ったことがあったら手伝うね、任せて！`, durationMs: 4000 });
-  });
+  // 右クリックでも同じメニューを出す (ブラウザのメニューは出さない)
   widget.addEventListener("contextmenu", ev => {
-    if (!game.user?.isGM || !gmActions.openBrain) return;
     ev.preventDefault();
-    gmActions.openBrain();
+    openMenu();
   });
 
   controller?.dispose();
@@ -182,7 +293,7 @@ export function initMascot({ openBuilder = null, openBrain = null } = {}) {
   render(controller.current);
 }
 
-/** 既定の位置に戻す (Shift + ダブルクリック) */
+/** 既定の位置に戻す (メニューの「位置を戻す」) */
 export function resetPosition() {
   if (!widget) return;
   const pos = clampPosition(DEFAULT_POSITION, { width: window.innerWidth, height: window.innerHeight });
@@ -196,6 +307,7 @@ export function resetPosition() {
 }
 
 export function removeMascot() {
+  closeMenu();
   controller?.dispose();
   widget?.remove();
   widget = null;
@@ -248,6 +360,6 @@ export function mascotOnConnecting() {
 
 /** 接続と切断 */
 export function mascotOnConnection(open) {
-  if (open) setMascotState("idle", "準備完了！困ったら手伝うよ。ダブルクリックでビルダー、右クリックで NPC ブレイン管理だよ！", 5000, { isPublic: false });
+  if (open) setMascotState("idle", "準備完了！困ったら手伝うよ。私をクリックするとメニューが出るよ！", 5000, { isPublic: false });
   else setMascotState("offline", "あっ、サーバーとの接続が切れちゃった…ごめんね、つなぎ直すね。", 5000, { isPublic: false });
 }
