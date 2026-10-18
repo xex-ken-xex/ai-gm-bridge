@@ -170,6 +170,7 @@ Foundry Virtual Tabletop (FVTT) と Python の AI GM サーバーを WebSocket �
 - **確認**: Windows の PowerShell で `curl.exe http://127.0.0.1:8088/health`
 - **切り替え**: `~/.bashrc` に `export AI_GM_TTS_ENGINE=irodori` を足して、AI GM サーバーを起動し直します。
 - 初回はモデルの読み込みで時間がかかります。Irodori に繋がらないときは edge-tts で読み上げ、60 秒後にもう一度 Irodori を試します。
+- **声を選ぶ**: ナレーターの声は、説明文・乱数の種・参照音声 (気に入った mp3 や自分の声) で好みの声にできます。Geminiちゃんの声は別に決まります。手順は [`docs/irodori_tts_setup.md` の 6 章](docs/irodori_tts_setup.md#6-ナレーターの声を好みの声にする) にあります。
 
 起動の順番は、**FVTT → Irodori → AI GM サーバー → ブラウザ** です（Irodori は後から起動しても、そのうち切り替わります）。
 
@@ -195,7 +196,7 @@ Foundry Virtual Tabletop (FVTT) と Python の AI GM サーバーを WebSocket �
 | `AI_GM_IRODORI_TIMEOUT` / `_FIRST_TIMEOUT` | `20` / `180` | Irodori の待ち時間（秒、2 つ目は初回） |
 | `AI_GM_IRODORI_RETRY_AFTER` | `60` | Irodori に繋がらなかった後、もう一度試すまで（秒） |
 
-全部の一覧は [`docs/specification.md` の環境変数の表](docs/specification.md#環境変数) と `gm_server/config.py` にあります。Irodori の声の設定（語り手やサポートGM の声の説明文など）は [`docs/irodori_tts_setup.md`](docs/irodori_tts_setup.md) を見てください。
+全部の一覧は [`docs/specification.md` の環境変数の表](docs/specification.md#環境変数) と `gm_server/config.py` にあります。Irodori の声の設定（`AI_GM_IRODORI_CAPTION_NARRATOR`・`AI_GM_IRODORI_CAPTION_SUPPORT`・`AI_GM_IRODORI_SEED`・`AI_GM_IRODORI_NARRATOR_VOICE` など）は、同じ表と [`docs/irodori_tts_setup.md` の 6 章](docs/irodori_tts_setup.md#6-ナレーターの声を好みの声にする) を見てください。
 
 ### WSL のターミナルから直接起動する
 

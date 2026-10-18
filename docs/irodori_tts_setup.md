@@ -130,7 +130,7 @@ $body = @{
   irodori = @{ caption = "落ち着いた大人の女性の声。物語を語り聞かせるように、穏やかで聞き取りやすい話し方。" }
 } | ConvertTo-Json
 $out = Join-Path ([Environment]::GetFolderPath("Desktop")) "irodori_test.mp3"
-Invoke-WebRequest http://127.0.0.1:8088/v1/audio/speech -Method Post `
+Invoke-WebRequest -UseBasicParsing http://127.0.0.1:8088/v1/audio/speech -Method Post `
   -ContentType "application/json; charset=utf-8" -Body ([Text.Encoding]::UTF8.GetBytes($body)) -OutFile $out
 Start-Process $out
 ```
@@ -139,6 +139,7 @@ Start-Process $out
 
 - PowerShell の `curl` は別のコマンドの別名なので、`curl.exe` と書きます。
 - 日本語が文字化けしないよう、本文は UTF-8 のバイト列にして送っています。
+- `-UseBasicParsing` は、Windows PowerShell 5.1 で Internet Explorer の初期設定のエラーで止まらないようにするためです。
 - `curl.exe` が「接続できません」になるときは、WSL の localhost の転送が切れています。手順 4 の起動を `--host 0.0.0.0` にして、もう一度試してください。
 
 ## 5. AI GM のサーバーで使う
@@ -157,7 +158,68 @@ python3 ai_gm_server.py
 - 話す速さ (NPC の `+10%` など) は Irodori の `speed` (1.1 など) に直して渡します。声の高さの数値は Irodori には渡せないため、説明文の一言だけで表します。
 - 他の設定は `docs/specification.md` の「環境変数」を見てください。
 
-## 6. 困ったとき
+## 6. ナレーターの声を好みの声にする
+
+ナレーターの声は、参照音声 (`AI_GM_IRODORI_NARRATOR_VOICE`) → ナレーターの説明文 (`AI_GM_IRODORI_CAPTION_NARRATOR`) → 女性の説明文 (`AI_GM_IRODORI_CAPTION_FEMALE`) の順に、設定されているものを使います。乱数の種はいつも `AI_GM_IRODORI_SEED` (既定 `1234`) です。説明文だけだと作るたびに声が少し揺れるので、種を固定しています。NPC と Geminiちゃんの声はここの設定では変わりません (種を変えたときだけ声も変わります。Geminiちゃんの声は `AI_GM_IRODORI_CAPTION_SUPPORT` で変えられます)。
+
+次の順に進めると、好みの声に寄せていけます。どれも Irodori-TTS-Server を起動した状態 (手順 4) で、Windows の PowerShell で行います。
+
+### 6-1. 声の説明文を聴き比べる
+
+`$caption` を書き換えて何度か試します。性別・年齢・声の高さ・話し方を書くと伝わりやすいです。
+
+```powershell
+$caption = "若い男性の声。低めで落ち着いた、ささやくような語り口。"
+$body = @{
+  model = "irodori-tts"; input = "冒険者たちよ、よく来た。この先は古い遺跡だ。"; voice = "none"; response_format = "mp3"
+  irodori = @{ caption = $caption; seed = 1234 }
+} | ConvertTo-Json
+$out = Join-Path ([Environment]::GetFolderPath("Desktop")) "narrator_test.mp3"
+Invoke-WebRequest -UseBasicParsing http://127.0.0.1:8088/v1/audio/speech -Method Post `
+  -ContentType "application/json; charset=utf-8" -Body ([Text.Encoding]::UTF8.GetBytes($body)) -OutFile $out
+Start-Process $out
+```
+
+### 6-2. 種を聴き比べる
+
+決めた説明文で、種だけを変えた音声をデスクトップの `narrator_seeds` フォルダに作ります。ファイル名の数字が種です。
+
+```powershell
+$caption = "若い男性の声。低めで落ち着いた、ささやくような語り口。"
+$dir = Join-Path ([Environment]::GetFolderPath("Desktop")) "narrator_seeds"
+New-Item -ItemType Directory -Force $dir | Out-Null
+foreach ($seed in 1, 7, 42, 100, 1234, 2024, 5555, 9999) {
+  $body = @{
+    model = "irodori-tts"; input = "冒険者たちよ、よく来た。この先は古い遺跡だ。"; voice = "none"; response_format = "mp3"
+    irodori = @{ caption = $caption; seed = $seed }
+  } | ConvertTo-Json
+  Invoke-WebRequest -UseBasicParsing http://127.0.0.1:8088/v1/audio/speech -Method Post `
+    -ContentType "application/json; charset=utf-8" -Body ([Text.Encoding]::UTF8.GetBytes($body)) `
+    -OutFile (Join-Path $dir "seed_$seed.mp3")
+}
+Start-Process $dir
+```
+
+気に入った説明文と種を、AI GM のサーバーを起動する端末で設定して再起動します。
+
+```bash
+export AI_GM_IRODORI_CAPTION_NARRATOR="若い男性の声。低めで落ち着いた、ささやくような語り口。"
+export AI_GM_IRODORI_SEED=42
+```
+
+### 6-3. 参照音声にする (いちばん確実)
+
+種を固定しても、文の長さが違うと声は少し揺れます。いちばん安定させたいときは、気に入った 1 本 (または自分で録った声、数秒〜2 分) を参照音声にします。Irodori-TTS-Server の `voices` フォルダに置くと、ファイル名から拡張子を除いた部分が ID になります。置いたらすぐ使われます (Irodori の再起動は不要)。
+
+```bash
+# Irodori の WSL で。6-2 で作った seed_42.mp3 をナレーターの声にする例
+mkdir -p ~/Irodori-TTS-Server/voices
+cp /mnt/c/Users/<Windows のユーザー名>/Desktop/narrator_seeds/seed_42.mp3 ~/Irodori-TTS-Server/voices/narrator.mp3
+```
+
+AI GM のサーバーを起動する端末で `export AI_GM_IRODORI_NARRATOR_VOICE=narrator` にして再起動すると、ナレーターだけがこの声で話します。参照音声と説明文が食い違うと声が不安定になるため、このときナレーターには説明文を付けません。名前が `voices` フォルダのファイル名と合わないと edge-tts の声になります。そのときはサーバーのログに名前を確かめるよう出ます。
+
+## 7. 困ったとき
 
 | 症状 | 見るところ |
 | :--- | :--- |

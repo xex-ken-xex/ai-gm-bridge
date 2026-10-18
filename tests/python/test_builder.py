@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from gm_server import builder
+from gm_server import builder, tts
 from gm_server.router import HANDLERS, dispatch
 from conftest import FakeLLM
 
@@ -209,15 +209,30 @@ async def test_settlement_keeps_the_core_when_secrets_fail(make_ctx, sent):
     assert sent[1]["fallback"] is False and sent[1]["result"]["settlement_name"] == "塩見の里"
 
 
+def spy_voices(ctx):
+    """ctx.tts.synthesize に渡された声の指定を記録する"""
+    voices, original = [], ctx.tts.synthesize
+
+    async def synthesize(text, file_name, **kwargs):
+        voices.append(kwargs)
+        return await original(text, file_name, **kwargs)
+
+    ctx.tts.synthesize = synthesize
+    return voices
+
+
 async def test_build_wilderness_regenerates_the_same_points(make_ctx, sent, tmp_path):
     topos = builder.make_wilderness_generator(1234).get_room_topologies()
     landmarks = [{"id": t["id"], "title": f"地点{t['id']}", "tts_narration": f"風{t['id']}"} for t in topos]
     ctx = make_ctx()
+    voices = spy_voices(ctx)
     await builder.handle_build_scene(ctx, {
         "scene_mode": "wilderness", "name": "塩の道", "public_lore": "道", "dm_secrets": "見張り",
         "map": {"seed": 1234}, "landmarks": landmarks,
     })
     assert actions(sent) == ["create_dungeon_scene", "play_sound"]
+    # 完了報告は Geminiちゃんの声 (ナレーターの声を変えても変わらない)
+    assert voices == [tts.support_voice()]
     scene = main(sent)[0]
     assert scene["scene_mode"] == "wilderness" and scene["room_count"] == len(topos)
     assert [r["title"] for r in scene["rooms"]] == [f"地点{t['id']}" for t in topos]
@@ -238,6 +253,7 @@ async def test_build_wilderness_without_seed_drops_landmarks(make_ctx, sent):
 async def test_build_site_assigns_roles_before_asking_ai(make_ctx, sent):
     llm = FakeLLM()
     ctx = make_ctx(llm)
+    voices = spy_voices(ctx)
     subs = [{"title": "閂を外す", "target_topology": "dead_end"}, {"title": "副官と取引", "target_topology": "hub"}]
     await builder.handle_build_scene(ctx, {
         "scene_mode": "ruins", "name": "見張り塔", "size_key": "xlarge", "density": 0.5, "loop_ratio": 0.2, "seed": 8,
@@ -246,6 +262,7 @@ async def test_build_site_assigns_roles_before_asking_ai(make_ctx, sent):
     })
     # マップだけのシーンを先に作り、情景は後から (この AI は何も返さない)
     assert actions(sent) == ["create_dungeon_scene", "chat", "chat", "play_sound"]
+    assert voices == [tts.support_voice()]
     scene = main(sent)[0]
     assert scene["scene_key"].startswith("builder-8-")
     assert scene["grid_width"] == 100  # xlarge は small に丸める (M12)

@@ -4,7 +4,7 @@ import os
 import pytest
 
 from gm_server import tts as tts_mod
-from gm_server.tts import IrodoriClient, SpeechSynthesizer, default_caption, rate_to_speed
+from gm_server.tts import IrodoriClient, SpeechSynthesizer, default_caption, rate_to_speed, voice_seed
 from tests.python.conftest import FakeCommunicate
 
 
@@ -74,7 +74,8 @@ def test_irodori_writes_mp3_with_caption_and_speed(tmp_path):
     assert url == "http://irodori:8088/v1/audio/speech"
     assert body == {
         "model": "irodori-tts", "input": "こんにちは。", "voice": "none", "response_format": "mp3",
-        "speed": 1.2, "irodori": {"caption": "しわがれた老人の声"},
+        "speed": 1.2,
+        "irodori": {"caption": "しわがれた老人の声", "seed": voice_seed("ja-JP-KeitaNeural", "+0Hz", "しわがれた老人の声")},
     }
     assert headers == {"Authorization": "Bearer secret"}
 
@@ -242,3 +243,89 @@ def test_warm_up_failure_is_reported_without_pausing(tmp_path):
     assert run(synth.synthesize("やあ", "v.mp3"))
     assert read(tmp_path, "v.mp3") == b"MP3DATA"
     assert FakeCommunicate.calls == []
+
+
+def test_narrator_uses_fixed_seed_every_time(tmp_path, monkeypatch):
+    monkeypatch.setattr(tts_mod.config, "IRODORI_SEED", 1234)
+    post = FakePost()
+    synth = make(tmp_path, post)
+    run(synth.synthesize("一文目", "a.mp3"))
+    run(synth.synthesize("二文目", "b.mp3"))
+    assert [c[1]["irodori"]["seed"] for c in post.calls] == [1234, 1234]
+
+
+def test_npc_seed_is_stable_and_differs_by_voice_settings(monkeypatch):
+    monkeypatch.setattr(tts_mod.config, "IRODORI_SEED", 1234)
+    keita = voice_seed("ja-JP-KeitaNeural", "+0Hz")
+    assert keita == voice_seed("ja-JP-KeitaNeural", "+0Hz")
+    assert keita != voice_seed("ja-JP-KeitaNeural", "-10Hz")
+    assert keita != voice_seed("ja-JP-NanamiNeural", "+0Hz")
+    assert keita != 1234 and 0 <= keita < 2_000_000_000
+    assert voice_seed(None) == 1234
+
+
+def test_seed_can_be_turned_off_or_given(tmp_path, monkeypatch):
+    monkeypatch.setattr(tts_mod.config, "IRODORI_SEED", None)
+    assert voice_seed("ja-JP-KeitaNeural") is None
+    post = FakePost()
+    synth = make(tmp_path, post)
+    run(synth.synthesize("やあ", "a.mp3"))
+    assert "seed" not in post.calls[0][1]["irodori"]
+    run(synth.synthesize("やあ", "b.mp3", seed=42))
+    assert post.calls[1][1]["irodori"]["seed"] == 42
+
+
+def test_narrator_reference_voice(tmp_path, monkeypatch):
+    monkeypatch.setattr(tts_mod.config, "IRODORI_SEED", 1234)
+    monkeypatch.setattr(tts_mod.config, "IRODORI_NARRATOR_VOICE", "narrator")
+    post = FakePost()
+    synth = make(tmp_path, post)
+    run(synth.synthesize("ナレーション", "a.mp3"))
+    run(synth.synthesize("NPC のセリフ", "b.mp3", voice="ja-JP-KeitaNeural"))
+    narrator, npc = post.calls[0][1], post.calls[1][1]
+    # 参照音声のときは説明文を付けない (食い違うと声が不安定になる)
+    assert narrator["voice"] == "narrator" and narrator["irodori"] == {"seed": 1234}
+    # NPC は参照音声を使わず、説明文で作る
+    assert npc["voice"] == "none" and npc["irodori"]["caption"] == tts_mod.config.IRODORI_CAPTION_MALE
+
+
+def test_fallback_notice_mentions_loading(tmp_path):
+    synth = make(tmp_path, FakePost(fail=True))
+    notices = []
+
+    async def notify(message):
+        notices.append(message)
+
+    synth.notify = notify
+    run(synth.synthesize("やあ", "v.mp3"))
+    assert "準備中か繋がらない" in notices[0]
+
+
+def test_narrator_caption_can_differ_from_female_npc(tmp_path, monkeypatch):
+    monkeypatch.setattr(tts_mod.config, "IRODORI_CAPTION_NARRATOR", "渋い老人の語り部の声。")
+    post = FakePost()
+    synth = make(tmp_path, post)
+    run(synth.synthesize("ナレーション", "a.mp3"))
+    run(synth.synthesize("女性 NPC", "b.mp3", voice="ja-JP-NanamiNeural"))
+    assert post.calls[0][1]["irodori"]["caption"] == "渋い老人の語り部の声。"
+    assert post.calls[1][1]["irodori"]["caption"] == tts_mod.config.IRODORI_CAPTION_FEMALE
+
+
+def test_support_voice_ignores_narrator_settings(tmp_path, monkeypatch):
+    monkeypatch.setattr(tts_mod.config, "IRODORI_CAPTION_NARRATOR", "渋い老人の語り部の声。")
+    monkeypatch.setattr(tts_mod.config, "IRODORI_NARRATOR_VOICE", "narrator")
+    post = FakePost()
+    synth = make(tmp_path, post)
+    run(synth.synthesize("できたよ！", "a.mp3", **tts_mod.support_voice()))
+    body = post.calls[0][1]
+    assert body["voice"] != "narrator"
+    assert body["irodori"]["caption"] == tts_mod.config.IRODORI_CAPTION_SUPPORT
+    assert body["irodori"]["seed"] != tts_mod.config.IRODORI_SEED
+
+
+def test_warm_up_failure_hints_narrator_voice_setting(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(tts_mod.config, "IRODORI_NARRATOR_VOICE", "narator")
+    synth = make(tmp_path, FakePost(fail=True), get=lambda *a: b"{}")
+    run(synth.check_irodori())
+    assert run(synth.warm_up_irodori())
+    assert "AI_GM_IRODORI_NARRATOR_VOICE の名前 (narator)" in capsys.readouterr().out
