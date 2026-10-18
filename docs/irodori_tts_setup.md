@@ -9,16 +9,53 @@ AI GM のサーバー (`ai_gm_server.py`) は、Irodori-TTS-Server に繋がら�
 切り替わった最初の 1 回だけ、GM の画面に「edge-tts で読み上げています」と通知が出ます。
 描写のチャットは音声ができてから送るため、Irodori の待ち上限は普段 20 秒 (`AI_GM_IRODORI_TIMEOUT`) と短めです。最初の 1 回だけはモデルの読み込みを待つため 180 秒 (`AI_GM_IRODORI_FIRST_TIMEOUT`) 待ちます。この 1 回は、起動時に裏で短いあいさつを作らせて済ませるので、実際の読み上げで長く待つことはありません。
 
+## 0. 音声用の WSL を用意する
+
+Irodori は今の Ubuntu (AI GM のサーバーと同じ環境) に入れても、別のフォルダに収まるので問題ありません。
+音声用に分けたいときは、`Irodori` という名前の Ubuntu を別に作ります。WSL2 の Linux どうしはネットワークを共有するので、別の Ubuntu で動かしても AI GM のサーバーから `http://127.0.0.1:8088` で繋がります。
+
+### Windows 側 (PowerShell を「管理者として実行」)
+
+```powershell
+wsl --update                                   # --name が使える新しい WSL にする
+wsl --install -d Ubuntu-24.04 --name Irodori   # -d (--distribution) は入れる Linux、--name は付ける名前
+```
+
+- 再起動を求められたら再起動し、開いた Ubuntu でユーザー名とパスワードを決めます。
+- `--name` が使えないと言われたら、普通に入れてから名前を付けて写します (`C:\wsl` は先に作っておく)。
+
+  ```powershell
+  wsl --install -d Ubuntu-24.04
+  wsl --export Ubuntu-24.04 C:\wsl\ubuntu.tar
+  wsl --import Irodori C:\wsl\Irodori C:\wsl\ubuntu.tar
+  ```
+
+- 開くときは `wsl -d Irodori`、一覧は `wsl -l -v` です。
+
+### GPU ドライバー (Windows 側)
+
+NVIDIA のサイトから、普段の Windows 用 GPU ドライバーを入れます。WSL の中にドライバーを入れる必要はありません。
+
+### 毎回の起動
+
+Irodori-TTS-Server は、AI GM のサーバーとは別の端末で起動したままにします (手順 4)。
+
+```powershell
+wsl -d Irodori -- bash -lc "cd ~/Irodori-TTS-Server && uv run --no-sync python -m irodori_openai_tts --host 127.0.0.1 --port 8088"
+```
+
+PowerShell からこの 1 行で起動できます。Windows のショートカットにしておくと便利です。
+
 ## 1. 必要なもの
 
-- WSL2 の Ubuntu (AI GM のサーバーと同じ環境)
+- WSL2 の Ubuntu (AI GM のサーバーと同じ環境か、手順 0 で作った `Irodori`)
 - NVIDIA の GPU と、Windows 側の NVIDIA ドライバー (WSL から `nvidia-smi` が動けば準備できています)。GPU が無くても CPU で動きますが、1 文に数十秒かかります
 - FFmpeg (mp3 で受け取るために必要)
 - [uv](https://docs.astral.sh/uv/) (Python の環境を作るツール。Irodori-TTS-Server は Python 3.10 を使います)
 
 ```bash
 nvidia-smi                      # GPU が見えるか確認
-sudo apt update && sudo apt install -y ffmpeg git
+sudo apt update && sudo apt install -y ffmpeg git curl
 curl -LsSf https://astral.sh/uv/install.sh | sh
 source ~/.bashrc                # uv にパスを通す
 ```
@@ -68,7 +105,7 @@ curl http://127.0.0.1:8088/v1/audio/speech \
   --output test.mp3
 ```
 
-`test.mp3` ができれば準備完了です。Windows のエクスプローラーで `\\wsl$\Ubuntu\home\<ユーザー名>\Irodori-TTS-Server` を開くと再生できます。
+`test.mp3` ができれば準備完了です。Windows のエクスプローラーで `\\wsl$\Irodori\home\<ユーザー名>\Irodori-TTS-Server` (今の Ubuntu に入れたなら `\\wsl$\Ubuntu-24.04\…`) を開くと再生できます。
 
 ## 5. AI GM のサーバーで使う
 
