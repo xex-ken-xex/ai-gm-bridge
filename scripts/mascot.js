@@ -23,6 +23,8 @@ import {
   mascotSvgDataUri,
   normalizeMascotState,
   parseSavedPosition,
+  VOICE_TEST_ITEMS,
+  voiceTestPayload,
 } from "./lib/mascot.js";
 
 const SOCKET = `module.${MODULE_ID}`;
@@ -52,6 +54,23 @@ const extraMenuItems = new Map();
 export function registerMascotMenuItem({ id, icon = "✨", label, gmOnly = false, onSelect }) {
   if (!id || !label || typeof onSelect !== "function") return;
   extraMenuItems.set(id, { id, icon, label, gmOnly, onSelect });
+}
+
+/**
+ * 声のテストをメニューに足す (サーバーと繋ぐ GM だけ)。send はサーバーへ送る関数 (送れたら true)。
+ * 結果 (どのエンジンで鳴ったか) はサーバーが progress で知らせ、音は GM にだけ鳴る
+ */
+export function registerVoiceTestMenu(send) {
+  for (const { voice, ...item } of VOICE_TEST_ITEMS) {
+    registerMascotMenuItem({
+      ...item,
+      onSelect: () => {
+        if (!send(voiceTestPayload(voice))) {
+          ui.notifications.warn("AI GM Bridge: Python サーバー (8765) に接続されていないため、声のテストができません。");
+        }
+      },
+    });
+  }
 }
 
 /** 設定 (init フックで呼ぶ) */

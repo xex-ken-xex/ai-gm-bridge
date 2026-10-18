@@ -17,10 +17,13 @@ def roll(formula: str, speaker: str = SPEAKER_GM_ROLL) -> Dict:
     return {"action": "roll", "speaker": speaker, "formula": formula}
 
 
-def play_sound(src: str, volume: float = 1.0, subtitle: Optional[str] = None) -> Dict:
+def play_sound(src: str, volume: float = 1.0, subtitle: Optional[str] = None, gm_only: bool = False) -> Dict:
+    """gm_only なら GM のクライアントでだけ鳴らす (声のテストなど、プレイヤーに聞かせない音)"""
     msg = {"action": "play_sound", "src": src, "volume": volume}
     if subtitle:
         msg["subtitle"] = subtitle
+    if gm_only:
+        msg["gm_only"] = True
     return msg
 
 

@@ -26,6 +26,7 @@ import {
   mascotOnConnection,
   mascotOnSend,
   registerMascotSettings,
+  registerVoiceTestMenu,
 } from "./scripts/mascot.js";
 import {
   handleNpcCheckRoll,
@@ -213,6 +214,7 @@ Hooks.once("ready", async function() {
   connection.connect();
   setBuilderSender(sendToServer);
   setNpcSender(sendToServer);
+  safely("メニュー", () => registerVoiceTestMenu(sendToServer));
   setCombatSender(sendToServer);
   // 戦闘トラッカーで NPC の手番になったら AI に行動を頼む (設定「NPC の自律戦闘」で切り替え)
   registerNpcCombatHooks();

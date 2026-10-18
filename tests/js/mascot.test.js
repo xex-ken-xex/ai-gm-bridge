@@ -5,6 +5,8 @@ import {
   DEFAULT_POSITION,
   isClickMove,
   mascotMenuItems,
+  VOICE_TEST_ITEMS,
+  voiceTestPayload,
   WIDGET_SIZE,
   MascotController,
   mascotForAction,
@@ -176,4 +178,16 @@ test("MascotController.say は状態を変えずに台詞だけを出し、時�
   assert.deepEqual(c.current, { state: "thinking", text: "" });
   fire(live.find(t => t.ms === 10000));
   assert.deepEqual(c.current, { state: "idle", text: "" });
+});
+
+test("声のテスト: GM のメニューにだけ出し、声の種類をサーバーに送り、GM にだけ鳴る音は配らない", () => {
+  const ids = items => items.map(i => i.id);
+  assert.deepEqual(ids(mascotMenuItems({ isGM: true, extra: [...VOICE_TEST_ITEMS] })),
+    ["builder", "brain", "greet", "voice-test-narrator", "voice-test-support", "reset", "hide"]);
+  assert.deepEqual(ids(mascotMenuItems({ isGM: false, extra: [...VOICE_TEST_ITEMS] })), ["greet", "reset", "hide"]);
+  assert.deepEqual(voiceTestPayload("support"), { event: "voice_test", voice: "support" });
+  assert.deepEqual(voiceTestPayload("?"), { event: "voice_test", voice: "narrator" });
+  assert.equal(mascotForEvent({ event: "voice_test" }).public, false);
+  assert.equal(mascotForAction({ action: "play_sound", gm_only: true }).public, false);
+  assert.equal(mascotForAction({ action: "play_sound" }).public, true);
 });

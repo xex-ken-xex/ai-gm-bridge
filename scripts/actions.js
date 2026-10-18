@@ -43,13 +43,14 @@ async function playSound(data) {
   if (game.audio?.context?.state === "suspended") {
     await game.audio.context.resume();
   }
-  // 第2引数 true: プレイヤーを含む全クライアントで再生 (2026-10-16 ken 決定)
+  // 第2引数 true: プレイヤーを含む全クライアントで再生 (2026-10-16 ken 決定)。
+  // gm_only (声のテストなど) は GM のクライアントでだけ鳴らす
   await foundry.audio.AudioHelper.play({
     src: data.src,
     volume: data.volume ?? 1.0,
     autoplay: true,
     loop: false,
-  }, true);
+  }, !data.gm_only);
 }
 
 // 待ち時間の長い処理の途中経過。GM の画面にだけ通知し、チャットには残さない

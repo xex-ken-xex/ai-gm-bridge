@@ -44,12 +44,12 @@ def rate_to_speed(rate: Optional[str]) -> float:
     return round(min(4.0, max(0.25, 1.0 + percent / 100)), 2)
 
 
-# edge-tts のボイス名に合わせた声の説明文 (VoiceDesign)。知らないボイス名は女性の説明文を使う
 def support_voice() -> dict:
     """サポート GM (Geminiちゃん) の声。synthesize(**support_voice()) で渡す (ナレーター扱いにしない)"""
     return {"voice": DEFAULT_VOICE, "caption": config.IRODORI_CAPTION_SUPPORT}
 
 
+# edge-tts のボイス名に合わせた声の説明文 (VoiceDesign)。知らないボイス名は女性の説明文を使う
 def default_caption(voice: Optional[str], pitch: Optional[str] = None) -> str:
     """声の説明文が無いときの既定。声の高さ (edge-tts の Hz) が大きくずれていれば一言足す"""
     caption = config.IRODORI_CAPTION_MALE if "Keita" in (voice or "") else config.IRODORI_CAPTION_FEMALE
@@ -198,6 +198,9 @@ class SpeechSynthesizer:
         # edge-tts に切り替わったことを GM の画面に知らせる (app が設定する。切り替わった最初の 1 回だけ)
         self.notify: Optional[Callable[[str], Awaitable]] = None
         self._fallback_notified = False
+        # 直前の synthesize がどのエンジンで鳴ったか ("irodori" / "edge" / None は失敗) と、Irodori に失敗した理由 (声のテスト用)
+        self.last_engine: Optional[str] = None
+        self.last_irodori_error = ""
         if communicate_factory is None:
             import edge_tts
 
@@ -260,12 +263,36 @@ class SpeechSynthesizer:
         caption は Irodori の声の説明文 (VoiceDesign)。無ければボイス名と声の高さから既定を選ぶ (edge-tts では使わない)。
         seed は Irodori の乱数の種。無ければ voice_seed で決める (同じ声の設定なら毎回同じ声)
         """
+        self.last_engine = None
+        self.last_irodori_error = ""
         if not text or not text.strip():
             return False
         if self.engine == "irodori" and self._clock() >= self._irodori_paused_until:
             if await self._synthesize_irodori(text.strip(), file_name, voice, rate, pitch, caption, seed):
+                self.last_engine = "irodori"
                 return True
-        return await self._synthesize_edge(text, file_name, voice, rate, pitch)
+        elif self.engine == "irodori":
+            self.last_irodori_error = f"失敗のあと {int(self.retry_after)}秒は edge-tts を使う間です"
+        if await self._synthesize_edge(text, file_name, voice, rate, pitch):
+            self.last_engine = "edge"
+            return True
+        return False
+
+    def resume_irodori(self) -> None:
+        """失敗のあとの edge-tts だけの間を終わらせ、次の読み上げで Irodori をすぐ試す (声のテスト用)"""
+        self._irodori_paused_until = 0.0
+
+    def describe_voice(self, voice=None, pitch=None, caption=None, seed=None) -> str:
+        """Irodori に渡す声の指定を、GM に見せる短い文にする (声のテスト用)"""
+        spec = self._irodori_voice(voice, pitch, caption, seed)
+        parts = []
+        if spec.get("voice"):
+            parts.append(f"参照音声 {spec['voice']}")
+        if spec.get("caption"):
+            parts.append(f"説明文「{spec['caption']}」")
+        if spec.get("seed") is not None:
+            parts.append(f"種 {spec['seed']}")
+        return "・".join(parts)
 
     def _irodori_voice(self, voice, pitch, caption, seed) -> dict:
         """Irodori に渡す参照音声・説明文・乱数の種"""
@@ -297,6 +324,7 @@ class SpeechSynthesizer:
             return True
         except Exception as e:
             self._irodori_paused_until = self._clock() + self.retry_after
+            self.last_irodori_error = str(e) or e.__class__.__name__
             log(f"Irodori-TTS で音声を作れませんでした ({e} / {self._clock() - started:.1f}秒)。"
                 f"edge-tts で作り、{int(self.retry_after)}秒は edge-tts を使います")
             await self._notify_fallback()

@@ -48,6 +48,17 @@ export function mascotMenuItems({ isGM = false, extra = [] } = {}) {
     .filter(i => (isGM || !i.gmOnly) && !seen.has(i.id) && seen.add(i.id));
 }
 
+/** 声のテストのメニュー項目 (GM だけ)。voice はサーバーの voice_test に渡す声の種類 */
+export const VOICE_TEST_ITEMS = Object.freeze([
+  Object.freeze({ id: "voice-test-narrator", icon: "🔊", label: "声のテスト (ナレーター)", gmOnly: true, voice: "narrator" }),
+  Object.freeze({ id: "voice-test-support", icon: "🎤", label: "声のテスト (Geminiちゃん)", gmOnly: true, voice: "support" }),
+]);
+
+/** 声のテストでサーバーへ送る内容 */
+export function voiceTestPayload(voice) {
+  return { event: "voice_test", voice: voice === "support" ? "support" : "narrator" };
+}
+
 /** 状態・台詞・表示時間を検める (ソケットで届いた値もここを通す) */
 export function normalizeMascotState({ state, text = "", durationMs = 5000 } = {}) {
   return {
@@ -100,6 +111,8 @@ export function mascotForEvent(payload = {}) {
       return { state: "thinking", text: "任せて！シナリオの下書きを考えるね…", durationMs: 30000, public: false };
     case "builder_build_scene":
       return { state: "thinking", text: "よーし、シーンを組み立てるよ…", durationMs: 30000, public: false };
+    case "voice_test":
+      return { state: "thinking", text: "声を作っているよ…", durationMs: 15000, public: false };
     default:
       return null;
   }
@@ -114,8 +127,8 @@ export function mascotForAction(data = {}) {
         ? { state: "speaking", text: "", durationMs: 4000, public: true }
         : { state: "listening", text: "", durationMs: 6000, public: true };
     case "play_sound":
-      // 声はナレーションか NPC (Geminiちゃんは声を持たない)
-      return { state: "listening", text: "", durationMs: 8000, public: true };
+      // 声はナレーションか NPC (Geminiちゃんは声を持たない)。GM にだけ鳴らす音 (声のテスト) は配らない
+      return { state: "listening", text: "", durationMs: 8000, public: !data.gm_only };
     case "npc_dialogue_response":
       return { state: "listening", text: `👀 ${data.result?.primary_npc_name ?? "NPC"}が答えるみたい…`, durationMs: 5000, public: true };
     case "execute_npc_turn":
