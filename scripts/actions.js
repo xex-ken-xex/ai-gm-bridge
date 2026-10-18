@@ -2,7 +2,7 @@
 // プロトコルを変更する場合は gm_server/protocol.py も同時に更新すること
 
 import { handleAdventureLogCollect, handleAdventureLogWrite } from "./adventure-log.js";
-import { handleBuilderProgress, handleBuilderStageResult } from "./builder.js";
+import { handleBuilderProgress, handleBuilderStageResult, handleOpenBuilder } from "./builder.js";
 import { handleNpcDialogueResponse } from "./npc.js";
 import { handleExecuteNpcTurn } from "./npc-combat.js";
 import { generatedFlags } from "./lib/chat-filter.js";
@@ -206,6 +206,7 @@ export const ACTION_HANDLERS = {
   update_dungeon_rooms: updateDungeonRooms,
   builder_stage_result: handleBuilderStageResult,
   builder_progress: handleBuilderProgress,
+  open_builder: handleOpenBuilder,
   npc_dialogue_response: handleNpcDialogueResponse,
   execute_npc_turn: handleExecuteNpcTurn,
   adventure_log_collect: handleAdventureLogCollect,

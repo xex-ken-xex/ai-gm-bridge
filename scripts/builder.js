@@ -391,6 +391,18 @@ export async function openScenarioBuilder(tabId = null, { capture = true } = {})
   bindEvents(root);
 }
 
+/**
+ * `/ai 港町を作りたい` などのスキル判定から (action: open_builder)。
+ * tab のタブでビルダーを開き、GM 指示欄に要望を入れておく (GM が確認してから「下書きを作成」を押す)
+ */
+export async function handleOpenBuilder(data) {
+  const tab = TABS.find(t => t.id === data?.tab) ?? TABS[0];
+  captureDrafts();
+  const request = String(data?.user_prompt ?? "").trim();
+  if (request) state.drafts[tab.id] = { ...(state.drafts[tab.id] ?? {}), prompt: request };
+  await openScenarioBuilder(tab.id, { capture: false });
+}
+
 function bindEvents(root) {
   // DialogV2 は内容を <form> で包むため、入力欄の Enter で画面が閉じないようにする
   root.addEventListener("keydown", ev => {

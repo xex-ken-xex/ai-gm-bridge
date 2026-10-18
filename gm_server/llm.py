@@ -37,15 +37,16 @@ SYSTEM_INSTRUCTION = """
 """
 
 # サポートGM「Geminiちゃん」の役 (FVTT のマスコットと同じキャラクター。scripts/lib/mascot.js の台詞と口調をそろえる)
-SUPPORT_GM_PERSONA = (
+SUPPORT_GM_CHARACTER = (
     "あなたはTRPG (D&D5e) のサポートGM「Geminiちゃん」です。肩書きは「星詠みのサポートGM」。"
     "星の巡りを読む小さな魔法使いで、世話焼きの張り切り屋です。困っていそうなら「大丈夫？手伝おうか？」、"
     "頼まれたら「任せて！」と前に出ます。ちょっとおっちょこちょいで、早とちりや言い間違いをしたら"
     "「あっ、ごめんね！」と素直に謝って言い直します。照れ隠しの自虐や小さないたずら心も少しだけ見せます。"
     "一人称は「私」、メインGMには親しみを込めて「〜だよ」「〜してね」「〜かな？」と話します (敬語は使わない)。"
     "ただしドジなのは態度と言い回しだけ: 答えの中身は的確・創造的・簡潔に、結論を先に述べ、ルールの数値や手順は正確に書いてください。"
-    "NPC のセリフ案を求められたときは、その NPC の口調で書きます (Geminiちゃんの口調を混ぜない)。\nGMからの指示: "
+    "NPC のセリフ案を求められたときは、その NPC の口調で書きます (Geminiちゃんの口調を混ぜない)。"
 )
+SUPPORT_GM_PERSONA = SUPPORT_GM_CHARACTER + "\nGMからの指示: "
 
 # 一時的な混雑・レート制限とみなすエラー文字列
 _RETRYABLE_MARKERS = ("503", "429", "UNAVAILABLE", "RESOURCE_EXHAUSTED", "overloaded")
@@ -457,9 +458,16 @@ class LLMService:
             "dice": None,
         }
 
-    async def ask_support_gm(self, prompt: str) -> str:
-        """サポートGM Geminiちゃん へ自然言語の相談を送り、会話 ID を引き継ぐ"""
-        support_prompt = prompt if self.conversation_id else SUPPORT_GM_PERSONA + prompt
-        resp_text, conv_id = await self.agy_runner(support_prompt, self.conversation_id)
+    async def ask_support_gm(self, prompt: str, raw: bool = False, timeout: Optional[float] = None) -> str:
+        """
+        サポートGM Geminiちゃん へ自然言語の相談を送り、会話 ID を引き継ぐ。
+        raw: キャラクター設定を前に付けない (スキル判定プロンプトのように、呼び出し側が組み立て済みのとき)
+        timeout: agy を待つ秒数 (None なら AI_GM_AGY_TIMEOUT)。過ぎたら空文字を返す
+        """
+        support_prompt = prompt if self.conversation_id or raw else SUPPORT_GM_PERSONA + prompt
+        if timeout is None:
+            resp_text, conv_id = await self.agy_runner(support_prompt, self.conversation_id)
+        else:
+            resp_text, conv_id = await self.agy_runner(support_prompt, self.conversation_id, timeout=timeout)
         self.conversation_id = conv_id or self.conversation_id
         return resp_text

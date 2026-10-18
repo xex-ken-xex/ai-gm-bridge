@@ -98,7 +98,7 @@ export function clampPosition({ left, top }, { width = Infinity, height = Infini
 export function mascotForEvent(payload = {}) {
   switch (payload.event) {
     case "ai_command":
-      return { state: "thinking", text: "任せて！指示を読んでいるよ…", durationMs: 15000, public: false };
+      return { state: "thinking", text: "任せて！指示を読んでいるよ…", durationMs: 45000, public: false }; // スキル判定の待ち (AI_GM_ROUTER_TIMEOUT 既定 45 秒) に合わせる
     case "room_entered":
       return { state: "thinking", text: "部屋の様子を語る準備をしているよ…", durationMs: 8000, public: true };
     case "player_message":
