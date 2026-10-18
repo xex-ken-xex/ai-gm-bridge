@@ -117,3 +117,13 @@ def execute_npc_turn(decision: Dict, token_id: str, scene_id=None, combat: Optio
         "combat": {"id": combat.get("id"), "round": combat.get("round"), "turn": combat.get("turn")},
         "decision": decision,
     }
+
+
+def adventure_log_collect(mode: str) -> Dict:
+    """冒険記録: FVTT (GM) にチャットの記録・所持品の差分・場所の名前を集めて adventure_log_request を送ってもらう"""
+    return {"action": "adventure_log_collect", "mode": mode}
+
+
+def adventure_log_write(result: Dict) -> Dict:
+    """冒険記録: 冒険日誌ジャーナルに書く内容 (一覧の統合とページの作成は FVTT 側)"""
+    return {"action": "adventure_log_write", **result}

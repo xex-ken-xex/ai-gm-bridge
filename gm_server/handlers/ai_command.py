@@ -1,6 +1,7 @@
 """A. GMからの /ai 指示コマンド (agy 連携) と B. チャット内ボタン選択結果 (ai_choice)"""
 
 from gm_server import deadline, dungeon_scene, protocol
+from gm_server.handlers import adventure_log
 from gm_server.config import SPEAKER_SUPPORT
 from gm_server.text import newlines_to_br
 
@@ -9,6 +10,11 @@ async def handle_command(ctx, data: dict) -> None:
     user = data.get("user", "GM")
     prompt = (data.get("prompt") or "").strip()
     print(f"\n[FVTT GM指示] {user}: /ai {prompt}")
+
+    # 冒険記録スキル: 材料 (チャットの記録など) は FVTT が集めて adventure_log_request で送ってくる
+    if adventure_log.is_adventure_log_intent(prompt):
+        await adventure_log.request_log(ctx, prompt)
+        return
 
     if dungeon_scene.is_dungeon_intent(prompt):
         ctx.state.pending_dungeon["user_prompt"] = prompt
@@ -47,7 +53,7 @@ async def handle_choice(ctx, data: dict) -> None:
     # ステップ1.5: モード選択完了 -> サイズ選択肢カード
     if choice.kind == "mode":
         pending["scene_mode"] = choice.scene_mode
-        await ctx.send(dungeon_scene.size_card(dungeon_scene.scene_mode_label(choice.scene_mode)))
+        await ctx.send(dungeon_scene.size_card(dungeon_scene.scene_mode_label(choice.scene_mode), choice.scene_mode))
         return
 
     # ステップ2: サイズ選択完了 -> 部屋の密度選択肢カード (野外は地点数固定のためループ率へ)

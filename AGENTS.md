@@ -33,10 +33,11 @@ ai-gm-bridge/
 │   ├── npc-combat.js    # NPC 自律戦闘 (手番の検知・知覚の収集・行動の実行) (Foundry 依存)
 │   ├── npc-move.js      # NPC のトークンの移動 (壁・他のトークン・シーンの外を避ける) (Foundry 依存)
 │   ├── mascot.js        # アシスタント DM マスコット (全員の画面のミニキャラ。game.socket で GM の状態を配る) (Foundry 依存)
+│   ├── adventure-log.js # 冒険記録スキル (チャットの記録を集めて冒険日誌ジャーナルに書く) (Foundry 依存)
 │   ├── net/connection.js # WebSocket 接続・自動再接続・受信の直列処理
-│   └── lib/             # Foundry 非依存の純粋関数 (html / commands / chat-filter / rooms / scene-docs / cards / atlas / npc-brain / npc-listen / npc-tactics / mascot)
+│   └── lib/             # Foundry 非依存の純粋関数 (html / commands / chat-filter / rooms / scene-docs / cards / atlas / npc-brain / npc-listen / npc-tactics / mascot / adventure-log)
 ├── ai_gm_server.py      # サーバー起動スクリプト (実装は gm_server/)
-├── gm_server/           # バックエンド実装 (config / logs (詳細ログ: ~/ai-gm-logs/<日付>/server.log) / text / protocol / tts (edge-tts と Irodori-TTS の切り替え) / llm / progress / deadline / dungeon_scene / builder / handlers (npc_dialogue / npc_turn ほか) / router / app)
+├── gm_server/           # バックエンド実装 (config / logs (詳細ログ: ~/ai-gm-logs/<日付>/server.log) / text / protocol / tts (edge-tts と Irodori-TTS の切り替え) / llm / progress / deadline / dungeon_scene / builder / handlers (npc_dialogue / npc_turn / adventure_log ほか) / router / app)
 ├── tests/
 │   ├── python/          # pytest (python3 -m pytest)
 │   └── js/              # node:test (npm test)
@@ -48,7 +49,8 @@ ai-gm-bridge/
 │   ├── builder_rules.txt         # シナリオビルダー共通ルール (整合性・マンネリ防止・自己点検)
 │   ├── builder_*_prompt.txt      # シナリオビルダー各段階 (region / settlement / wilderness / site_lore / site_rooms)
 │   ├── npc_dialogue_prompt.txt   # NPC 会話 (知識の境界・記憶の鮮明度・判定の提案)
-│   └── npc_tactics_prompt.txt    # NPC 自律戦闘 (手番の行動・移動の意図)
+│   ├── npc_tactics_prompt.txt    # NPC 自律戦闘 (手番の行動・移動の意図)
+│   └── adventure_log_prompt.txt  # 冒険記録 (リプレイ風の本文・取得物・人物・場所)
 ├── tools/
 │   ├── prompt_manager.py    # プロンプト補完・ワールド情報取得
 │   ├── dungeon_generator.py # ダンジョン自動生成ツール (幾何学/壁/グラフ)

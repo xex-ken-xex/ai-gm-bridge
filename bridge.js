@@ -5,6 +5,7 @@
 //   scripts/actions.js   サーバーからの action 処理
 
 import { handleServerAction } from "./scripts/actions.js";
+import { collectAdventureLog, setLogSender } from "./scripts/adventure-log.js";
 import { openScenarioBuilder, setBuilderSender } from "./scripts/builder.js";
 import { buildRoomNarrationHtml } from "./scripts/lib/cards.js";
 import { generatedFlags, MODULE_ID, playerMessageToForward } from "./scripts/lib/chat-filter.js";
@@ -25,6 +26,7 @@ import {
   mascotOnConnecting,
   mascotOnConnection,
   mascotOnSend,
+  registerMascotMenuItem,
   registerMascotSettings,
   registerVoiceTestMenu,
 } from "./scripts/mascot.js";
@@ -216,6 +218,15 @@ Hooks.once("ready", async function() {
   setNpcSender(sendToServer);
   safely("メニュー", () => registerVoiceTestMenu(sendToServer));
   setCombatSender(sendToServer);
+  setLogSender(sendToServer);
+  // Geminiちゃんのメニューから冒険日誌を更新する (最新の回に書き足す。回が無ければ作る)
+  safely("メニュー", () => registerMascotMenuItem({
+    id: "adventure-log",
+    icon: "📖",
+    label: "冒険記録を更新",
+    gmOnly: true,
+    onSelect: () => collectAdventureLog("update"),
+  }));
   // 戦闘トラッカーで NPC の手番になったら AI に行動を頼む (設定「NPC の自律戦闘」で切り替え)
   registerNpcCombatHooks();
 

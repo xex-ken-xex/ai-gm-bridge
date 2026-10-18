@@ -195,3 +195,10 @@ test("声のテスト: GM のメニューにだけ出し、声の種類をサー
   assert.equal(mascotForAction({ action: "play_sound", speaker: "support" }).public, true);
   assert.equal(mascotForAction({ action: "play_sound" }).state, "listening");
 });
+
+test("mascotForEvent / mascotForAction: 冒険記録はみんなの画面に出す", () => {
+  assert.equal(mascotForEvent({ event: "adventure_log_request" }).state, "thinking");
+  const done = mascotForAction({ action: "adventure_log_write" });
+  assert.equal(done.state, "speaking");
+  assert.equal(done.public, true);
+});

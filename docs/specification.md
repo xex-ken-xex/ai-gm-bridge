@@ -91,7 +91,7 @@ flowchart TD
 - GM の画面での状態を `game.socket` (`module.ai-gm-bridge`、`sync_mascot`) で全員に配る。`module.json` の `"socket": true` が必要 (変更後は Foundry の再起動が要る)。
   ビルダーの下書き・途中経過・`/ai` の相談・GM への確認・接続の状態など、GM だけの操作は状態も台詞も配らない。受信側は GM からのものだけを受け付け、台詞は `textContent` で表示する。
 - GM の画面では、サーバーにつながるまで「切断」で表示する (Python サーバーを起動していないと気づけるように)。
-- クリック (左でも右でも。ドラッグとは 5px 以上動いたかで分ける) でメニューを出す。GM は「シナリオビルダー」「NPC ブレイン管理」、全員が「あいさつ」「位置を戻す」(保存した位置も消す)「マスコットを隠す」(設定「マスコットを表示」を切る)。
+- クリック (左でも右でも。ドラッグとは 5px 以上動いたかで分ける) でメニューを出す。GM は「シナリオビルダー」「NPC ブレイン管理」「冒険記録を更新」(サーバー接続時)、全員が「あいさつ」「位置を戻す」(保存した位置も消す)「マスコットを隠す」(設定「マスコットを表示」を切る)。
   メニューの外を押すか Esc で閉じる。ほかの機能は `registerMascotMenuItem({ id, icon, label, gmOnly, onSelect })` で項目を足せる (あいさつの後ろに入る)。
 - サーバーと繋ぐ GM のメニューには「声のテスト (ナレーター)」「声のテスト (Geminiちゃん)」も出る (`registerVoiceTestMenu`)。押すと `voice_test` を送り、見本のセリフが GM の画面でだけ鳴る (`play_sound` の `gm_only`)。どのエンジン (Irodori-TTS / edge-tts) で鳴ったか、Irodori で作れなかった理由、使った声 (参照音声・説明文・種) は GM の画面の通知 (`progress`) に出る。テストのときは、Irodori に失敗したあとの edge-tts だけの間 (`AI_GM_IRODORI_RETRY_AFTER`) を待たずにもう一度 Irodori を試す。
 - ウィンドウ (シート・ビルダー・ジャーナル) より下、キャンバスと画面の枠より上に出す (`z-index: 70`)。
@@ -342,13 +342,13 @@ GM が対話型チャットカード上の選択肢ボタンをクリックし�
   "actor_names": ["…"],
   "recent_cards": ["region.terrain.salt_flat"],
   "settlement_scale": "(settlement のみ)",
-  "site_mode": "(site_lore のみ) ruins | underground", "size_key": "small | medium",
+  "site_mode": "(site_lore のみ) ruins | underground", "size_key": "small | medium | large",
   "actors_context": { "pcs": [{ "name": "…", "info": "…", "bio": "…" }], "npcs": [] }
 }
 ```
 
 `builder_build_scene` は上記の文脈に加えて `scene_mode`, `name`, `public_lore`, `dm_secrets` を送ります。
-旅路は `map` (`{"seed": …}`) と `landmarks`、遺跡は `size_key` (small / medium)・`density`・`loop_ratio`・`sub_objectives` を送ります。
+旅路は `map` (`{"seed": …}`) と `landmarks`、遺跡は `size_key` (small 20x20 / medium 50x50 (既定) / large 100x100)・`density`・`loop_ratio`・`sub_objectives` を送ります。
 サーバーは `create_dungeon_scene` で応答します。
 遺跡は、ジェネレータ (`tools/dungeon_generator.py`) で地図・壁・区画を作った時点で仮の区画名のまま `scene_key` 付きの `create_dungeon_scene` を送り、
 AI が区画の情景を書き終えたものから `update_dungeon_rooms` で差し替えます (AI の応答を待たずにシーンを開けます)。
@@ -358,6 +358,21 @@ AI が区画の情景を書き終えたものから `update_dungeon_rooms` で�
 
 `builder_generate_stage` と `builder_build_scene` は `auto_extend` (bool。ビルダー画面の「⏱️ タイムアウトしたら自動で延長する」、既定 false) を送ります。
 true のときはタイムアウトしても GM に確認せず、同じ秒数だけ自動で延長します (最大 5 回。それ以降は通常どおりカードで確認します)。
+
+#### 冒険記録 (`adventure_log_request`)
+`/ai 記録を作って` (新しい回) / `/ai 記録を更新して` (最新の回に書き足す) に対してサーバーが `adventure_log_collect` を返すと、FVTT (GM) が材料を集めて送ります。
+マスコットのメニュー「冒険記録を更新」からも送ります (回が無ければ新しく作ります)。
+
+- `transcript`: 前の記録より後のチャット (古い順の `{speaker, text}`)。ウィスパー・サポートGM との相談・`/` のコマンドは除き、ダイスは「🎲 式 → 出目」にします。新しいものが無ければ送らず、GM に「まだない」と伝えます。
+- `inventory_changes`: プレイヤー所有の character の所持品が、前の記録から増えた分 (`{holder, name, quantity}`。初めての記録では空)。数えるのは物品 (weapon / equipment / consumable / tool / loot / container) だけで、呪文・特技・クラスの特徴は数えません。
+- `place_hints`: その間に発言があったシーンのうち、ナビに出しているものの表示名 (`navName`、無ければ名前)。サーバーに送れなかったときは GM に通知します。`previous_replay`: 更新のときの最新の回の本文 (HTML)。
+
+```json
+{ "event": "adventure_log_request", "mode": "create", "session_number": 2,
+  "transcript": [{ "speaker": "アリア", "text": "宿の女将に話を聞こう" }], "pcs": ["アリア"],
+  "place_hints": ["霧の港町"], "inventory_changes": [{ "holder": "アリア", "name": "灯台の鍵", "quantity": 1 }],
+  "previous_replay": "" }
+```
 
 集落と旅路の下書きは、AI の応答が長くタイムアウトしやすいため 2 回に分けて問い合わせます
 (集落: 骨組み → 人物と秘密、旅路: 骨組みと地点の一覧 → 地点の描写を 5 地点ずつ。Gemini は並列、agy は 1 本ずつ)。FVTT に返す `builder_stage_result` の形は 1 回のときと同じです。
@@ -414,8 +429,10 @@ GM 向けに対話型の選択肢ボタンを含むチャットカードを表�
   "title": "ダンジョン自動生成",
   "message": "生成するダンジョンの規模を選択してください：",
   "choices": [
-    { "label": "小 (100x100マス)", "value": "dungeon_size:small" },
-    { "label": "中 (500x500マス)", "value": "dungeon_size:medium" }
+    { "label": "小 (20x20マス)", "value": "dungeon_size:small" },
+    { "label": "中 (50x50マス)", "value": "dungeon_size:medium" },
+    { "label": "大 (100x100マス)", "value": "dungeon_size:large" },
+    { "label": "巨大 (200x200マス)", "value": "dungeon_size:xlarge" }
   ]
 }
 ```
@@ -435,13 +452,13 @@ PC のトークン (プレイヤー所有、または所有者未設定の `char
 
 #### 5. ダンジョンシーン構築 (`create_dungeon_scene`)
 生成されたマップ画像とパラメータを元に、FVTT 内部で `Scene.create` を実行させます。
-`/ai ダンジョン` のウィザードは「舞台 (`dungeon_mode:<mode>`) → サイズ → 部屋密度 → 周回路」の順に選択カードを出します (野外は部屋密度を飛ばします)。
+`/ai ダンジョン` のウィザードは「舞台 (`dungeon_mode:<mode>`) → サイズ → 部屋密度 → 周回路」の順に選択カードを出します (野外は部屋密度を飛ばします)。サイズは小 20x20・中 50x50・大 100x100・巨大 200x200 マスです (野外は 9 地点前後が入るよう中から選びます)。
 
 ```json
 {
   "action": "create_dungeon_scene",
   "scene_mode": "underground",
-  "name": "地下迷宮 (小: 100x100)",
+  "name": "地下迷宮 (大: 100x100)",
   "background_src": "dungeon_underground_100x100_1728712345.png",
   "grid_width": 100,
   "grid_height": 100,
@@ -537,7 +554,7 @@ PC のトークン (プレイヤー所有、または所有者未設定の `char
   "cards": [{ "id": "wilderness.road.pilgrim", "axis": "道の性格", "text": "…" }],
   "seed": 1234,
   "fallback": false,
-  "map": { "seed": 1234, "size_key": "small", "density": 0.4, "loop_ratio": 0.3, "points": 9 }
+  "map": { "seed": 1234, "size_key": "large", "density": 0.4, "loop_ratio": 0.3, "points": 9 }
 }
 ```
 
@@ -555,6 +572,26 @@ PC のトークン (プレイヤー所有、または所有者未設定の `char
 { "action": "builder_progress", "kind": "build", "finished": false, "stage": "site_lore", "step": 2, "steps": 2,
   "step_label": "区画の情景", "detail": "完了 1/2", "elapsed": 40, "remaining": 260 }
 ```
+
+#### 8. 冒険記録 (`adventure_log_collect` / `adventure_log_write`)
+`adventure_log_collect` (`{"action": "adventure_log_collect", "mode": "create" | "update"}`) は、FVTT に `adventure_log_request` の材料を集めてもらう指示です。
+`adventure_log_write` は AI (`prompts/adventure_log_prompt.txt`) が書いたリプレイ風の本文と一覧です。
+AI の応答が読めなければ `fallback: true` で、チャットの終わりの方の抜粋と所持品の差分だけを返します。所持品の差分は AI が書き漏らしても `items` に入ります。
+
+```json
+{ "action": "adventure_log_write", "mode": "create", "session_number": 2, "title": "霧の港と灯台の噂",
+  "replay": "一行は霧の港町にたどり着いた。\n女将マルタ「北の灯台に近づいちゃいけないよ」",
+  "items": [{ "name": "灯台の鍵", "holder": "アリア", "note": "女将から預かった" }],
+  "people": [{ "name": "女将マルタ", "note": "宿の女将。灯台を恐れている" }],
+  "places": [{ "name": "霧の港町", "note": "最初に着いた町" }], "fallback": false }
+```
+
+FVTT は「📖 冒険日誌」ジャーナル (プレイヤーも閲覧可) に書きます (`scripts/adventure-log.js`)。
+
+- 回ごとのページ「第N回 見出し」: 新しい回は本文のページを作り、更新は最新の回の本文の後に `<hr>` を挟んで書き足します (GM が書き換えた本文は残ります)。
+- 一覧のページ「🎒 取得物」「🤝 知り合った人々」「🗺️ 訪れた場所」: 人物・場所は名前、取得物は名前と持ち主で 1 件にまとめ、初めて記録した回を添えます。一覧は記録のたびに flag から作り直すので、ページの先頭にその旨を書きます。
+- ジャーナルの flag `adventure_log` に、回の区切り (`sessions[].since` / `until`: どのメッセージまで読んだか)・一覧・PC の所持品の控えを保存します。
+- 書き終えたら、Geminiちゃんが GM 宛てに「冒険日誌を開く」ボタン付きで知らせます。
 
 ---
 
