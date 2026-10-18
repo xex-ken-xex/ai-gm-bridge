@@ -129,6 +129,9 @@ main() {
 
   if [ "$old_head" != "$new_head" ]; then
     echo "[INFO] コードが切り替わりました。FVTT を開いているブラウザは再読み込み (F5) してください。"
+    if ! git diff --quiet "$old_head" "$new_head" -- module.json; then
+      echo "[INFO] module.json も変わっています。F5 だけでは反映されないので、FVTT で「セットアップに戻る」からワールドを起動し直してください。"
+    fi
     if ! git diff --quiet "$old_head" "$new_head" -- requirements.txt; then
       echo "[INFO] requirements.txt が変わっています。ライブラリを更新します..."
       python3 -m pip install -q -r requirements.txt --user 2>/dev/null \
