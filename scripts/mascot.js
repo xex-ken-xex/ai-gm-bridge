@@ -169,8 +169,12 @@ function enableDrag(el) {
 const BASE_MENU_ACTIONS = Object.freeze({
   builder: () => gmActions.openBuilder?.(),
   brain: () => gmActions.openBrain?.(),
-  // 自分の画面だけで話す (全員には配らない)
-  greet: () => controller?.set({ state: "speaking", text: `私は${MASCOT_TITLE}、${MASCOT_NAME}だよ！困ったことがあったら手伝うね、任せて！`, durationMs: 4000 }),
+  // 自分の画面だけで話す (全員には配らない)。待機中だけ口を動かし、切断・考え中などの表示は消さない
+  greet: () => {
+    const text = `私は${MASCOT_TITLE}、${MASCOT_NAME}だよ！困ったことがあったら手伝うね、任せて！`;
+    if (controller?.current.state === "idle") controller.set({ state: "speaking", text, durationMs: 4000 });
+    else controller?.say(text, 4000);
+  },
   reset: () => resetPosition(),
   hide: () => {
     ui.notifications?.info(`${MASCOT_NAME}を隠したよ。設定「マスコットを表示」でまた呼んでね！`);
@@ -218,7 +222,7 @@ function openMenu() {
   placeMenu();
   // キーボードでも選べるように最初の項目へ。吹き出しで一言 (自分の画面だけ)
   menu.querySelector("button")?.focus();
-  controller?.set({ state: "idle", text: "どうする？任せて！", durationMs: 3000 });
+  controller?.say("どうする？任せて！", 3000);
   // メニューの外を押す・Esc で閉じる
   setTimeout(() => {
     document.addEventListener("pointerdown", onOutsidePointer, true);

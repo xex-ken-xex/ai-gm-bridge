@@ -150,11 +150,13 @@ export class MascotController {
     this.setTimer = setTimer;
     this.clearTimer = clearTimer;
     this.timer = null;
+    this.bubbleTimer = null;
     this.current = { state: "idle", text: "" };
   }
 
   set(input) {
     const { state, text, durationMs } = normalizeMascotState(input);
+    this.clearBubbleTimer();
     if (this.timer !== null) {
       this.clearTimer(this.timer);
       this.timer = null;
@@ -170,9 +172,33 @@ export class MascotController {
     return this.current;
   }
 
+  /**
+   * 状態はそのままで、吹き出しの台詞だけを出す (メニューを開いたときの一言など)。
+   * 切断・考え中の表示を消さない。時間が来たら台詞だけを消す (状態の戻るタイマーには触らない)
+   */
+  say(text, durationMs = 3000) {
+    const value = normalizeMascotState({ state: this.current.state, text, durationMs });
+    this.clearBubbleTimer();
+    this.current = { state: this.current.state, text: value.text };
+    this.render(this.current);
+    this.bubbleTimer = this.setTimer(() => {
+      this.bubbleTimer = null;
+      if (this.current.text !== value.text) return;
+      this.current = { state: this.current.state, text: "" };
+      this.render(this.current);
+    }, value.durationMs);
+    return this.current;
+  }
+
+  clearBubbleTimer() {
+    if (this.bubbleTimer !== null) this.clearTimer(this.bubbleTimer);
+    this.bubbleTimer = null;
+  }
+
   dispose() {
     if (this.timer !== null) this.clearTimer(this.timer);
     this.timer = null;
+    this.clearBubbleTimer();
   }
 }
 
