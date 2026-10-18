@@ -130,7 +130,7 @@ $body = @{
   irodori = @{ caption = "落ち着いた大人の女性の声。物語を語り聞かせるように、穏やかで聞き取りやすい話し方。" }
 } | ConvertTo-Json
 $out = Join-Path ([Environment]::GetFolderPath("Desktop")) "irodori_test.mp3"
-Invoke-WebRequest http://127.0.0.1:8088/v1/audio/speech -Method Post `
+Invoke-WebRequest -UseBasicParsing http://127.0.0.1:8088/v1/audio/speech -Method Post `
   -ContentType "application/json; charset=utf-8" -Body ([Text.Encoding]::UTF8.GetBytes($body)) -OutFile $out
 Start-Process $out
 ```
@@ -139,6 +139,7 @@ Start-Process $out
 
 - PowerShell の `curl` は別のコマンドの別名なので、`curl.exe` と書きます。
 - 日本語が文字化けしないよう、本文は UTF-8 のバイト列にして送っています。
+- `-UseBasicParsing` は、Windows PowerShell 5.1 で Internet Explorer の初期設定のエラーで止まらないようにするためです。
 - `curl.exe` が「接続できません」になるときは、WSL の localhost の転送が切れています。手順 4 の起動を `--host 0.0.0.0` にして、もう一度試してください。
 
 ## 5. AI GM のサーバーで使う
@@ -159,7 +160,7 @@ python3 ai_gm_server.py
 
 ## 6. ナレーターの声を好みの声にする
 
-ナレーターの声は、参照音声 (`AI_GM_IRODORI_NARRATOR_VOICE`) → ナレーターの説明文 (`AI_GM_IRODORI_CAPTION_NARRATOR`) → 女性の説明文 (`AI_GM_IRODORI_CAPTION_FEMALE`) の順に、設定されているものを使います。乱数の種はいつも `AI_GM_IRODORI_SEED` (既定 `1234`) です。説明文だけだと作るたびに声が少し揺れるので、種を固定しています。NPC の声はここの設定では変わりません (種を変えたときだけ NPC の声も変わります)。
+ナレーターの声は、参照音声 (`AI_GM_IRODORI_NARRATOR_VOICE`) → ナレーターの説明文 (`AI_GM_IRODORI_CAPTION_NARRATOR`) → 女性の説明文 (`AI_GM_IRODORI_CAPTION_FEMALE`) の順に、設定されているものを使います。乱数の種はいつも `AI_GM_IRODORI_SEED` (既定 `1234`) です。説明文だけだと作るたびに声が少し揺れるので、種を固定しています。NPC と Geminiちゃんの声はここの設定では変わりません (種を変えたときだけ声も変わります。Geminiちゃんの声は `AI_GM_IRODORI_CAPTION_SUPPORT` で変えられます)。
 
 次の順に進めると、好みの声に寄せていけます。どれも Irodori-TTS-Server を起動した状態 (手順 4) で、Windows の PowerShell で行います。
 
@@ -174,7 +175,7 @@ $body = @{
   irodori = @{ caption = $caption; seed = 1234 }
 } | ConvertTo-Json
 $out = Join-Path ([Environment]::GetFolderPath("Desktop")) "narrator_test.mp3"
-Invoke-WebRequest http://127.0.0.1:8088/v1/audio/speech -Method Post `
+Invoke-WebRequest -UseBasicParsing http://127.0.0.1:8088/v1/audio/speech -Method Post `
   -ContentType "application/json; charset=utf-8" -Body ([Text.Encoding]::UTF8.GetBytes($body)) -OutFile $out
 Start-Process $out
 ```
@@ -192,7 +193,7 @@ foreach ($seed in 1, 7, 42, 100, 1234, 2024, 5555, 9999) {
     model = "irodori-tts"; input = "冒険者たちよ、よく来た。この先は古い遺跡だ。"; voice = "none"; response_format = "mp3"
     irodori = @{ caption = $caption; seed = $seed }
   } | ConvertTo-Json
-  Invoke-WebRequest http://127.0.0.1:8088/v1/audio/speech -Method Post `
+  Invoke-WebRequest -UseBasicParsing http://127.0.0.1:8088/v1/audio/speech -Method Post `
     -ContentType "application/json; charset=utf-8" -Body ([Text.Encoding]::UTF8.GetBytes($body)) `
     -OutFile (Join-Path $dir "seed_$seed.mp3")
 }

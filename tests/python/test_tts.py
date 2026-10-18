@@ -311,6 +311,18 @@ def test_narrator_caption_can_differ_from_female_npc(tmp_path, monkeypatch):
     assert post.calls[1][1]["irodori"]["caption"] == tts_mod.config.IRODORI_CAPTION_FEMALE
 
 
+def test_support_voice_ignores_narrator_settings(tmp_path, monkeypatch):
+    monkeypatch.setattr(tts_mod.config, "IRODORI_CAPTION_NARRATOR", "渋い老人の語り部の声。")
+    monkeypatch.setattr(tts_mod.config, "IRODORI_NARRATOR_VOICE", "narrator")
+    post = FakePost()
+    synth = make(tmp_path, post)
+    run(synth.synthesize("できたよ！", "a.mp3", **tts_mod.support_voice()))
+    body = post.calls[0][1]
+    assert body["voice"] != "narrator"
+    assert body["irodori"]["caption"] == tts_mod.config.IRODORI_CAPTION_SUPPORT
+    assert body["irodori"]["seed"] != tts_mod.config.IRODORI_SEED
+
+
 def test_warm_up_failure_hints_narrator_voice_setting(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(tts_mod.config, "IRODORI_NARRATOR_VOICE", "narator")
     synth = make(tmp_path, FakePost(fail=True), get=lambda *a: b"{}")

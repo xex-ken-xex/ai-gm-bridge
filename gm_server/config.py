@@ -66,6 +66,10 @@ IRODORI_CAPTION_FEMALE = os.environ.get(
 ).strip()
 # ナレーターの声の説明文。空なら AI_GM_IRODORI_CAPTION_FEMALE と同じ (女性の NPC と分けたいときに設定する)
 IRODORI_CAPTION_NARRATOR = os.environ.get("AI_GM_IRODORI_CAPTION_NARRATOR", "").strip() or IRODORI_CAPTION_FEMALE
+# サポート GM (Geminiちゃん) の声の説明文。ナレーターの声を変えても Geminiちゃんの声は変わらないようにする
+IRODORI_CAPTION_SUPPORT = os.environ.get(
+    "AI_GM_IRODORI_CAPTION_SUPPORT", "明るく元気な若い女性の声。親しみやすく、はきはきとした話し方。"
+).strip()
 IRODORI_CAPTION_MALE = os.environ.get(
     "AI_GM_IRODORI_CAPTION_MALE", "落ち着いた大人の男性の声。低めで、はっきりと聞き取りやすい話し方。"
 ).strip()

@@ -45,6 +45,11 @@ def rate_to_speed(rate: Optional[str]) -> float:
 
 
 # edge-tts のボイス名に合わせた声の説明文 (VoiceDesign)。知らないボイス名は女性の説明文を使う
+def support_voice() -> dict:
+    """サポート GM (Geminiちゃん) の声。synthesize(**support_voice()) で渡す (ナレーター扱いにしない)"""
+    return {"voice": DEFAULT_VOICE, "caption": config.IRODORI_CAPTION_SUPPORT}
+
+
 def default_caption(voice: Optional[str], pitch: Optional[str] = None) -> str:
     """声の説明文が無いときの既定。声の高さ (edge-tts の Hz) が大きくずれていれば一言足す"""
     caption = config.IRODORI_CAPTION_MALE if "Keita" in (voice or "") else config.IRODORI_CAPTION_FEMALE

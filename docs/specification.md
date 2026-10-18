@@ -204,6 +204,7 @@ FVTT のビルダー画面にも同じ内容を 2 行で出します (`builder_p
 | `AI_GM_IRODORI_RETRY_AFTER` | `60` | Irodori に失敗したあと edge-tts だけを使う時間 (秒) |
 | `AI_GM_IRODORI_CAPTION_FEMALE` | 落ち着いた大人の女性の声。… | 女性の NPC (ボイスが Keita 以外) の声の説明文 (VoiceDesign)。`AI_GM_IRODORI_CAPTION_NARRATOR` が空ならナレーターもこの声 |
 | `AI_GM_IRODORI_CAPTION_NARRATOR` | (`AI_GM_IRODORI_CAPTION_FEMALE` と同じ) | ナレーターの声の説明文。設定するとナレーターだけ女性の NPC と別の声にできる |
+| `AI_GM_IRODORI_CAPTION_SUPPORT` | 明るく元気な若い女性の声。… | サポート GM (Geminiちゃん) の声の説明文。ナレーターの声の設定には影響されない |
 | `AI_GM_IRODORI_CAPTION_MALE` | 落ち着いた大人の男性の声。… | 男性の NPC (ボイスが Keita) の声の説明文 |
 | `AI_GM_IRODORI_SEED` | `1234` | 声の揺れを抑える乱数の種。ナレーターはこの値、NPC はこの値とボイス名・声の高さ・説明文から決めた値。空にすると毎回変わる |
 | `AI_GM_IRODORI_NARRATOR_VOICE` | (なし) | ナレーターの参照音声の ID (Irodori-TTS-Server の voices フォルダのファイル名)。設定するとナレーターはこの声だけで作る (説明文は付けない) |
@@ -229,7 +230,7 @@ FVTT のビルダー画面にも同じ内容を 2 行で出します (`builder_p
 2. **種を選ぶ**: 同じ説明文で種だけを変えた音声を何本か作って聴き比べ、気に入った番号を `AI_GM_IRODORI_SEED` に入れる。
 3. **参照音声にする** (いちばん確実): 気に入った 1 本 (または自分で録った声、数秒〜2 分) を Irodori-TTS-Server の `voices` フォルダに `narrator.mp3` などの名前で置き、`AI_GM_IRODORI_NARRATOR_VOICE=narrator` にする。`voices` フォルダは置いた時点で使われる (Irodori の再起動は不要)。
 
-環境変数を変えたら AI GM のサーバーを再起動する。名前が `voices` フォルダのファイルと合わないと Irodori が失敗し edge-tts で読み上げるため、起動時のあいさつ (モデルの読み込み) に失敗したときのログに `AI_GM_IRODORI_NARRATOR_VOICE` の名前を確かめるよう書く。NPC の声はこれらの設定の影響を受けない (`AI_GM_IRODORI_SEED` を変えたときだけ NPC の種も変わる)。
+環境変数を変えたら AI GM のサーバーを再起動する。名前が `voices` フォルダのファイルと合わないと Irodori が失敗し edge-tts で読み上げるため、起動時のあいさつ (モデルの読み込み) に失敗したときのログに `AI_GM_IRODORI_NARRATOR_VOICE` の名前を確かめるよう書く。NPC と Geminiちゃん (シーン完成などの報告) の声はこれらの設定の影響を受けない (`AI_GM_IRODORI_SEED` を変えたときだけ種も変わる)。Geminiちゃんは `AI_GM_IRODORI_CAPTION_SUPPORT` の説明文で話す (edge-tts のときは `ja-JP-NanamiNeural`)。
 
 ---
 

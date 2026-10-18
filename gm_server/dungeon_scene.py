@@ -10,7 +10,7 @@ from gm_server import protocol
 from gm_server.config import AGY_TIMEOUT, GEMINI_TIMEOUT, LLM_CONCURRENCY, MAPGEN_TIMEOUT, SPEAKER_SUPPORT
 from gm_server.deadline import run_with_deadline
 from gm_server.progress import log, log_detail, log_group, log_step
-from gm_server.tts import voice_filename
+from gm_server.tts import support_voice, voice_filename
 from tools.dungeon_generator import LIGHT_PRESET_KEYS, SCENE_MODES, DungeonGenerator
 from tools.prompt_manager import (
     build_lore_prompt,
@@ -470,6 +470,6 @@ async def send_scene(
         return scene_msg
 
     file_name = voice_filename("voice_dungeon")
-    if await ctx.tts.synthesize(speech_text, file_name):
+    if await ctx.tts.synthesize(speech_text, file_name, **support_voice()):
         await ctx.send(protocol.play_sound(file_name, 1.0, subtitle=speech_text))
     return scene_msg

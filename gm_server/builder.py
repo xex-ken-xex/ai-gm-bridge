@@ -33,7 +33,7 @@ from gm_server.dungeon_scene import (
     send_scene,
 )
 from gm_server.progress import log, log_detail, log_group, log_step
-from gm_server.tts import voice_filename
+from gm_server.tts import support_voice, voice_filename
 from tools.dungeon_generator import LIGHT_PRESET_KEYS, DungeonGenerator
 from tools.prompt_manager import get_active_world_info, prioritize_key_topologies
 from tools.scenario_decks import draw_cards
@@ -573,5 +573,5 @@ async def build_scene(ctx, data, scene_mode, name, site_public, site_dm, seed, s
     speech_text = f"{mode_name}『{name}』の全{len(selected)}区画のうち、{got}区画に情景を入れたよ！"
     await ctx.send(protocol.chat(f"🏰 {speech_text}", speaker=SPEAKER_SUPPORT))
     file_name = voice_filename("voice_dungeon")
-    if await ctx.tts.synthesize(speech_text, file_name):
+    if await ctx.tts.synthesize(speech_text, file_name, **support_voice()):
         await ctx.send(protocol.play_sound(file_name, 1.0, subtitle=speech_text))
