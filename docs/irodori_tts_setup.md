@@ -16,6 +16,8 @@ Irodori は今の Ubuntu (AI GM のサーバーと同じ環境) に入れても�
 
 ### Windows 側 (PowerShell を「管理者として実行」)
 
+最初に `wsl -l -v` で、今入っている Ubuntu の名前を確かめます (`Ubuntu` か `Ubuntu-24.04` などで、人によって違います)。
+
 ```powershell
 wsl --update                                   # --name が使える新しい WSL にする
 wsl --install -d Ubuntu-24.04 --name Irodori   # -d (--distribution) は入れる Linux、--name は付ける名前
@@ -29,6 +31,14 @@ wsl --install -d Ubuntu-24.04 --name Irodori   # -d (--distribution) は入れ�
   wsl --export Ubuntu-24.04 C:\wsl\ubuntu.tar
   wsl --import Irodori C:\wsl\Irodori C:\wsl\ubuntu.tar
   ```
+
+  - AI GM 用の Ubuntu がもともと `Ubuntu-24.04` だと、`--install` は「入っている」で終わり、`--export` は今の環境をまるごと写します。その場合は `--install` に `Ubuntu-22.04` など別の版を指定し、その名前で export してください。
+  - `--import` で取り込んだ `Irodori` は root で開きます。ふだんのユーザーで開くよう、次のように設定します (`<ユーザー名>` は Ubuntu を入れたときに決めた名前)。
+
+    ```powershell
+    wsl -d Irodori -u root -- bash -c "printf '[user]\ndefault=<ユーザー名>\n' >> /etc/wsl.conf"
+    wsl --terminate Irodori
+    ```
 
 - 開くときは `wsl -d Irodori`、一覧は `wsl -l -v` です。
 
@@ -105,7 +115,7 @@ curl http://127.0.0.1:8088/v1/audio/speech \
   --output test.mp3
 ```
 
-`test.mp3` ができれば準備完了です。Windows のエクスプローラーで `\\wsl$\Irodori\home\<ユーザー名>\Irodori-TTS-Server` (今の Ubuntu に入れたなら `\\wsl$\Ubuntu-24.04\…`) を開くと再生できます。
+`test.mp3` ができれば準備完了です。Windows のエクスプローラーで `\\wsl$\Irodori\home\<ユーザー名>\Irodori-TTS-Server` (今の Ubuntu に入れたなら、`Irodori` の部分を `wsl -l -v` に出る名前にします) を開くと再生できます。
 
 ## 5. AI GM のサーバーで使う
 
