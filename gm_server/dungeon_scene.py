@@ -76,7 +76,7 @@ def is_dungeon_intent(prompt: str) -> bool:
 def mode_card() -> Dict:
     return protocol.interactive_card(
         title="ダンジョン自動生成",
-        message="サポートGM (agy) です。生成する舞台の種類を選択してください：",
+        message="Geminiちゃんだよ、マップ作りは任せて！どんな舞台にするか選んでね：",
         choices=[
             {"label": "地下迷宮 (石壁・扉・隠し扉)", "value": "dungeon_mode:underground"},
             {"label": "地上の廃墟 (崩れた壁・瓦礫越しに見通せる)", "value": "dungeon_mode:ruins"},
@@ -86,10 +86,10 @@ def mode_card() -> Dict:
 
 
 def size_card(mode_label: str = "") -> Dict:
-    lead = f"舞台「{mode_label}」を承りました。" if mode_label else "サポートGM (agy) です。"
+    lead = f"舞台は「{mode_label}」だね、了解！" if mode_label else "Geminiちゃんだよ、マップ作りは任せて！"
     return protocol.interactive_card(
         title="ダンジョン自動生成",
-        message=f"{lead}生成するマップの規模を選択してください：",
+        message=f"{lead}マップの広さを選んでね：",
         choices=[
             {"label": "小 (100x100マス)", "value": "dungeon_size:small"},
             {"label": "中 (500x500マス)", "value": "dungeon_size:medium"},
@@ -102,7 +102,7 @@ def size_card(mode_label: str = "") -> Dict:
 def density_card(size_key: str, size_label: str) -> Dict:
     return protocol.interactive_card(
         title="ダンジョン構造 (部屋の密度)",
-        message=f"サイズ「{size_label}」を承りました。部屋の密集度（部屋数）を選んでください：",
+        message=f"広さは「{size_label}」だね。部屋の密集度（部屋数）はどうする？",
         choices=[
             {"label": "標準 (適度な部屋数 / 20部屋前後)", "value": f"dungeon_density:{size_key}:0.4"},
             {"label": "密集 (部屋多め / 35部屋前後)", "value": f"dungeon_density:{size_key}:0.7"},
@@ -114,7 +114,7 @@ def density_card(size_key: str, size_label: str) -> Dict:
 def loop_card(size_key: str, density: float, density_label: str, prev_kind: str = "部屋密度") -> Dict:
     return protocol.interactive_card(
         title="ダンジョン構造 (周回路)",
-        message=f"{prev_kind}「{density_label}」を承りました。周回路（ループ・迂回ルート）の多さを選んでください：",
+        message=f"{prev_kind}は「{density_label}」だね。最後に、周回路（ループ・迂回ルート）の多さを選んでね：",
         choices=[
             {"label": "袋小路のみ (純木構造 / 0%)", "value": f"dungeon_loop:{size_key}:{density}:0.0"},
             {"label": "標準 (適度な周回路 / 20%)", "value": f"dungeon_loop:{size_key}:{density}:0.2"},
@@ -368,7 +368,7 @@ async def generate_and_create_dungeon_scene(
     is_custom_theme = bool(user_prompt and user_prompt not in GENERIC_DUNGEON_PROMPTS)
     target_theme_desc = f"GM指定テーマ『{user_prompt}』" if is_custom_theme else f"ワールド設定『{world_desc}』"
     await ctx.send(protocol.chat(
-        f"🏰 <b>{mode_name}の構造を算出しました</b> (部屋数: {len(gen.rooms)}部屋)<br>📜 {target_theme_desc} に基づき、伝承・生態系と各部屋の情景をAI補完中...",
+        f"🏰 <b>{mode_name}の構造ができたよ！</b> (部屋数: {len(gen.rooms)}部屋)<br>📜 {target_theme_desc} をもとに、伝承・生態系と各部屋の情景を考えているところ…",
         speaker=SPEAKER_SUPPORT,
     ))
 
@@ -393,7 +393,7 @@ async def generate_and_create_dungeon_scene(
         lore_data = fallback_lore(size_name)
 
     await ctx.send(protocol.chat(
-        f"⚔️ <b>伝承決定:</b> 『{lore_data.get('dungeon_name')}』 - {lore_data.get('floor_title')}<br>各部屋のトポロジー（接続数・深さ・空室配分）に基づき情景とGMメモを補完中...",
+        f"⚔️ <b>伝承決定:</b> 『{lore_data.get('dungeon_name')}』 - {lore_data.get('floor_title')}<br>次は各部屋のつながり（接続数・深さ・空室の配分）を見ながら、情景と GM メモを書いていくね…",
         speaker=SPEAKER_SUPPORT,
     ))
 
@@ -405,7 +405,7 @@ async def generate_and_create_dungeon_scene(
 
     # 8. FVTTへシーン作成コマンド送信 & 9. 音声報告
     scene_title = f"{lore_data.get('dungeon_name', default_scene_name)} - {lore_data.get('floor_title', f'第1層 ({size_name})')}"
-    speech_text = f"{mode_name}『{lore_data.get('dungeon_name', default_scene_name)}』のシーンを生成しました。全{len(gen.rooms)}部屋に生態系と情景ノートを設定しました。"
+    speech_text = f"{mode_name}『{lore_data.get('dungeon_name', default_scene_name)}』のシーンができたよ！全{len(gen.rooms)}部屋に生態系と情景ノートを入れておいたよ。"
     scene_msg = await send_scene(ctx, scene_title, scene_mode, png_filename, gen, walls, lore_data, rooms, density, speech_text)
     log_group("ダンジョンシーンの構築指示を送りました")
     return scene_msg
@@ -430,7 +430,7 @@ async def build_map(
         # 別スレッドの計算は止められないが、結果は使わずに終える
         log_step("マップ生成を打ち切りました (上限は AI_GM_MAPGEN_TIMEOUT で変更可)")
         await ctx.send(protocol.chat(
-            "⚠️ マップ生成を打ち切りました。小さいサイズか低い密度でやり直してください。",
+            "⚠️ ごめんね、時間がかかりすぎたからマップ生成を打ち切ったよ。小さいサイズか低い密度でもう一回やってみてね。",
             speaker=SPEAKER_SUPPORT,
         ))
         return None

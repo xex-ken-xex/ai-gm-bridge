@@ -22,7 +22,7 @@ async def handle_command(ctx, data: dict) -> None:
     print(f"agyへプロンプトを委譲中: {prompt}")
     agy_resp = await ctx.llm.ask_support_gm(prompt)
     if not agy_resp:
-        agy_resp = "⚠️ サポートGM (agy) から応答がありませんでした。サーバーのログを確認してください。"
+        agy_resp = "⚠️ ごめんね、Geminiちゃんの返事が届かなかったみたい…(応答がありませんでした) サーバーのログを見てもらえるかな？"
     await ctx.send(protocol.chat(newlines_to_br(agy_resp), speaker=SPEAKER_SUPPORT))
 
 

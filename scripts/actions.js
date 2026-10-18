@@ -59,7 +59,7 @@ async function showProgress(data) {
 
 async function showInteractiveCard(data) {
   await ChatMessage.create({
-    speaker: { alias: data.speaker || "サポートGM (agy)" },
+    speaker: { alias: data.speaker || "サポートGM Geminiちゃん" },
     content: buildChoiceCardHtml(data),
     whisper: [game.user.id], // GM本人のみにウィスパー表示
     flags: generatedFlags(),
@@ -128,7 +128,7 @@ async function createDungeonScene(data) {
 
   // 完了通知カード
   await ChatMessage.create({
-    speaker: { alias: "サポートGM (agy)" },
+    speaker: { alias: "サポートGM Geminiちゃん" },
     content: buildSceneSuccessCardHtml({
       sceneId: newScene.id,
       sceneName: newScene.name,

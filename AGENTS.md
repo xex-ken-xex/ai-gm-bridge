@@ -24,14 +24,16 @@ ai-gm-bridge/
 ├── module.json          # Foundry VTT モジュール定義ファイル
 ├── bridge.js            # FVTT 側 ESModule エントリーポイント (フック登録)
 ├── styles/builder.css   # シナリオビルダー画面の CSS (module.json の styles。DialogV2 の content 内 <style> は効かない)
+├── styles/mascot.css    # アシスタント DM マスコットの CSS
 ├── scripts/             # FVTT 側の実装 (bridge.js から import)
 │   ├── actions.js       # サーバーからの action 処理 (Foundry 依存)
 │   ├── builder.js       # シナリオビルダー画面 (DialogV2) と地図帳ジャーナル (Foundry 依存)
 │   ├── npc.js           # NPC 会話 (聴き手の収集・反応の表示・記憶の更新・技能判定・/ai NPC のブレイン管理画面) (Foundry 依存)
 │   ├── npc-combat.js    # NPC 自律戦闘 (手番の検知・知覚の収集・行動の実行) (Foundry 依存)
 │   ├── npc-move.js      # NPC のトークンの移動 (壁・他のトークン・シーンの外を避ける) (Foundry 依存)
+│   ├── mascot.js        # アシスタント DM マスコット (全員の画面のミニキャラ。game.socket で GM の状態を配る) (Foundry 依存)
 │   ├── net/connection.js # WebSocket 接続・自動再接続・受信の直列処理
-│   └── lib/             # Foundry 非依存の純粋関数 (html / commands / chat-filter / rooms / scene-docs / cards / atlas / npc-brain / npc-listen / npc-tactics)
+│   └── lib/             # Foundry 非依存の純粋関数 (html / commands / chat-filter / rooms / scene-docs / cards / atlas / npc-brain / npc-listen / npc-tactics / mascot)
 ├── ai_gm_server.py      # サーバー起動スクリプト (実装は gm_server/)
 ├── gm_server/           # バックエンド実装 (config / logs (詳細ログ: ~/ai-gm-logs/<日付>/server.log) / text / protocol / tts / llm / progress / deadline / dungeon_scene / builder / handlers (npc_dialogue / npc_turn ほか) / router / app)
 ├── tests/

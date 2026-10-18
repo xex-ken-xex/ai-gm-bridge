@@ -19,6 +19,15 @@ import {
 } from "./scripts/lib/rooms.js";
 import { BridgeConnection } from "./scripts/net/connection.js";
 import {
+  initMascot,
+  listenMascotSocket,
+  mascotOnAction,
+  mascotOnConnecting,
+  mascotOnConnection,
+  mascotOnSend,
+  registerMascotSettings,
+} from "./scripts/mascot.js";
+import {
   handleNpcCheckRoll,
   isNpcCheckRoll,
   onNpcCheckClick,
@@ -34,6 +43,13 @@ import {
 } from "./scripts/npc-combat.js";
 
 let connection = null;
+
+/** サーバーへ送る (マスコットの「考え中」や「切断」も切り替える) */
+function sendToServer(payload) {
+  const ok = Boolean(connection?.send(payload));
+  mascotOnSend(payload, ok);
+  return ok;
+}
 
 /** 複数 GM がログインしていても 1 人だけがサーバー連携を担当する */
 function isPrimaryGM() {
@@ -58,8 +74,8 @@ function sendAiCommand(prompt) {
     return;
   }
   console.log("AI GM Bridge | GMの/aiコマンドを検知、送信中:", prompt);
-  if (connection.send({ event: "ai_command", user: game.user.name || "GM", prompt })) {
-    ui.notifications.info("サポートGM (agy) に指示を送信中...");
+  if (sendToServer({ event: "ai_command", user: game.user.name || "GM", prompt })) {
+    ui.notifications.info("サポートGM Geminiちゃん に指示を送信中...");
   }
 }
 
@@ -84,6 +100,7 @@ function registerAiCommands() {
 registerAiCommands();
 Hooks.once("init", registerAiCommands);
 Hooks.once("init", registerNpcCombatSettings);
+Hooks.once("init", registerMascotSettings);
 
 // FVTTのチャット入力直接インターセプト (/ai, /agy スラッシュコマンド)
 Hooks.on("chatMessage", (chatLog, messageText) => {
@@ -116,7 +133,7 @@ function onChatButtonClick(ev) {
     btn.style.fontWeight = "bold";
     btn.style.opacity = "1.0";
     ui.notifications.info(`サポートGMへ回答: ${label}`);
-    connection?.send({ event: "ai_choice", user: game.user.name, value, label });
+    sendToServer({ event: "ai_choice", user: game.user.name, value, label });
     return;
   }
 
@@ -145,9 +162,12 @@ function findRoomPage(scene, room) {
 }
 
 Hooks.once("ready", async function() {
-  console.log("AI GM Bridge | === チャット双方向 & サポートGM (agy) モジュール ロード完了 ===");
+  console.log("AI GM Bridge | === チャット双方向 & サポートGM Geminiちゃん モジュール ロード完了 ===");
   // NPC 会話の「本音を引き出す」判定ボタンはプレイヤーも押す (押した人のキャラクターで振る)
   document.addEventListener("click", onNpcCheckClick);
+  // アシスタント DM マスコットは全員の画面に出す。GM の画面での状態が game.socket で配られる
+  initMascot(game.user.isGM ? { openBuilder: openScenarioBuilder, openBrain: () => openNpcBrainManager() } : {});
+  listenMascotSocket();
   if (!game.user.isGM) return;
 
   registerAiCommands();
@@ -159,16 +179,22 @@ Hooks.once("ready", async function() {
   }
 
   connection = new BridgeConnection({
-    onMessage: handleServerAction,
+    onMessage: data => {
+      mascotOnAction(data);
+      return handleServerAction(data);
+    },
+    onStatus: mascotOnConnection,
     notify: {
       info: msg => ui.notifications.info(msg),
       warn: msg => ui.notifications.warn(msg),
     },
   });
+  // つながるまでは GM の画面のマスコットを「切断」にしておく (サーバーを起動していないと気づけるように)
+  mascotOnConnecting();
   connection.connect();
-  setBuilderSender(payload => connection.send(payload));
-  setNpcSender(payload => connection.send(payload));
-  setCombatSender(payload => connection.send(payload));
+  setBuilderSender(sendToServer);
+  setNpcSender(sendToServer);
+  setCombatSender(sendToServer);
   // 戦闘トラッカーで NPC の手番になったら AI に行動を頼む (設定「NPC の自律戦闘」で切り替え)
   registerNpcCombatHooks();
 
@@ -201,7 +227,7 @@ Hooks.once("ready", async function() {
     // H4: 発言者の声が届く NPC がいれば NPC 会話、いなければ AI GM。どちらか 1 経路だけで送る
     if (sendDialogueIfHeard(message, content)) return;
     console.log("AI GM Bridge | プレイヤー発言を検知、送信中:", content);
-    connection.send({ event: "player_message", user: message.author?.name || "Player", content });
+    sendToServer({ event: "player_message", user: message.author?.name || "Player", content });
   });
 
   // プレイヤー/トークンの部屋進入検知 & フレーバー自動通知 & 音声読み上げ
@@ -256,7 +282,7 @@ Hooks.once("ready", async function() {
       });
 
       if (connection.isOpen) {
-        connection.send({
+        sendToServer({
           event: "room_entered",
           token_name: tokenDoc.name,
           room_name: currentRoom.name,

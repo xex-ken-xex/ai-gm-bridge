@@ -78,7 +78,7 @@ npm test                   # FVTT 側の純粋関数 (tests/js, Node 18+ の nod
 | # | 重要度 | 箇所 (reference) | 問題 | 修正方針 |
 |---|---|---|---|---|
 | R1 | 高 | `ai_gm_server.py` 324, 472 | `DungeonGenerator(scene_mode=...)` を呼ぶが、本番の生成器に `scene_mode` 引数は無く `TypeError` で落ちる。壁タイプ (`door` 等) を返す `extract_walls` も無い | ✅ Phase 1: 生成器に `scene_mode`・壁タイプ付き `extract_walls` を実装 (builder は Phase 2) |
-| R2 | 高 | `ai_gm_server.py` 771, 781, 421 | 発言者名を `アギィ (AI GM)` `アギィ (Agy)` に変更しているが、本番 bridge のループ検知は `AI GM` / `サポートGM` の前方一致。そのまま統合すると AI の発言が再送されて無限ループ | ✅ bridge 側は AI 生成フラグ (`flags["ai-gm-bridge"].generated`) でも判定するようにした。名前変更は 📝 |
+| R2 | 高 | `ai_gm_server.py` 771, 781, 421 | 発言者名を `アギィ (AI GM)` `アギィ (Agy)` に変更しているが、本番 bridge のループ検知は `AI GM` / `サポートGM` の前方一致。そのまま統合すると AI の発言が再送されて無限ループ | ✅ bridge 側は AI 生成フラグ (`flags["ai-gm-bridge"].generated`) でも判定するようにした。名前は Phase 6 で「サポートGM Geminiちゃん」に統一 (reference の「アギィ」から改名。前方一致 `サポートGM` は維持) |
 | R3 | 高 | `ai_gm_server.py` 194, 215 | モデルが `gemini-2.5-flash` にハードコード (本番は `gemini-3.8-flash`) | ✅ `AI_GM_GEMINI_MODEL` に一本化 |
 | R4 | 中 | `prompt_manager.py` `build_settlement_stage_prompt` ほか | `region_ctx.get("public_lore")` は dict だが `str.format` にそのまま渡すため Python の repr (`{'climate': ...}`) がプロンプトに入る | ✅ Phase 2: 文脈は `tools/scenario_prompts.py` で JSON / テキストにしてから埋め込む |
 | R5 | 中 | `prompt_manager.py` `build_site_rooms_stage_prompt` | `neighbors` だけ +1 して id は 0 始まりのまま。AI から見ると隣接番号と id がずれる | ✅ Phase 1: 部屋プロンプトに `neighbors` / `in_cycle` を id と同じ 0 始まりで渡す |
@@ -141,7 +141,7 @@ npm test                   # FVTT 側の純粋関数 (tests/js, Node 18+ の nod
 | L7 | 低 | 1148 / 1158 | 重要度の既定値が 2 と 3 で不一致、範囲チェックなし | ✅ Phase 3: `IMPORTANCE` 定数と `clampImportance` (1〜5、既定 3) |
 | L8 | 低 | 1210 | 発言者不在時に全 NPC を 10ft 扱い。発言者 NPC 自身も聴き手に入る | ✅ Phase 3: 発言者が分からなければ NPC 会話にしない (AI GM へ)。発言者自身は聴き手に入れない |
 | L9 | 低 | 1275 | `leave_scene` が `alpha: 0.3` だけでトークンが残る | ✅ Phase 4: `hidden: true` (`applyDialogueMovement`) |
-| L10 | 低 | 106, 276 | `localStorage` の JSON.parse 例外未処理、吹き出しタイマー未解除 | 🔜 |
+| L10 | 低 | 106, 276 | `localStorage` の JSON.parse 例外未処理、吹き出しタイマー未解除 | ✅ Phase 6: `parseSavedPosition` (壊れた値は既定の位置) と `MascotController` (新しい状態で前のタイマーを止める) |
 | L11 | 低 | 1854, 1033 | ランドマークを `window` に置いておりリロードで消える | ✅ Phase 2: 旅路の seed とランドマークを地図帳の `atlas_meta` flag に保存し、構築時に seed から地点グラフを再生成 |
 | L13 | 低 | 56-57 | 照明アニメーション `type: "none"` は存在しないキー (⚠️ 未確認) | ✅ Phase 1: `null` |
 
@@ -169,9 +169,9 @@ npm test                   # FVTT 側の純粋関数 (tests/js, Node 18+ の nod
 | **1 (完了)** | 生成器の拡張: `scene_mode` (underground / ruins / wilderness)・壁タイプ (扉・隠し扉・低い壁)・照明プリセット・部屋データへの `light_preset` / `ambient_sound_src` | R1, R5, R11, H5, M1, M2, L13 | — |
 | **2 (完了)** | 4 段階シナリオビルダー (サーバー: `builder_generate_stage` / `builder_build_scene`、FVTT: アトラスジャーナル、DialogV2 化) | R4, R9, R10, M12, L11 | Phase 1 |
 | **3 (完了)** | NPC 会話システム (聴取範囲・記憶と忘却) | H1-H4, H7, M4, M8-M10, L4-L8 | — |
-| **4 (PR 済み)** | NPC 自律戦闘 (会話の `physical_action` の移動も) | M3, M5-M7, L9 | Phase 3 の知覚処理 |
-| 5 | 集落 BGM (別 WSL オーディオ生成) と環境音 | — | Phase 1 |
-| 6 | アシスタント DM マスコット UI (`game.socket`、`module.json` に `"socket": true`) | L10 | — |
+| **4 (完了)** | NPC 自律戦闘 (会話の `physical_action` の移動も) | M3, M5-M7, L9 | Phase 3 の知覚処理 |
+| 5 (音声・音楽系スレッドで担当) | 集落 BGM (別 WSL オーディオ生成) と環境音 | — | Phase 1 |
+| **6 (PR 済み)** | アシスタント DM マスコット UI (`game.socket`、`module.json` に `"socket": true`) | L10 | — |
 
 ## 5. 判断事項
 

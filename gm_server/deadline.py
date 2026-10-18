@@ -81,7 +81,7 @@ async def _ask_extend(ctx, label: str, elapsed: float, extend_by: float, task: a
         if task.done():
             return True
         await ctx.send(protocol.chat(
-            f"⏱️ 延長の確認に {int(answer_wait)} 秒応答が無かったため「{label}」を打ち切りました。",
+            f"⏱️ 延長するか {int(answer_wait)} 秒待っても返事が無かったから、「{label}」は打ち切ったよ。",
             speaker=SPEAKER_SUPPORT,
         ))
         return False

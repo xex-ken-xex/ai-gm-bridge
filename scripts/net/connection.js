@@ -14,8 +14,9 @@ export class BridgeConnection {
    * @param {object} [opts.notify]      { info(msg), warn(msg) }
    * @param {object} [opts.logger]
    * @param {Function} [opts.setTimeoutImpl]
+   * @param {Function} [opts.onStatus]  (open: boolean) => void  接続・切断のたびに呼ばれる (マスコットの表示など)
    */
-  constructor({ url = DEFAULT_SERVER_URL, onMessage, WebSocketImpl = globalThis.WebSocket, reconnectMs = 5000, notify = {}, logger = console, setTimeoutImpl = setTimeout } = {}) {
+  constructor({ url = DEFAULT_SERVER_URL, onMessage, WebSocketImpl = globalThis.WebSocket, reconnectMs = 5000, notify = {}, logger = console, setTimeoutImpl = setTimeout, onStatus = null } = {}) {
     this.url = url;
     this.onMessage = onMessage;
     this.WebSocketImpl = WebSocketImpl;
@@ -23,6 +24,9 @@ export class BridgeConnection {
     this.notify = notify;
     this.logger = logger;
     this.setTimeoutImpl = setTimeoutImpl;
+    this.onStatus = onStatus;
+    // 直前の接続状態 (再接続の失敗が続くたびに切断を知らせない)
+    this.wasOpen = false;
     this.ws = null;
     this.closed = false;
     // 受信メッセージを順番に処理する Promise チェーン
@@ -42,6 +46,8 @@ export class BridgeConnection {
     ws.onopen = () => {
       this.logger.log?.(`AI GM Bridge | WebSocket接続完了 (${this.url})`);
       this.notify.info?.("AI GM Bridge: 接続成功（サポートGM連携有効）");
+      this.wasOpen = true;
+      this.onStatus?.(true);
     };
     ws.onmessage = event => {
       this.queue = this.queue.then(() => this._handle(event.data));
@@ -49,6 +55,10 @@ export class BridgeConnection {
     };
     ws.onclose = () => {
       if (this.ws !== ws || this.closed) return;
+      if (this.wasOpen) {
+        this.wasOpen = false;
+        this.onStatus?.(false);
+      }
       this.setTimeoutImpl(() => this.connect(), this.reconnectMs);
     };
     ws.onerror = () => {};
