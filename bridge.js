@@ -44,12 +44,18 @@ import {
 
 let connection = null;
 
-/** マスコットの表示で失敗しても、サーバーとの接続やチャットの処理は止めない */
+let mascotWarned = false;
+
+/** マスコットの表示で失敗しても、サーバーとの接続やチャットの処理は止めない (画面への通知は最初の 1 回だけ) */
 function safely(label, fn) {
   try {
     return fn();
   } catch (e) {
     console.warn(`AI GM Bridge | マスコットの${label}に失敗しました (接続には影響しません)`, e);
+    if (!mascotWarned) {
+      mascotWarned = true;
+      ui.notifications?.warn("AI GM Bridge: マスコットを表示できませんでした。サーバーとの連携はそのまま使えます (詳細はコンソール)。");
+    }
     return undefined;
   }
 }
