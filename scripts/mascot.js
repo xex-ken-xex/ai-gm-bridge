@@ -165,21 +165,24 @@ function enableDrag(el) {
   });
 }
 
+// 既定の項目の動作 (足された項目と同じく onSelect の形。項目の並びとラベルは scripts/lib/mascot.js)
+const BASE_MENU_ACTIONS = Object.freeze({
+  builder: () => gmActions.openBuilder?.(),
+  brain: () => gmActions.openBrain?.(),
+  // 自分の画面だけで話す (全員には配らない)
+  greet: () => controller?.set({ state: "speaking", text: `私は${MASCOT_TITLE}、${MASCOT_NAME}だよ！困ったことがあったら手伝うね、任せて！`, durationMs: 4000 }),
+  reset: () => resetPosition(),
+  hide: () => {
+    ui.notifications?.info(`${MASCOT_NAME}を隠したよ。設定「マスコットを表示」でまた呼んでね！`);
+    return game.settings.set(MODULE_ID, SHOW_SETTING, false);
+  },
+});
+
 /** メニューの項目を選んだとき */
 function selectMenuItem(id) {
   closeMenu();
-  if (id === "builder") return gmActions.openBuilder?.();
-  if (id === "brain") return gmActions.openBrain?.();
-  if (id === "reset") return resetPosition();
-  if (id === "greet") {
-    // 自分の画面だけで話す (全員には配らない)
-    return controller?.set({ state: "speaking", text: `私は${MASCOT_TITLE}、${MASCOT_NAME}だよ！困ったことがあったら手伝うね、任せて！`, durationMs: 4000 });
-  }
-  if (id === "hide") {
-    ui.notifications?.info(`${MASCOT_NAME}を隠したよ。設定「マスコットを表示」でまた呼んでね！`);
-    return game.settings.set(MODULE_ID, SHOW_SETTING, false);
-  }
-  return extraMenuItems.get(id)?.onSelect?.();
+  const onSelect = BASE_MENU_ACTIONS[id] ?? extraMenuItems.get(id)?.onSelect;
+  return onSelect?.();
 }
 
 function toggleMenu() {
@@ -213,6 +216,9 @@ function openMenu() {
   }
   document.body.appendChild(menu);
   placeMenu();
+  // キーボードでも選べるように最初の項目へ。吹き出しで一言 (自分の画面だけ)
+  menu.querySelector("button")?.focus();
+  controller?.set({ state: "idle", text: "どうする？任せて！", durationMs: 3000 });
   // メニューの外を押す・Esc で閉じる
   setTimeout(() => {
     document.addEventListener("pointerdown", onOutsidePointer, true);
@@ -238,7 +244,13 @@ function onOutsidePointer(ev) {
 }
 
 function onMenuKey(ev) {
-  if (ev.key === "Escape") closeMenu();
+  if (ev.key === "Escape") return closeMenu();
+  if (!menu || !["ArrowDown", "ArrowUp"].includes(ev.key)) return;
+  const buttons = [...menu.querySelectorAll("button")];
+  const at = buttons.indexOf(document.activeElement);
+  const next = (at + (ev.key === "ArrowDown" ? 1 : -1) + buttons.length) % buttons.length;
+  buttons[next]?.focus();
+  ev.preventDefault();
 }
 
 function closeMenu() {
