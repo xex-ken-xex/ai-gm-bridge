@@ -16,6 +16,12 @@ export const LIST_PAGES = {
   places: { name: "🗺️ 訪れた場所", sort: 300, empty: "まだ記録された場所はありません。" },
 };
 
+// 所持品として数える dnd5e の物品の種類 (呪文・特技・クラスの特徴などは数えない。backpack は旧版の container)
+export const PHYSICAL_ITEM_TYPES = new Set(["weapon", "equipment", "consumable", "tool", "loot", "container", "backpack"]);
+
+// 一覧のページの先頭に添える注意 (一覧は記録のたびに flag から作り直すため)
+export const LIST_PAGE_NOTE = "この一覧は冒険記録のたびに作り直されます。書き足したいことは各回のページに書いてください。";
+
 const SESSION_SORT_BASE = 1000;
 // 1 行の上限 (サーバー側でも切り詰める)
 const MAX_LINE_CHARS = 600;
@@ -85,7 +91,7 @@ export function inventorySnapshot(actors) {
     const items = {};
     for (const item of actor.items ?? []) {
       const name = String(item?.name ?? "").trim();
-      if (!name) continue;
+      if (!name || (item.type && !PHYSICAL_ITEM_TYPES.has(item.type))) continue;
       const quantity = Number(item.quantity);
       items[name] = (items[name] ?? 0) + (Number.isFinite(quantity) && quantity > 0 ? quantity : 1);
     }
@@ -138,13 +144,14 @@ export function mergeEntries(existing, incoming, session, withHolder = false) {
 /** 一覧のページの HTML */
 export function buildListPageHtml(kind, entries) {
   const page = LIST_PAGES[kind];
-  if (!entries.length) return `<p>${escapeHtml(page.empty)}</p>`;
+  const note = `<p><em>${escapeHtml(LIST_PAGE_NOTE)}</em></p>\n`;
+  if (!entries.length) return `${note}<p>${escapeHtml(page.empty)}</p>`;
   const rows = entries.map(e => {
     const holder = e.holder ? ` <span class="ai-gm-log-holder">(${escapeHtml(e.holder)})</span>` : "";
     const note = e.note ? ` — ${escapeHtml(e.note)}` : "";
     return `<li><strong>${escapeHtml(e.name)}</strong>${holder}${note} <small>第${escapeHtml(e.session)}回</small></li>`;
   });
-  return `<ul>\n${rows.join("\n")}\n</ul>`;
+  return `${note}<ul>\n${rows.join("\n")}\n</ul>`;
 }
 
 /** リプレイ風の本文 (改行区切り) を段落の HTML にする */

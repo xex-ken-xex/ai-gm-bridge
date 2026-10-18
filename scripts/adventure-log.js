@@ -46,7 +46,7 @@ function plainActor(actor) {
   return {
     id: actor.id,
     name: actor.name,
-    items: (actor.items?.contents ?? []).map(i => ({ name: i.name, quantity: i.system?.quantity })),
+    items: (actor.items?.contents ?? []).map(i => ({ name: i.name, type: i.type, quantity: i.system?.quantity })),
   };
 }
 
@@ -62,11 +62,14 @@ function plainMessage(m) {
   };
 }
 
+/** 発言があったシーンの名前。プレイヤーも読む日誌に載るので、ナビに出しているシーンの表示名だけ */
 function sceneNamesOf(messages, since) {
   const names = new Set();
   for (const m of messages) {
     if ((m.timestamp ?? 0) <= since) continue;
-    const name = game.scenes?.get(m.speaker?.scene)?.name;
+    const scene = game.scenes?.get(m.speaker?.scene);
+    if (!scene?.navigation) continue;
+    const name = scene.navName || scene.name;
     if (name) names.add(name);
   }
   return [...names];
@@ -100,7 +103,7 @@ export async function collectAdventureLog(mode = "create") {
   const inventory = inventorySnapshot(pcs.map(plainActor));
   const page = plan.pageId ? journal?.pages?.get(plan.pageId) : null;
   pending = { ...plan, until: Math.max(...messages.map(m => m.timestamp ?? 0)), inventory };
-  return sendToServer({
+  const ok = sendToServer({
     event: "adventure_log_request",
     mode: plan.mode,
     session_number: plan.number,
@@ -110,6 +113,11 @@ export async function collectAdventureLog(mode = "create") {
     inventory_changes: inventoryDiff(meta.inventory, inventory),
     previous_replay: plan.mode === "update" ? (page?.text?.content ?? "") : "",
   });
+  if (!ok) {
+    pending = null;
+    ui.notifications.warn("AI GM Bridge: Python サーバー (8765) に接続されていないため、冒険記録を頼めませんでした。");
+  }
+  return ok;
 }
 
 /** サーバーからの adventure_log_collect */

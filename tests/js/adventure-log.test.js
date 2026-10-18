@@ -67,6 +67,18 @@ test("inventoryDiff: 増えた所持品だけ。初めての記録と新しい P
   assert.deepEqual(inventoryDiff(null, now), []);
 });
 
+test("inventorySnapshot: 呪文・特技・クラスの特徴は所持品に数えない", () => {
+  const snap = inventorySnapshot([{ id: "a", name: "アリア", items: [
+    { name: "ファイアボール", type: "spell" },
+    { name: "二刀流", type: "feat" },
+    { name: "ウィザード", type: "class" },
+    { name: "ロングソード", type: "weapon" },
+    { name: "背負い袋", type: "backpack" },
+    { name: "治癒のポーション", type: "consumable", quantity: 2 },
+  ] }]);
+  assert.deepEqual(snap.a.items, { "ロングソード": 1, "背負い袋": 1, "治癒のポーション": 2 });
+});
+
 test("mergeEntries: 同じ人は 1 件にまとめ、初めて会った回は残す", () => {
   let people = mergeEntries([], [{ name: "マルタ", note: "宿の女将" }], 1);
   people = mergeEntries(people, [{ name: "マルタ", note: "灯台の秘密を打ち明けた" }, { name: "ゲイル", note: "" }, { name: "" }], 2);
@@ -79,7 +91,7 @@ test("mergeEntries: 同じ人は 1 件にまとめ、初めて会った回は残
 });
 
 test("一覧と本文の HTML は AI のテキストをエスケープする", () => {
-  assert.match(buildListPageHtml("people", []), /まだ記録された人物はいません/);
+  assert.match(buildListPageHtml("people", []), /作り直されます[\s\S]*まだ記録された人物はいません/);
   const html = buildListPageHtml("items", [{ name: "<剣>", holder: "アリア", note: "a&b", session: 2 }]);
   assert.match(html, /<strong>&lt;剣&gt;<\/strong> <span class="ai-gm-log-holder">\(アリア\)<\/span> — a&amp;b <small>第2回<\/small>/);
   assert.equal(replayToHtml("一行目\n\n<script>"), "<p>一行目</p>\n<p>&lt;script&gt;</p>");
