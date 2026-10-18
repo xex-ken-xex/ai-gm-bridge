@@ -240,6 +240,7 @@ async def test_build_wilderness_regenerates_the_same_points(make_ctx, sent, tmp_
     assert actions(sent) == ["create_dungeon_scene", "play_sound"]
     # 完了報告は Geminiちゃんの声 (ナレーターの声を変えても変わらない)
     assert voices == [tts.support_voice()]
+    assert [m.get("speaker") for m in sent if m.get("action") == "play_sound"] == ["support"]
     scene = main(sent)[0]
     assert scene["scene_mode"] == "wilderness" and scene["room_count"] == len(topos)
     assert [r["title"] for r in scene["rooms"]] == [f"地点{t['id']}" for t in topos]

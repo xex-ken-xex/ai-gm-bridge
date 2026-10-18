@@ -586,4 +586,4 @@ async def build_scene(ctx, data, scene_mode, name, site_public, site_dm, seed, s
     await ctx.send(protocol.chat(f"🏰 {speech_text}", speaker=SPEAKER_SUPPORT))
     file_name = voice_filename("voice_dungeon")
     if await ctx.tts.synthesize(speech_text, file_name, **support_voice()):
-        await ctx.send(protocol.play_sound(file_name, 1.0, subtitle=speech_text))
+        await ctx.send(protocol.play_sound(file_name, 1.0, subtitle=speech_text, speaker=protocol.SPEAKER_SOUND_SUPPORT))

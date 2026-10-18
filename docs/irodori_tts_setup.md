@@ -158,6 +158,8 @@ python3 ai_gm_server.py
 - 話す速さ (NPC の `+10%` など) は Irodori の `speed` (1.1 など) に直して渡します。声の高さの数値は Irodori には渡せないため、説明文の一言だけで表します。
 - 他の設定は `docs/specification.md` の「環境変数」を見てください。
 
+FVTT で Geminiちゃんをクリックし、メニューの「声のテスト (ナレーター)」か「声のテスト (Geminiちゃん)」を押すと、見本のセリフが GM の画面でだけ鳴ります。どのエンジンで鳴ったか (Irodori-TTS か edge-tts か)、使った声 (参照音声・説明文・種) は画面の右上の通知に出ます。Irodori で作れなかったときは、その理由も出ます。
+
 ## 6. ナレーターの声を好みの声にする
 
 ナレーターの声は、参照音声 (`AI_GM_IRODORI_NARRATOR_VOICE`) → ナレーターの説明文 (`AI_GM_IRODORI_CAPTION_NARRATOR`) → 女性の説明文 (`AI_GM_IRODORI_CAPTION_FEMALE`) の順に、設定されているものを使います。乱数の種はいつも `AI_GM_IRODORI_SEED` (既定 `1234`) です。説明文だけだと作るたびに声が少し揺れるので、種を固定しています。NPC と Geminiちゃんの声はここの設定では変わりません (種を変えたときだけ声も変わります。Geminiちゃんの声は `AI_GM_IRODORI_CAPTION_SUPPORT` で変えられます)。

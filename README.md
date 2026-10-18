@@ -170,7 +170,7 @@ Foundry Virtual Tabletop (FVTT) と Python の AI GM サーバーを WebSocket �
 
 - **入れ方**: [`docs/irodori_tts_setup.md`](docs/irodori_tts_setup.md) に、音声用の WSL「Irodori」を作るところから書いてあります。AI GM と同じ WSL に入れても動きます。
 - **起動と停止**: 手順書の `Irodori起動.bat` / `Irodori停止.bat` をデスクトップに置いて使います。止めると GPU のメモリが空きます。
-- **確認**: Windows の PowerShell で `curl.exe http://127.0.0.1:8088/health`
+- **確認**: Windows の PowerShell で `curl.exe http://127.0.0.1:8088/health`。FVTT では Geminiちゃんのメニューの「声のテスト」で、どのエンジンで鳴ったかが分かります（音は GM にだけ鳴ります）
 - **切り替え**: `~/.bashrc` に `export AI_GM_TTS_ENGINE=irodori` を足して、AI GM サーバーを起動し直します。
 - 初回はモデルの読み込みで時間がかかります。Irodori に繋がらないときは edge-tts で読み上げ、60 秒後にもう一度 Irodori を試します。
 - **声を選ぶ**: ナレーターの声は、説明文・乱数の種・参照音声 (気に入った mp3 や自分の声) で好みの声にできます。Geminiちゃんの声は別に決まります。手順は [`docs/irodori_tts_setup.md` の 6 章](docs/irodori_tts_setup.md#6-ナレーターの声を好みの声にする) にあります。

@@ -488,5 +488,5 @@ async def send_scene(
 
     file_name = voice_filename("voice_dungeon")
     if await ctx.tts.synthesize(speech_text, file_name, **support_voice()):
-        await ctx.send(protocol.play_sound(file_name, 1.0, subtitle=speech_text))
+        await ctx.send(protocol.play_sound(file_name, 1.0, subtitle=speech_text, speaker=protocol.SPEAKER_SOUND_SUPPORT))
     return scene_msg

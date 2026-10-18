@@ -17,10 +17,20 @@ def roll(formula: str, speaker: str = SPEAKER_GM_ROLL) -> Dict:
     return {"action": "roll", "speaker": speaker, "formula": formula}
 
 
-def play_sound(src: str, volume: float = 1.0, subtitle: Optional[str] = None) -> Dict:
+# play_sound の話者: Geminiちゃん自身の声 (マスコットが「話し中」になる)。無ければナレーションか NPC
+SPEAKER_SOUND_SUPPORT = "support"
+
+
+def play_sound(src: str, volume: float = 1.0, subtitle: Optional[str] = None, gm_only: bool = False,
+               speaker: Optional[str] = None) -> Dict:
+    """gm_only なら GM のクライアントでだけ鳴らす (声のテストなど、プレイヤーに聞かせない音)"""
     msg = {"action": "play_sound", "src": src, "volume": volume}
     if subtitle:
         msg["subtitle"] = subtitle
+    if speaker:
+        msg["speaker"] = speaker
+    if gm_only:
+        msg["gm_only"] = True
     return msg
 
 

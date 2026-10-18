@@ -28,6 +28,7 @@ import {
   mascotOnSend,
   registerMascotMenuItem,
   registerMascotSettings,
+  registerVoiceTestMenu,
 } from "./scripts/mascot.js";
 import {
   handleNpcCheckRoll,
@@ -215,6 +216,7 @@ Hooks.once("ready", async function() {
   connection.connect();
   setBuilderSender(sendToServer);
   setNpcSender(sendToServer);
+  safely("メニュー", () => registerVoiceTestMenu(sendToServer));
   setCombatSender(sendToServer);
   setLogSender(sendToServer);
   // Geminiちゃんのメニューから冒険日誌を更新する (最新の回に書き足す。回が無ければ作る)
