@@ -166,9 +166,9 @@ def normalize_log_result(raw, mode: str, session_number: int, transcript: List[s
     }
 
 
-async def request_log(ctx, prompt: str) -> None:
-    """`/ai 記録を作って` から: FVTT に記録の材料を集めてもらう"""
-    mode = log_mode(prompt)
+async def request_log(ctx, prompt: str, mode: str = "") -> None:
+    """`/ai 記録を作って` から: FVTT に記録の材料を集めてもらう (mode が無ければ指示の文から決める)"""
+    mode = mode if mode in MODES else log_mode(prompt)
     log_step(f"冒険記録スキル: FVTT に記録の材料を頼みます ({mode})")
     await ctx.send(protocol.chat(
         "📖 了解！冒険日誌" + ("の続きを書くね" if mode == "update" else "を書くね") + "。チャットの記録を読んでまとめるから、ちょっと待ってて！",

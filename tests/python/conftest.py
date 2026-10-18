@@ -34,6 +34,7 @@ class FakeLLM:
         self.json_responses = list(json_responses or [])
         self.support_responses = list(support_responses or [])
         self.prompts = []
+        self.conversation_id = None
 
     async def query_ai_gm(self, player_input):
         self.prompts.append(("gm", player_input))
@@ -43,7 +44,7 @@ class FakeLLM:
         self.prompts.append(("json", prompt))
         return self.json_responses.pop(0) if self.json_responses else None
 
-    async def ask_support_gm(self, prompt):
+    async def ask_support_gm(self, prompt, raw=False):
         self.prompts.append(("support", prompt))
         return self.support_responses.pop(0) if self.support_responses else ""
 

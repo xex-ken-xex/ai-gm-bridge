@@ -49,6 +49,11 @@ def interactive_card(title: str, message: str, choices: List[Dict], speaker: str
     }
 
 
+def open_builder(tab: str, user_prompt: str = "") -> Dict:
+    """シナリオビルダー画面を tab (region / settlement / wilderness / site) で開き、要望欄に user_prompt を入れる"""
+    return {"action": "open_builder", "tab": tab, "user_prompt": user_prompt}
+
+
 def builder_stage_result(
     stage: str,
     result: Dict,
