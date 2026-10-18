@@ -97,7 +97,10 @@ function sendAiCommand(prompt) {
 
 // 1. FVTT スラッシュコマンド登録 (/ai, /agy)
 function registerAiCommands() {
-  if (typeof ChatLog === "undefined" || !ChatLog.CHAT_COMMANDS) return;
+  // v13 以降は foundry.applications.sidebar.tabs.ChatLog (グローバルの ChatLog は非推奨で、v15 で消える)
+  const ChatLogClass = globalThis.foundry?.applications?.sidebar?.tabs?.ChatLog
+    ?? (typeof ChatLog === "undefined" ? null : ChatLog);
+  if (!ChatLogClass?.CHAT_COMMANDS) return;
   const aiCmd = {
     rgx: AI_COMMAND_RGX,
     isRoll: false,
@@ -108,8 +111,8 @@ function registerAiCommands() {
       return false; // メッセージ生成を防止
     }
   };
-  ChatLog.CHAT_COMMANDS.ai = aiCmd;
-  ChatLog.CHAT_COMMANDS.agy = aiCmd;
+  ChatLogClass.CHAT_COMMANDS.ai = aiCmd;
+  ChatLogClass.CHAT_COMMANDS.agy = aiCmd;
 }
 
 // モジュール評価時および init フックで即座にコマンド登録
