@@ -69,6 +69,7 @@ test("MascotController: 切断は台詞が消えても切断のまま", () => {
 test("mascotForEvent / mascotForAction: ビルダーや GM 宛てのものはプレイヤーに配らない", () => {
   assert.equal(mascotForEvent({ event: "builder_generate_stage" }).public, false);
   assert.equal(mascotForEvent({ event: "ai_command" }).public, false);
+  assert.equal(mascotForEvent({ event: "ai_command" }).durationMs, 45000);
   assert.equal(mascotForEvent({ event: "player_message" }).state, "thinking");
   assert.match(mascotForEvent({ event: "npc_turn_request", perception: { npc_name: "オーク" } }).text, /オーク/);
   assert.equal(mascotForEvent({ event: "room_entered" }).state, "thinking");
