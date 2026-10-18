@@ -12,8 +12,41 @@ export const SUPPORT_SPEAKER_PREFIX = "サポートGM";
 export const DEFAULT_POSITION = Object.freeze({ left: 110, top: 90 });
 // ウィジェットの大きさ (画面の外に出さないための目安)
 export const WIDGET_SIZE = Object.freeze({ width: 100, height: 110 });
+// これより動いたらドラッグ、動かなければクリック (メニューを開く)
+export const CLICK_MOVE_PX = 5;
 const MAX_BUBBLE_CHARS = 120;
 const MAX_DURATION_MS = 60_000;
+
+/** 押してから離すまでの移動がしきい値以内ならクリック (ドラッグではない) */
+export function isClickMove(start, end, threshold = CLICK_MOVE_PX) {
+  if (!start || !end) return false;
+  return Math.hypot(end.x - start.x, end.y - start.y) <= threshold;
+}
+
+// 左クリック (右クリックも) で出すメニューの既定の項目。gmOnly はプレイヤーの画面には出さない
+export const BASE_MENU_ITEMS = Object.freeze([
+  { id: "builder", icon: "🏰", label: "シナリオビルダー", gmOnly: true },
+  { id: "brain", icon: "🧠", label: "NPC ブレイン管理", gmOnly: true },
+  { id: "greet", icon: "👋", label: "あいさつ", gmOnly: false },
+  { id: "reset", icon: "↩️", label: "位置を戻す", gmOnly: false },
+  { id: "hide", icon: "🙈", label: "マスコットを隠す", gmOnly: false },
+]);
+
+/**
+ * メニューに出す項目。extra (ほかの機能が足す項目。声のテストなど) はあいさつの後ろに入れる。
+ * 同じ id は先に来たものを使い、ラベルの無い項目は捨てる
+ */
+export function mascotMenuItems({ isGM = false, extra = [] } = {}) {
+  const valid = item => item && typeof item.id === "string" && item.id && String(item.label ?? "").trim();
+  const base = BASE_MENU_ITEMS.map(i => ({ ...i }));
+  const at = base.findIndex(i => i.id === "greet") + 1;
+  const extras = (extra ?? []).filter(valid).map(i => ({
+    id: i.id, icon: String(i.icon ?? "✨"), label: String(i.label).trim(), gmOnly: Boolean(i.gmOnly),
+  }));
+  const seen = new Set();
+  return [...base.slice(0, at), ...extras, ...base.slice(at)]
+    .filter(i => (isGM || !i.gmOnly) && !seen.has(i.id) && seen.add(i.id));
+}
 
 /** 状態・台詞・表示時間を検める (ソケットで届いた値もここを通す) */
 export function normalizeMascotState({ state, text = "", durationMs = 5000 } = {}) {
@@ -117,11 +150,13 @@ export class MascotController {
     this.setTimer = setTimer;
     this.clearTimer = clearTimer;
     this.timer = null;
+    this.bubbleTimer = null;
     this.current = { state: "idle", text: "" };
   }
 
   set(input) {
     const { state, text, durationMs } = normalizeMascotState(input);
+    this.clearBubbleTimer();
     if (this.timer !== null) {
       this.clearTimer(this.timer);
       this.timer = null;
@@ -137,9 +172,33 @@ export class MascotController {
     return this.current;
   }
 
+  /**
+   * 状態はそのままで、吹き出しの台詞だけを出す (メニューを開いたときの一言など)。
+   * 切断・考え中の表示を消さない。時間が来たら台詞だけを消す (状態の戻るタイマーには触らない)
+   */
+  say(text, durationMs = 3000) {
+    const value = normalizeMascotState({ state: this.current.state, text, durationMs });
+    this.clearBubbleTimer();
+    this.current = { state: this.current.state, text: value.text };
+    this.render(this.current);
+    this.bubbleTimer = this.setTimer(() => {
+      this.bubbleTimer = null;
+      if (this.current.text !== value.text) return;
+      this.current = { state: this.current.state, text: "" };
+      this.render(this.current);
+    }, value.durationMs);
+    return this.current;
+  }
+
+  clearBubbleTimer() {
+    if (this.bubbleTimer !== null) this.clearTimer(this.bubbleTimer);
+    this.bubbleTimer = null;
+  }
+
   dispose() {
     if (this.timer !== null) this.clearTimer(this.timer);
     this.timer = null;
+    this.clearBubbleTimer();
   }
 }
 

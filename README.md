@@ -1,88 +1,226 @@
-# AI GM Bridge (`ai-gm-bridge`)
+<div align="center">
 
-Foundry Virtual Tabletop (FVTT) とローカル Python サーバーを WebSocket で接続し、AI をサポートGM（アシスタント）として活用するためのモジュールです。
+# 🧙 AI GM Bridge
 
----
+**Foundry VTT のテーブルに、AI のゲームマスターを。**
 
-## 主な機能（現在できること）
+プレイヤーの発言に語りで応え、ダンジョンを掘り、NPC を演じ、声で読み上げる。<br>
+Foundry Virtual Tabletop (FVTT) と Python の AI GM サーバーを WebSocket でつなぐモジュールです。
 
-### 1. ダンジョン・マップの対話型自動生成
-- チャット欄で `/ai ダンジョン生成` を入力すると、対話カード形式で **規模（小/中/大/特大）**、**部屋密度（標準/密集/ギッシリ）**、**周回路（袋小路のみ/標準/迷路多め）** を選択できます。
-- パラメータに基づき、迷宮マップ画像 (PNG) と視界・衝突を遮断する壁 (Wall) を自動配置した新シーンが即座に構築されます。
-- スタート地点（緑の微光）および最深部ゴール（赤の松明）の光源が自動設置されます。
+`Foundry VTT v11–v14` · `D&D 5e` · `Windows 11 + WSL2` · `Gemini` · `edge-tts / Irodori-TTS`
 
-### 2. 世界観と構造に基づく伝承・部屋フレーバーの自動補完
-- ワールド設定（`world.json` の説明欄）や GM が入力したテーマ（例: `/ai 氷結した古代神殿のダンジョン`）を自動で読み込みます。
-- **フロア伝承・生態系**: ダンジョンの歴史、現在巣食う勢力、五感環境（光・音・匂い・空気感）を生成し、フロア設定録ジャーナル (`JournalEntry`) として記録します。
-- **部屋ごとの役割と空室**: 部屋の接続数（袋小路・通過路・ハブ交差点）を数学的に把握し、全体の約 25〜35% を安全な休憩所・空室として配分。全部屋に情景描写、GM専用メモ、対応する SVG アイコンを付与してマップピン (`Note`) を配置します。
+</div>
 
-### 3. トークン部屋進入時の情景表示 & 音声ナレーション
-- プレイヤーやトークンが未探索の部屋に足を踏み入れると、チャット欄に情景描写カードが自動表示されます。
-- 同時に `edge-tts`（日本語音声 `ja-JP-NanamiNeural`）により、五感に訴える情景ナレーションが自動読み上げされます。
-- `AI_GM_TTS_ENGINE=irodori` にすると、声の説明文から声を作る Irodori-TTS で読み上げます（入れ方は [`docs/irodori_tts_setup.md`](docs/irodori_tts_setup.md)。繋がらないときは edge-tts に戻ります）。
-
-### 4. サポートGMとの相談・NPCセリフ提案
-- チャット欄で `/ai [相談・指示]` と入力することで、NPC のセリフ提案やロールプレイの相談、D&D 5e のルール確認などをサポートGM Geminiちゃん と行えます。
-- （ダンジョン構築を意図しない一般的な質問は、自動的に相談モードとして処理されます）
-
-### 5. プレイヤー発言への自動GM演出
-- プレイヤーの通常発言に対し、AI GM が状況描写や NPC セリフを返し、必要に応じてダイスロールや音声再生を行います。
+> この README は **Windows 11 + WSL2** で動かす前提で書いています。
+>
+> **動作環境**: Windows 11 + WSL2（Ubuntu） · Python 3.12+ · Foundry VTT v11–v14 · Irodori-TTS を使うときは NVIDIA の GPU
 
 ---
 
-## 動作要件
+## 🗺️ システム構成
 
-- **OS**: Linux (Ubuntu / WSL2 など)
-- **Foundry VTT**: v11 〜 v14（v14 マルチレベル背景に対応）
-- **Python**: 3.10 以上 (Python 3.12 / 3.14 検証済)
-- **agy (Antigravity CLI)**: サポートGM機能の実行に必須
+![AI GM Bridge のシステム構成図](docs/images/architecture.svg)
+
+| 色 | つながり | 中身 |
+| :--- | :--- | :--- |
+| 🟦 水色 | GM のブラウザ ⇄ AI GM サーバー（WebSocket `:8765`） | 発言・部屋への進入・選択肢をサーバーへ。語り・ロール・音声・シーン作成の指示がブラウザへ |
+| 🟪 紫 | 全員のブラウザ ⇄ Foundry VTT サーバー（`:30000`） | いつもの FVTT の通信。Geminiちゃんの様子もここで全員に共有 |
+| 🟨 黄 | AI GM サーバー → Gemini API / agy | 文章の生成。Gemini API を先に試し、ダメなら agy |
+| 🟩 緑 | AI GM サーバー → Irodori-TTS（HTTP `:8088`） | 読み上げ音声の生成（オプション）。繋がらなければ edge-tts |
+| 🟢 黄緑 | AI GM サーバー → Data フォルダ | 音声 (mp3) とマップ画像 (PNG) を書き出し、FVTT が全員に配信 |
+
+ポイントは 3 つです。
+
+- **AI GM サーバーとつながるのは GM のブラウザだけ**です。プレイヤーのブラウザはいつも通り FVTT サーバーとだけ話します（GM が複数いても、担当は 1 人だけ）。
+- **WSL のディストリビューション同士と Windows は `127.0.0.1` を共有**しています。Windows のブラウザから `ws://127.0.0.1:8765` で AI GM サーバーに、AI GM サーバーから `http://127.0.0.1:8088` で Irodori に届きます。
+- サーバーが作ったファイルは **FVTT の Data フォルダに置くだけ**で、音声もマップも FVTT がプレイヤーに配ります。
 
 ---
 
-## セットアップ手順
+## 🖥️ サーバーとできること
 
-### 1. 環境セットアップ
-リポジトリ直下の `Setup.sh` を実行します（何度実行しても安全な冪等スクリプトです）。
+### Foundry VTT サーバー（WSL「FVTT」、ポート 30000）
 
-```bash
-./Setup.sh
+いつもの FVTT です。このリポジトリは `~/foundrydata/Data/modules/ai-gm-bridge` にモジュールとして置きます。
+
+### ai-gm-bridge モジュール（GM のブラウザの中）
+
+| できること | 内容 |
+| :--- | :--- |
+| 発言の転送 | プレイヤーの発言を AI GM へ。NPC の声が届く範囲にいれば NPC 会話へ |
+| チャットコマンド | `/ai` で AI に頼む・相談する（下の [コマンド一覧](#-チャットコマンド)） |
+| サーバーからの指示を実行 | チャット投稿、ダイスロール、音声再生、選択カード、シーン作成、進捗表示 |
+| 部屋への進入 | トークンが未探索の部屋に入ったら、情景をサーバーに頼んで読み上げ |
+| NPC の自律戦闘 | 戦闘トラッカーで NPC の手番になったら、AI が考えた移動と攻撃を実行 |
+| マスコット「Geminiちゃん」 | 画面の隅にいるアシスタント。状態（考え中・話し中など）を全員で共有し、GM が左クリックするとメニュー（シナリオビルダー、NPC のブレイン管理など） |
+
+### AI GM サーバー（WSL「FVTT」、ポート 8765）
+
+`ai_gm_server.py` と `gm_server/` の Python サーバーです。
+
+| できること | 内容 |
+| :--- | :--- |
+| 🎭 AI GM の語りと判定 | プレイヤーの発言に、情景描写・NPC のセリフ・必要なダイスロールで応える |
+| 💬 サポートGM | `/ai` の相談に Geminiちゃんが答える（NPC のセリフ案、ルール確認など。agy で会話を続ける） |
+| 🏰 ダンジョン自動生成 | 規模・部屋密度・周回路を選ぶと、マップ画像・壁・扉・照明・部屋の情景を載せたシーンを作る。伝承と生態系はジャーナルに |
+| 📜 シナリオビルダー | 地域 → 集落 → 旅路 → 遺跡・迷宮の 4 段階でシナリオを作り、地図帳ジャーナルにまとめる |
+| 🗣️ NPC 会話 | 声が届く範囲の NPC が、記憶と性格に沿って返事をする |
+| ⚔️ NPC の自律戦闘 | NPC の手番の行動を考える |
+| 🔊 読み上げ | 語りや情景を音声にする（edge-tts か Irodori-TTS） |
+| 📝 詳細ログ | `~/ai-gm-logs` に 10 日分（API キーは伏せる） |
+
+文章の生成は **Gemini API → agy（Antigravity CLI）** の順に試します。Gemini API が混んでいたりキーが無かったりしても、agy で続けられます。
+
+### Irodori-TTS-Server（オプション、ポート 8088）
+
+声の説明文から声を作れる、GPU で動く読み上げサーバーです。無くても edge-tts で読み上げます。詳しくは [補足](#-補足オプション) へ。
+
+### クラウド
+
+| サービス | 使いどころ |
+| :--- | :--- |
+| Google Gemini API（`gemini-3.8-flash`） | 語り・ダンジョン・NPC の生成。`GEMINI_API_KEY` が必要 |
+| Antigravity（agy） | サポートGM の会話と、Gemini API の予備。agy にログインしておく |
+| edge-tts（`ja-JP-NanamiNeural`） | 標準の読み上げと、Irodori の予備。キーは不要 |
+
+---
+
+## 🚀 起動のイロハ
+
+### はじめての準備（1 回だけ）
+
+1. **WSL に FVTT を入れる**: WSL のディストリビューション（この README では名前を `FVTT` とします）に Foundry VTT を入れ、Data フォルダを `~/foundrydata/Data` にします。
+2. **モジュールを置く**: このリポジトリを `~/foundrydata/Data/modules/ai-gm-bridge` に clone します。
+   ```bash
+   cd ~/foundrydata/Data/modules
+   git clone https://github.com/xex-ken-xex/ai-gm-bridge.git
+   ```
+3. **セットアップを流す**: Python のライブラリ、agy、Data フォルダの書き込み権限をまとめて確かめます。何度流しても大丈夫です。
+   ```bash
+   cd ~/foundrydata/Data/modules/ai-gm-bridge
+   ./Setup.sh
+   ```
+4. **Gemini の API キーを入れる**: `~/.bashrc` の最後に足します。
+   ```bash
+   export GEMINI_API_KEY="your-gemini-api-key"
+   ```
+5. **agy にログインする**: WSL で一度 `agy` を起動してログインしておきます。
+6. **起動ボタンを置く**: リポジトリの `start-ai-gm.bat` を Windows のデスクトップにコピーします。中の `FVTT` は `wsl -l -v` に出る名前です。違う名前で入れている場合は書き換えてください。
+
+### 遊ぶたびに
+
+```
+① Foundry VTT サーバーを起動       いつもの方法で（ポート 30000）
+② AI GM サーバーを起動              デスクトップの start-ai-gm.bat をダブルクリック
+③ ブラウザで FVTT を開く            GM でログイン → AI GM サーバーに自動で接続
 ```
 
-- Python パッケージ (`websockets`, `edge-tts`, `google-genai`) の導入確認
-- `agy` CLI の検出・検証
-- Data ディレクトリの書き込み権限確認
-- 実行権限の付与
+**② のメニュー**では、どのコードで動かすかを選べます。普段は **Enter** だけで OK です。
 
-### 2. サーバーの起動
-Python サーバーを起動し、WebSocket 待機状態にします。
-
-```bash
-python3 ai_gm_server.py
+```
+  0) 最新の main を取ってきて起動 (Enter でもこれ)
+  1) claude/xxxx      ← 検証したい PR のブランチ (新しい順に最大 10 件)
+       10/18 06:59  コミットの説明
+  ...
+  c) 今のブランチのまま起動 (git を触らない)
+  q) やめる
 ```
 
-バックグラウンド常駐起動する場合:
+- 番号を入れると、`git fetch` のあとそのブランチをリモートと同じ内容にしてから起動します。
+- 編集中のファイルがあるときは切り替えずに止まります（`c` なら今のまま起動できます）。
+- 手元のブランチにリモートに無いコミットがあるときは、捨ててよいか確認します。
+- `requirements.txt` が変わっていれば、ライブラリも自動で更新します。
+- コードが切り替わったら、FVTT のブラウザを再読み込み（F5）してください。`module.json` が変わったときは F5 では反映されないので、FVTT の「セットアップに戻る」からワールドを起動し直してください（スクリプトが案内します）。
+
+`start-ai-gm.bat` の `bash -lic` の `-i` は、`~/.bashrc` の `GEMINI_API_KEY` を読み込むために付けています。
+
+**③ ではじめて使うワールド**では、ゲーム設定 → 「モジュールの管理」で **AI GM Bridge** を有効にします。GM でログインすると、Geminiちゃんが現れてサーバーに接続します。
+
+### つながらないときは
+
+| 症状 | 見るところ |
+| :--- | :--- |
+| 「Python サーバー (8765) に接続されていません」 | ② の黒い画面が開いたままか。閉じていたらもう一度ダブルクリック |
+| 語りが返ってこない | ② の画面のログ、または `~/ai-gm-logs`。`GEMINI_API_KEY` と agy のログインを確認 |
+| プレイヤー側で何も起きない | AI GM サーバーとつながるのは GM のブラウザだけ。GM が FVTT を開いているか |
+| 読み上げが edge-tts の声になる | Irodori を使う設定のときは、Irodori が起動しているか（[補足](#-補足オプション)） |
+
+---
+
+## 💬 チャットコマンド
+
+| コマンド | 説明 |
+| :--- | :--- |
+| `/ai ダンジョン生成` | 選択カードで規模・部屋密度・周回路を選び、ダンジョンのシーンを作る |
+| `/ai [テーマ]のダンジョン` | テーマ（例: `/ai 水没したドワーフ要塞`）に沿ってダンジョンを作る |
+| `/ai ビルダー` | シナリオビルダーを開く（Geminiちゃんのメニューからも開ける） |
+| `/ai NPC` | NPC のブレイン管理画面を開く（Geminiちゃんのメニューからも開ける） |
+| `/ai [相談・指示]` | NPC のセリフや行動、ルールの相談をサポートGM にする |
+
+---
+
+## 📎 補足（オプション）
+
+### Irodori-TTS で読み上げる
+
+声の説明文（例: 「落ち着いた低めの女性の声」）から声を作る読み上げサーバーです。NVIDIA の GPU があると使えます。
+
+- **入れ方**: [`docs/irodori_tts_setup.md`](docs/irodori_tts_setup.md) に、音声用の WSL「Irodori」を作るところから書いてあります。AI GM と同じ WSL に入れても動きます。
+- **起動と停止**: 手順書の `Irodori起動.bat` / `Irodori停止.bat` をデスクトップに置いて使います。止めると GPU のメモリが空きます。
+- **確認**: Windows の PowerShell で `curl.exe http://127.0.0.1:8088/health`
+- **切り替え**: `~/.bashrc` に `export AI_GM_TTS_ENGINE=irodori` を足して、AI GM サーバーを起動し直します。
+- 初回はモデルの読み込みで時間がかかります。Irodori に繋がらないときは edge-tts で読み上げ、60 秒後にもう一度 Irodori を試します。
+
+起動の順番は、**FVTT → Irodori → AI GM サーバー → ブラウザ** です（Irodori は後から起動しても、そのうち切り替わります）。
+
+### 環境変数
+
+`~/.bashrc` に `export` で書きます。ほとんどは既定のままで大丈夫です。
+
+| 変数 | 既定値 | 内容 |
+| :--- | :--- | :--- |
+| `GEMINI_API_KEY` | （なし） | Gemini API のキー |
+| `AI_GM_GEMINI_MODEL` | `gemini-3.8-flash` | Gemini API のモデル |
+| `AI_GM_GEMINI_TIMEOUT` | `120` | Gemini API の待ち時間（秒） |
+| `AI_GM_LLM_CONCURRENCY` | `3` | 同時に投げる問い合わせの数 |
+| `AI_GM_MAPGEN_TIMEOUT` | `300` | マップ生成の待ち時間（秒） |
+| `AI_GM_AGY_MODEL` | `gemini-3.8-flash-medium` | agy のモデル |
+| `AI_GM_AGY_TIMEOUT` | `300` | agy の待ち時間（秒） |
+| `AI_GM_AGY_CONCURRENCY` | `1` | agy を同時に動かす数 |
+| `AI_GM_HOST` / `AI_GM_PORT` | `0.0.0.0` / `8765` | AI GM サーバーの待ち受け |
+| `AI_GM_DATA_DIR` | `~/foundrydata/Data` | FVTT の Data フォルダ |
+| `AI_GM_LOG_DIR` / `AI_GM_LOG_DAYS` | `~/ai-gm-logs` / `10` | 詳細ログの置き場所と保存日数 |
+| `AI_GM_TTS_ENGINE` | `edge` | `irodori` にすると Irodori-TTS で読み上げ |
+| `AI_GM_IRODORI_URL` | `http://127.0.0.1:8088` | Irodori-TTS-Server の URL |
+| `AI_GM_IRODORI_TIMEOUT` / `_FIRST_TIMEOUT` | `20` / `180` | Irodori の待ち時間（秒、2 つ目は初回） |
+| `AI_GM_IRODORI_RETRY_AFTER` | `60` | Irodori に繋がらなかった後、もう一度試すまで（秒） |
+
+全部の一覧は [`docs/specification.md` の環境変数の表](docs/specification.md#環境変数) と `gm_server/config.py` にあります。Irodori の声の設定（語り手やサポートGM の声の説明文など）は [`docs/irodori_tts_setup.md`](docs/irodori_tts_setup.md) を見てください。
+
+### WSL のターミナルから直接起動する
+
+```bash
+cd ~/foundrydata/Data/modules/ai-gm-bridge
+./start_server.sh            # .bat と同じメニュー
+python3 ai_gm_server.py      # メニューなしで今のコードのまま起動
+```
+
+バックグラウンドで常駐させる場合:
+
 ```bash
 nohup python3 ai_gm_server.py > ai_gm_server.log 2>&1 &
 ```
 
-### 3. Foundry VTT 側の有効化
-1. Foundry VTT をブラウザで開き、GM としてログインします。
-2. ゲーム設定 > **「モジュールの管理」** で **「AI GM Bridge」** を有効化します。
-3. GM ログイン時に自動でローカルサーバー (`ws://127.0.0.1:8765`) へ接続されます。
+### 疎通テスト
 
----
+FVTT とだけつないで、チャット・ダイス・音声が届くかを確かめるモックサーバーです（AI GM サーバーは止めてから使います）。
 
-## チャットコマンド一覧
+```bash
+python3 tools/test_send.py    # チャットとダイス
+python3 tools/test_voice.py   # 音声の生成と再生
+```
 
-| コマンド | 説明 |
-| :--- | :--- |
-| `/ai ダンジョン生成` | 対話型選択カードを表示し、ダンジョンシーンを自動作成します。 |
-| `/ai [テーマ]のダンジョン` | 指定したテーマ（例: `/ai 水没したドワーフ要塞`）を最優先してダンジョンを生成します。 |
-| `/ai [相談・指示]` | NPC のセリフや行動、ルール相談などをサポートGMに問い合わせます。 |
-
----
-
-## 自動テスト
+### 自動テスト
 
 ```bash
 python3 -m pip install -r requirements-dev.txt
@@ -90,35 +228,41 @@ python3 -m pytest   # サーバー側
 npm test            # FVTT 側の純粋関数 (Node 18+)
 ```
 
+PR と main への push で GitHub Actions が同じテストを流します。
+
 ---
 
-## ディレクトリ構成
+## 📂 ディレクトリ構成
 
 ```text
 ai-gm-bridge/
 ├── Setup.sh                  # 冪等セットアップスクリプト
+├── start_server.sh           # 対話式のサーバー起動スクリプト (main / ブランチを選んで起動)
+├── start-ai-gm.bat           # Windows から start_server.sh を開くバッチ (デスクトップにコピーして使う)
 ├── README.md                 # 本ドキュメント
 ├── AGENTS.md                 # エージェント・開発者向け詳細仕様書
 ├── module.json               # FVTT モジュール定義ファイル
 ├── bridge.js                 # FVTT クライアント側エントリーポイント
-├── scripts/                  # FVTT クライアント側の実装 (actions / net / lib)
+├── scripts/                  # FVTT クライアント側の実装 (actions / builder / mascot / npc / net / lib)
+├── styles/                   # FVTT クライアント側のスタイル
 ├── ai_gm_server.py           # WebSocket サーバー起動スクリプト
-├── gm_server/                # サーバー実装 (LLM・音声・ハンドラ・ルーター)
+├── gm_server/                # サーバー実装 (LLM・音声・ハンドラ・ルーター・ビルダー)
 ├── tests/                    # 自動テスト (python: pytest / js: node:test)
 ├── requirements.txt          # Python 依存ライブラリ一覧
-├── prompts/                  # プロンプトテンプレート (キャッシュ保持)
-│   ├── dungeon_lore_prompt.txt   # ダンジョン伝承・生態系生成用
-│   └── dungeon_rooms_prompt.txt  # 部屋トポロジー・情景補完用
+├── prompts/                  # プロンプトテンプレート
 ├── tools/
 │   ├── dungeon_generator.py  # 幾何学・壁・グラフ生成ツール
 │   ├── prompt_manager.py     # プロンプト補完・ワールド情報取得
 │   ├── test_voice.py         # 音声疎通テストスクリプト
 │   └── test_send.py          # チャット・ダイス疎通テストスクリプト
 └── docs/                     # 詳細設計・調査仕様書
+    ├── images/architecture.svg # システム構成図
     ├── specification.md      # システム全体設計書
-    ├── Todo.md               # 開発タスクリスト
-    ├── ai_dungeon_flavor_spec.md # AI 階層フレーバー生成仕様
+    ├── irodori_tts_setup.md  # Irodori-TTS を WSL に入れる手順
+    ├── scenario_builder_spec.md # シナリオビルダー仕様
+    ├── dungeon_generator_spec.md # ダンジョン生成ツール仕様
     ├── reference_porting_review.md # reference/ 移植レビュー & 移植計画
+    ├── ai_dungeon_flavor_spec.md # AI 階層フレーバー生成仕様
     ├── dungeon_math_investigation.md # グラフ・数学モデリング調査
     └── investigation_fvtt_dnd5e_control.md # FVTT制御仕様調査
 ```

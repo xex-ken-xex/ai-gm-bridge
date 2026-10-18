@@ -1,0 +1,201 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 840" width="1280" height="840" font-family="'Hiragino Sans','Yu Gothic UI','Meiryo','Noto Sans JP','Noto Sans CJK JP',sans-serif">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#070b1a"/>
+      <stop offset="0.55" stop-color="#0d1330"/>
+      <stop offset="1" stop-color="#1a0f2e"/>
+    </linearGradient>
+    <radialGradient id="glowA" cx="0.5" cy="0.45" r="0.6">
+      <stop offset="0" stop-color="#22d3ee" stop-opacity="0.18"/>
+      <stop offset="1" stop-color="#22d3ee" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="glowB" cx="0.85" cy="0.15" r="0.5">
+      <stop offset="0" stop-color="#a855f7" stop-opacity="0.16"/>
+      <stop offset="1" stop-color="#a855f7" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="core" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0e7490" stop-opacity="0.55"/>
+      <stop offset="1" stop-color="#312e81" stop-opacity="0.55"/>
+    </linearGradient>
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="4" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <pattern id="grid" width="32" height="32" patternUnits="userSpaceOnUse">
+      <path d="M32 0H0V32" fill="none" stroke="#1e2a52" stroke-width="0.6"/>
+    </pattern>
+    <marker id="aC" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#22d3ee"/></marker>
+    <marker id="aP" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#c084fc"/></marker>
+    <marker id="aA" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#fbbf24"/></marker>
+    <marker id="aG" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#34d399"/></marker>
+    <marker id="aS" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#94a3b8"/></marker>
+    <style>
+      .ttl{fill:#e0f2fe;font-weight:800;letter-spacing:6px}
+      .sub{fill:#7dd3fc;font-size:14px;letter-spacing:2px}
+      .zone{fill:#0b1226;fill-opacity:0.72;stroke-width:1.5}
+      .ztag{font-size:12px;font-weight:700;letter-spacing:3px}
+      .box{fill:#111a3a;stroke-width:1.4}
+      .h{fill:#f8fafc;font-size:16px;font-weight:700}
+      .t{fill:#cbd5e1;font-size:13px}
+      .m{fill:#94a3b8;font-size:12px}
+      .port{font-size:12px;font-weight:700}
+      .chip{fill:#0f2147;stroke:#1d4ed8;stroke-opacity:0.6}
+      .ct{fill:#e2e8f0;font-size:13px}
+      .lbl{font-size:12px;font-weight:700}
+      .flow{stroke-dasharray:7 6;animation:dash 1.6s linear infinite}
+      @keyframes dash{to{stroke-dashoffset:-26}}
+    </style>
+  </defs>
+
+  <rect width="1280" height="840" fill="url(#bg)"/>
+  <rect width="1280" height="840" fill="url(#grid)" opacity="0.55"/>
+  <rect width="1280" height="840" fill="url(#glowA)"/>
+  <rect width="1280" height="840" fill="url(#glowB)"/>
+
+  <!-- title -->
+  <text x="40" y="58" class="ttl" font-size="30" filter="url(#glow)">AI GM BRIDGE</text>
+  <text x="352" y="58" fill="#64748b" font-size="30" font-weight="300">/</text>
+  <text x="378" y="58" fill="#c4b5fd" font-size="22" font-weight="700" letter-spacing="3">SYSTEM ARCHITECTURE</text>
+  <text x="40" y="84" class="sub">Windows + WSL2 で動く AI ゲームマスターの全体図</text>
+
+  <!-- ===== zones ===== -->
+  <rect x="30" y="110" width="360" height="700" rx="18" class="zone" stroke="#38bdf8" stroke-opacity="0.5"/>
+  <text x="50" y="136" class="ztag" fill="#38bdf8">WINDOWS 11</text>
+
+  <rect x="420" y="110" width="480" height="700" rx="18" class="zone" stroke="#22d3ee" stroke-opacity="0.8"/>
+  <text x="440" y="136" class="ztag" fill="#22d3ee">WSL2 · FVTT（メイン）</text>
+
+  <rect x="930" y="110" width="320" height="250" rx="18" class="zone" stroke="#34d399" stroke-opacity="0.7" stroke-dasharray="6 5"/>
+  <text x="950" y="136" class="ztag" fill="#34d399">WSL2 · IRODORI（オプション）</text>
+
+  <rect x="930" y="390" width="320" height="420" rx="18" class="zone" stroke="#fbbf24" stroke-opacity="0.6"/>
+  <text x="950" y="416" class="ztag" fill="#fbbf24">CLOUD</text>
+
+  <!-- ===== Windows ===== -->
+  <rect x="50" y="155" width="320" height="170" rx="12" class="box" stroke="#38bdf8"/>
+  <text x="68" y="184" class="h">GM のブラウザ</text>
+  <text x="68" y="206" class="m">Foundry VTT クライアント (GM)</text>
+  <text x="68" y="234" class="t">・ai-gm-bridge モジュール (bridge.js)</text>
+  <text x="68" y="256" class="t">・発言・部屋への進入・選択をサーバーへ</text>
+  <text x="68" y="278" class="t">・シーン作成・チャット・ロール・音声</text>
+  <text x="68" y="300" class="t">・マスコット「Geminiちゃん」のメニュー</text>
+
+  <rect x="50" y="345" width="320" height="120" rx="12" class="box" stroke="#38bdf8" stroke-opacity="0.7"/>
+  <text x="68" y="374" class="h">プレイヤーのブラウザ</text>
+  <text x="68" y="396" class="m">Foundry VTT クライアント (プレイヤー)</text>
+  <text x="68" y="422" class="t">・チャットとマップを見る・音声を聞く</text>
+  <text x="68" y="444" class="t">・Geminiちゃんの様子を全員で共有</text>
+
+  <rect x="50" y="490" width="320" height="150" rx="12" class="box" stroke="#64748b"/>
+  <text x="68" y="519" class="h">デスクトップの起動ボタン</text>
+  <text x="68" y="546" class="t">start-ai-gm.bat</text>
+  <text x="68" y="566" class="m">→ WSL の start_server.sh を開く</text>
+  <text x="68" y="594" class="t">Irodori起動.bat / Irodori停止.bat</text>
+  <text x="68" y="614" class="m">→ 音声サーバーを遊ぶときだけ起動</text>
+
+  <rect x="50" y="660" width="320" height="130" rx="12" class="box" stroke="#64748b" stroke-opacity="0.7"/>
+  <text x="68" y="689" class="h">NVIDIA GPU ドライバー</text>
+  <text x="68" y="713" class="t">Windows 側に入れるだけで、WSL から</text>
+  <text x="68" y="733" class="t">GPU が使える (Irodori 用)</text>
+  <text x="68" y="765" class="m">ブラウザ → WSL は 127.0.0.1 で届く</text>
+
+  <!-- ===== WSL FVTT ===== -->
+  <rect x="440" y="155" width="440" height="100" rx="12" class="box" stroke="#c084fc"/>
+  <text x="458" y="184" class="h">Foundry VTT サーバー</text>
+  <text x="808" y="184" class="port" fill="#c084fc">:30000</text>
+  <text x="458" y="210" class="t">ワールド・シーン・ジャーナル・アクターを保存</text>
+  <text x="458" y="234" class="t">Data フォルダの音声・マップ画像を全員に配信</text>
+
+  <rect x="440" y="290" width="440" height="320" rx="14" fill="url(#core)" stroke="#22d3ee" stroke-width="2" filter="url(#glow)"/>
+  <text x="458" y="322" class="h" font-size="18">AI GM サーバー</text>
+  <text x="808" y="322" class="port" fill="#22d3ee">:8765</text>
+  <text x="458" y="344" class="m">ai_gm_server.py · gm_server/ (Python 3.12+)</text>
+
+  <g>
+    <rect x="458" y="360" width="200" height="34" rx="8" class="chip"/><text x="472" y="382" class="ct">AI GM の語りと判定</text>
+    <rect x="664" y="360" width="200" height="34" rx="8" class="chip"/><text x="678" y="382" class="ct">サポートGM（/ai 相談）</text>
+    <rect x="458" y="402" width="200" height="34" rx="8" class="chip"/><text x="472" y="424" class="ct">ダンジョン自動生成</text>
+    <rect x="664" y="402" width="200" height="34" rx="8" class="chip"/><text x="678" y="424" class="ct">シナリオビルダー</text>
+    <rect x="458" y="444" width="200" height="34" rx="8" class="chip"/><text x="472" y="466" class="ct">NPC 会話（聞こえる範囲）</text>
+    <rect x="664" y="444" width="200" height="34" rx="8" class="chip"/><text x="678" y="466" class="ct">NPC の自律戦闘</text>
+    <rect x="458" y="486" width="200" height="34" rx="8" class="chip"/><text x="472" y="508" class="ct">部屋の情景を読み上げ</text>
+    <rect x="664" y="486" width="200" height="34" rx="8" class="chip"/><text x="678" y="508" class="ct">詳細ログ（10 日分）</text>
+  </g>
+  <line x1="458" y1="536" x2="864" y2="536" stroke="#22d3ee" stroke-opacity="0.35"/>
+  <text x="458" y="560" class="t"><tspan fill="#fbbf24" font-weight="700">LLM</tspan>  Gemini API を優先、失敗したら agy</text>
+  <text x="458" y="586" class="t"><tspan fill="#34d399" font-weight="700">TTS</tspan>  Irodori を優先、繋がらなければ edge-tts</text>
+
+  <rect x="440" y="650" width="210" height="140" rx="12" class="box" stroke="#a3e635" stroke-opacity="0.8"/>
+  <text x="456" y="679" class="h">Data フォルダ</text>
+  <text x="456" y="702" class="m">~/foundrydata/Data</text>
+  <text x="456" y="728" class="t">・読み上げ音声 (mp3)</text>
+  <text x="456" y="750" class="t">・マップ画像 (PNG)</text>
+  <text x="456" y="772" class="t">・modules/ai-gm-bridge</text>
+
+  <rect x="670" y="650" width="210" height="140" rx="12" class="box" stroke="#fbbf24" stroke-opacity="0.8"/>
+  <text x="686" y="679" class="h">agy CLI</text>
+  <text x="686" y="702" class="m">Antigravity Agent</text>
+  <text x="686" y="728" class="t">・サポートGM の会話</text>
+  <text x="686" y="750" class="t">・Gemini API の予備</text>
+  <text x="686" y="772" class="m">~/ai-gm-logs/agy-workspace</text>
+
+  <!-- ===== Irodori ===== -->
+  <rect x="950" y="155" width="280" height="185" rx="12" class="box" stroke="#34d399"/>
+  <text x="968" y="184" class="h">Irodori-TTS-Server</text>
+  <text x="1168" y="184" class="port" fill="#34d399">:8088</text>
+  <text x="968" y="210" class="m">OpenAI 互換 /v1/audio/speech</text>
+  <text x="968" y="238" class="t">・v4.1-Small を GPU で動かす</text>
+  <text x="968" y="260" class="t">・声の説明文から声を作る</text>
+  <text x="968" y="282" class="t">  (VoiceDesign)</text>
+  <text x="968" y="314" class="m">AI_GM_TTS_ENGINE=irodori で使用</text>
+
+  <!-- ===== Cloud ===== -->
+  <rect x="950" y="435" width="280" height="105" rx="12" class="box" stroke="#fbbf24"/>
+  <text x="968" y="464" class="h">Google Gemini API</text>
+  <text x="968" y="488" class="m">gemini-3.8-flash · GEMINI_API_KEY</text>
+  <text x="968" y="514" class="t">語り・ダンジョン・NPC の生成</text>
+
+  <rect x="950" y="560" width="280" height="105" rx="12" class="box" stroke="#fbbf24" stroke-opacity="0.75"/>
+  <text x="968" y="589" class="h">Antigravity</text>
+  <text x="968" y="613" class="m">agy が使うモデル (gemini-3.8-flash-medium)</text>
+  <text x="968" y="639" class="t">agy のログインで動く</text>
+
+  <rect x="950" y="685" width="280" height="105" rx="12" class="box" stroke="#94a3b8"/>
+  <text x="968" y="714" class="h">edge-tts</text>
+  <text x="968" y="738" class="m">Microsoft の音声 · ja-JP-NanamiNeural</text>
+  <text x="968" y="764" class="t">標準の読み上げ・Irodori の予備</text>
+
+  <!-- ===== flows ===== -->
+  <!-- GM browser <-> AI GM server (WebSocket) -->
+  <path d="M370 290 C405 290 405 380 440 380" fill="none" stroke="#22d3ee" stroke-width="2.6" class="flow" marker-start="url(#aC)" marker-end="url(#aC)"/>
+  <text x="384" y="345" class="lbl" fill="#22d3ee" text-anchor="middle" transform="rotate(-90 384 345)">WebSocket</text>
+
+  <!-- browsers <-> FVTT server -->
+  <path d="M370 190 L440 190" fill="none" stroke="#c084fc" stroke-width="2.2" marker-start="url(#aP)" marker-end="url(#aP)"/>
+  <path d="M370 400 C412 400 412 240 440 240" fill="none" stroke="#c084fc" stroke-width="1.8" stroke-opacity="0.7" marker-end="url(#aP)"/>
+
+  <!-- AI GM server -> Irodori -->
+  <path d="M880 330 C915 330 915 250 950 250" fill="none" stroke="#34d399" stroke-width="2.4" class="flow" marker-end="url(#aG)"/>
+  <text x="886" y="360" class="lbl" fill="#34d399">HTTP</text>
+
+  <!-- AI GM server -> Gemini -->
+  <path d="M880 470 L950 470" fill="none" stroke="#fbbf24" stroke-width="2.4" class="flow" marker-end="url(#aA)"/>
+  <text x="886" y="460" class="lbl" fill="#fbbf24">HTTPS</text>
+
+  <!-- AI GM server -> edge-tts (fallback) -->
+  <path d="M880 580 C916 580 916 735 950 735" fill="none" stroke="#94a3b8" stroke-width="1.8" stroke-dasharray="4 5" marker-end="url(#aS)"/>
+
+  <!-- AI GM server -> agy (subprocess) -->
+  <path d="M775 610 L775 650" fill="none" stroke="#fbbf24" stroke-width="2.2" marker-end="url(#aA)"/>
+  <!-- agy -> Antigravity -->
+  <path d="M880 700 C915 700 915 612 950 612" fill="none" stroke="#fbbf24" stroke-width="2" stroke-opacity="0.8" class="flow" marker-end="url(#aA)"/>
+
+  <!-- AI GM server -> Data (writes) -->
+  <path d="M545 610 L545 650" fill="none" stroke="#a3e635" stroke-width="2.2" marker-end="url(#aS)"/>
+  <text x="553" y="636" class="lbl" fill="#a3e635">mp3 / PNG</text>
+  <!-- FVTT server reads Data -->
+  <path d="M430 255 L430 720 L440 720" fill="none" stroke="#a3e635" stroke-width="1.4" stroke-opacity="0.6" stroke-dasharray="3 5"/>
+
+  <!-- footer -->
+  <text x="40" y="828" fill="#475569" font-size="11" letter-spacing="1">破線の枠と線はオプション。Irodori は AI GM と同じ WSL に入れても動きます。</text>
+</svg>
