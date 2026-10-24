@@ -149,6 +149,10 @@ flowchart TD
 - 今日を含めて 10 日 (`AI_GM_LOG_DAYS`) より古い日付フォルダは、起動時と日付が変わったときに削除する。
 - 各行に「日時 レベル」(INFO / WARNING / ERROR) を付ける。コンソールも同じ形。
 - `GEMINI_API_KEY` と、名前に KEY / TOKEN / SECRET / PASSWORD を含む環境変数の値、Google API キーの形の文字列は `***` に伏せる (ファイルにもコンソールにも出さない)。
+  - 形で分かるキー (Google の `AIza…`、OpenAI / Anthropic の `sk-…`・`sk-ant-…`・`sk-proj-…`) と、`key=…`・`Authorization: Bearer …`・`x-api-key: …`も伏せる。
+  - JSON・YAML・`.env`・設定ファイルの「名前: 値」/「名前=値」で、名前が認証の語 (`api_key`・`access_key`・`secret_key`・`private_key`・`client_secret`・`auth_token`・`access_token`・`refresh_token`・`password`) で終わるもの (`anthropic_api_key`・`db_password` のような接頭辞つきも) の値も伏せる。値は `"…"`・`'…'`・引用符なしのどれでもよい。数字や `true` / `null` は残す。シナリオの `"ancient_secret"`・`"size_key"` や `max_tokens`・`token_count` は伏せない。
+  - 設定ファイルなど環境変数以外から読んだキーは `logs.register_secret` で登録すると伏せる。
+  - agy 自身の動作ログ (`agy-*.log`) はサーバーを通らずに書かれるため、agy が終わるたび (打ち切りでも) と、サーバーの起動時に、ログフォルダの `agy-*.log` を書き直して伏せる。
 
 **グループ分け (全体 → 工程 → 細かい作業)**
 

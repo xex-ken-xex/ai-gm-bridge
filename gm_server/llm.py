@@ -299,6 +299,8 @@ async def _call_agy(
         return "", conversation_id or ""
     finally:
         watcher.cancel()
+        # agy の動作ログはサーバーを通らずに書かれるので、終わったら API キーを伏せる
+        logs.mask_log_file(agy_log)
     stdout, stderr = bytes(out_buf), bytes(err_buf)
     out_str = stdout.decode("utf-8", errors="replace").strip()
     err_str = stderr.decode("utf-8", errors="replace").strip()
