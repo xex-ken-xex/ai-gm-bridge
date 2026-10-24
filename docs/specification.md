@@ -121,14 +121,14 @@ flowchart TD
 #### AI の接続先の振り分け
 作業ごとに、どの AI に頼むかを設定ファイルで決められます (`gm_server/ai_routing.py`・接続先は `gm_server/ai_providers.py`)。
 
-- **設定ファイル**: リポジトリ直下の `ai_providers.json` (`AI_GM_AI_CONFIG` で変更。git には入れない)。`ai_providers.example.json` を写して作る。無ければ今までどおり (Gemini のキーがあれば Gemini → agy、サポートGM の相談とスキル判定は agy)。
+- **設定ファイル**: `~/.config/ai-gm-bridge/ai_providers.json` (`AI_GM_AI_CONFIG` で変更)。`ai_providers.example.json` を写して作る。モジュールのフォルダ (`Data/modules/ai-gm-bridge/`) は Foundry がブラウザに配信するため、そこに置いた `ai_providers.json` は読まずに警告する。無ければ今までどおり (Gemini のキーがあれば Gemini → agy、サポートGM の相談とスキル判定は agy)。
 - **接続先 (`providers`)**: 名前を付けて並べる。`type` は次のどれか。共通で `timeout` (秒) と `concurrency` (同時に投げる数) を書ける。
 
   | `type` | 内容 | 主な項目 |
   | :--- | :--- | :--- |
   | `gemini` | Gemini API | `model`、`api_key_env` (キーを入れた環境変数の名前。既定 `GEMINI_API_KEY`) |
   | `agy` | agy CLI (今までの呼び方) | モデル・effort・同時実行数は `AI_GM_AGY_*` の環境変数で決まる |
-  | `claude_code` | Claude Code CLI (`claude -p --output-format json`。プロンプトは標準入力) | `model` (`sonnet` など)、`command` (既定 `claude`)、`extra_args`、`workdir` (既定 `~/ai-gm-logs/claude-workspace`)。会話は `--resume` で続ける。先に `claude` を一度起動してログインしておく (API キーなら `ANTHROPIC_API_KEY`) |
+  | `claude_code` | Claude Code CLI (`claude -p --output-format json`。プロンプトは標準入力) | `model` (`sonnet` など)、`command` (既定 `claude`)、`extra_args`、`workdir` (既定 `~/ai-gm-logs/claude-workspace`)。会話は `--resume` で続ける。打ち切りのときは `claude` が起こした子プロセスごと止める。先に `claude` を一度起動してログインしておく (API キーなら `ANTHROPIC_API_KEY`) |
   | `openai` | OpenAI 互換の Chat Completions API (LM Studio・Ollama・OpenAI など) | `base_url` (既定 `http://localhost:1234/v1`)、`model`、`api_key_env` (要るときだけ)、`temperature`、`json_response_format` (`true` で `response_format: json_object` を付ける)。会話はサーバーの中で直近 20 件まで覚える |
 
 - **作業ごとの接続先 (`tasks`)**: 作業の名前に接続先の名前 (並べるとフォールバックの順) を書く。書いていない作業は `default` を使う。キーが無いなど使えない接続先は飛ばす。
@@ -144,7 +144,7 @@ flowchart TD
   | `npc_turn` | NPC の戦闘の手番 |
   | `adventure_log` | 冒険記録 |
 
-- **API キー**: 設定ファイルには環境変数の名前 (`api_key_env`) を書き、値は書かない。起動時の表示と `python3 -m gm_server.ai_routing` (いまの振り分けを表示) では「設定済み / 未設定」だけを出す。設定ファイルに直接 `api_key` を書いた場合も、その値はログで伏せる。
+- **API キー**: 設定ファイルには環境変数の名前 (`api_key_env`) を書き、値は書かない。設定ファイルに `api_key` を直接書いても使わず、起動時に警告する (その値はログでも伏せる)。起動時の表示と `python3 -m gm_server.ai_routing` (いまの振り分けを表示) では「設定済み / 未設定」だけを出す。
 - 分割した問い合わせ (部屋の情景など) の同時実行数と 1 回の待ち上限は、その作業で最初に試す接続先の `concurrency` / `timeout` を使う。
 
 #### エラーハンドリング & レジリエンス
@@ -217,7 +217,7 @@ FVTT のビルダー画面にも同じ内容を 2 行で出します (`builder_p
 | :--- | :--- | :--- |
 | `GEMINI_API_KEY` | (なし) | Gemini API のキー。設定すると Gemini を直接使い、無ければ agy CLI を使う。ログには `***` で伏せて書く |
 | `AI_GM_GEMINI_MODEL` | `gemini-3.8-flash` | Gemini を直接使うときのモデル |
-| `AI_GM_AI_CONFIG` | `<リポジトリ>/ai_providers.json` | AI の接続先の振り分け設定ファイル (無ければ既定の振り分け) |
+| `AI_GM_AI_CONFIG` | `~/.config/ai-gm-bridge/ai_providers.json` | AI の接続先の振り分け設定ファイル (無ければ既定の振り分け) |
 | `AI_GM_GEMINI_TIMEOUT` | `120` | Gemini の 1 回の問い合わせの待ち上限 (秒) |
 | `AI_GM_LLM_CONCURRENCY` | `3` | Gemini に同時に投げる問い合わせの数 (部屋の情景などの分割分) |
 | `AI_GM_AGY_MODEL` | `gemini-3.8-flash-medium` | agy に `--model` で渡すモデル (`agy models` で一覧)。空文字にすると `--model` を付けず agy 自身の既定を使う |

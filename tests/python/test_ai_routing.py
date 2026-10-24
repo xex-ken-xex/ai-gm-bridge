@@ -102,15 +102,29 @@ def test_load_routing_missing_or_broken_file(tmp_path):
     assert load_routing(str(broken)) is None
 
 
-def test_load_routing_registers_literal_api_keys(tmp_path):
+def test_load_routing_ignores_literal_api_keys_and_warns(tmp_path, capsys, monkeypatch):
+    monkeypatch.delenv("LM_KEY_FOR_TEST", raising=False)
     path = tmp_path / "ai.json"
     path.write_text(json.dumps({
-        "providers": {"lm": {"type": "openai", "model": "m", "api_key": "literal-key-abcdef"}},
+        "providers": {"lm": {"type": "openai", "model": "m", "api_key": "literal-key-abcdef",
+                             "api_key_env": "LM_KEY_FOR_TEST"}},
         "tasks": {"default": "lm"},
     }), encoding="utf-8")
     routing = load_routing(str(path))
     assert routing.source == str(path)
+    assert routing.providers["lm"].api_key == ""
+    assert "api_key は使いません" in capsys.readouterr().out
     assert "literal-key-abcdef" not in logs.mask_secrets("key is literal-key-abcdef")
+
+
+def test_config_default_is_outside_the_module_folder(tmp_path, capsys, monkeypatch):
+    from gm_server import ai_routing, config
+
+    assert not config.AI_CONFIG_PATH.startswith(config.MODULE_DIR)
+    (tmp_path / "ai_providers.json").write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(config, "MODULE_DIR", str(tmp_path))
+    assert ai_routing.load_routing(str(tmp_path / "none.json")) is None
+    assert "ブラウザで読めてしまう" in capsys.readouterr().out
 
 
 async def test_query_json_routes_task_and_falls_back():
@@ -223,6 +237,43 @@ async def test_claude_code_provider_error_and_missing_binary(monkeypatch, tmp_pa
     provider = ClaudeCodeProvider("claude", {"workdir": str(tmp_path)})
     with pytest.raises(RuntimeError):
         await provider.complete("x")
+
+
+async def test_claude_code_timeout_kills_child_processes(monkeypatch, tmp_path):
+    import os
+
+    real_exec = asyncio.create_subprocess_exec
+    pid_file = tmp_path / "child.pid"
+    script = (
+        "import subprocess, sys, time; "
+        f"p = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(30)']); "
+        f"open({str(pid_file)!r}, 'w').write(str(p.pid)); time.sleep(30)"
+    )
+
+    async def fake_exec(*cmd, **kwargs):
+        assert kwargs.get("start_new_session") is True
+        return await real_exec(sys.executable, "-c", script, **kwargs)
+
+    monkeypatch.setattr("asyncio.create_subprocess_exec", fake_exec)
+    provider = ClaudeCodeProvider("claude", {"workdir": str(tmp_path), "timeout": 1})
+    assert await provider.complete("x", timeout=1.5) == ("", None)
+    child = int(pid_file.read_text())
+
+    def gone() -> bool:
+        # 止まった子プロセスは、親が回収するまでゾンビ (Z) として残ることがある
+        try:
+            with open(f"/proc/{child}/stat") as f:
+                return f.read().rsplit(")", 1)[-1].split()[0] == "Z"
+        except OSError:
+            return True
+
+    for _ in range(50):
+        if gone():
+            break
+        await asyncio.sleep(0.05)
+    else:
+        os.kill(child, 9)
+        raise AssertionError("claude の子プロセスが残っています")
 
     async def missing(*cmd, **kwargs):
         raise FileNotFoundError("claude")

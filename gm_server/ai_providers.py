@@ -10,6 +10,7 @@ import asyncio
 import contextlib
 import json
 import os
+import signal
 import time
 import urllib.request
 import uuid
@@ -99,7 +100,8 @@ class GeminiProvider(Provider):
         spec.setdefault("concurrency", config.LLM_CONCURRENCY)
         super().__init__(name, spec)
         self.api_key_env = str(spec.get("api_key_env") or "GEMINI_API_KEY")
-        self.api_key = spec.get("api_key") or os.environ.get(self.api_key_env) or ""
+        # キーは環境変数からだけ読む (設定ファイルに書いたキーは使わない。ai_routing が警告する)
+        self.api_key = os.environ.get(self.api_key_env) or ""
         logs.register_secret(self.api_key)
         self.client = client if client is not None else self._make_client()
         self.sleep = sleep
@@ -198,6 +200,15 @@ class AgyProvider(Provider):
         return text, conv or conversation
 
 
+def kill_process_group(proc) -> None:
+    """start_new_session=True で起動したプロセスを、子プロセスごと止める"""
+    try:
+        os.killpg(proc.pid, signal.SIGKILL)
+    except (ProcessLookupError, PermissionError, AttributeError, OSError):
+        with contextlib.suppress(ProcessLookupError):
+            proc.kill()
+
+
 def build_claude_command(model: str = "", session_id: Optional[str] = None, extra_args=None) -> List[str]:
     """Claude Code CLI (`claude -p`)。プロンプトは標準入力で渡す (長いプロンプトでも引数の上限に掛からない)"""
     cmd = ["claude", "-p", "--output-format", "json"]
@@ -252,6 +263,8 @@ class ClaudeCodeProvider(Provider):
             proc = await asyncio.create_subprocess_exec(
                 *cmd, stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
                 cwd=self.workdir if os.path.isdir(self.workdir) else None,
+                # claude が起こすツールや MCP サーバーの子プロセスも、打ち切りのときにまとめて止める
+                start_new_session=True,
             )
         except FileNotFoundError:
             print(f"Claude Code の CLI ({self.command}) が見つかりません (PATH を確認してください)")
@@ -261,8 +274,7 @@ class ClaudeCodeProvider(Provider):
             async with progress("Claude Code 応答待ち", limit=limit):
                 out, err = await asyncio.wait_for(proc.communicate(prompt.encode("utf-8")), timeout=limit)
         except (asyncio.TimeoutError, asyncio.CancelledError) as e:
-            with contextlib.suppress(ProcessLookupError):
-                proc.kill()
+            kill_process_group(proc)
             await proc.wait()
             logs.ai_error(rid, "Claude Code", "打ち切り" if isinstance(e, asyncio.CancelledError) else f"{limit:.0f} 秒以内に応答なし",
                           time.monotonic() - started)
@@ -306,7 +318,8 @@ class OpenAICompatProvider(Provider):
         spec = spec or {}
         self.base_url = str(spec.get("base_url") or "http://localhost:1234/v1").rstrip("/")
         self.api_key_env = str(spec.get("api_key_env") or "")
-        self.api_key = str(spec.get("api_key") or (os.environ.get(self.api_key_env) if self.api_key_env else "") or "")
+        # キーは環境変数からだけ読む (設定ファイルに書いたキーは使わない。ai_routing が警告する)
+        self.api_key = str((os.environ.get(self.api_key_env) if self.api_key_env else "") or "")
         logs.register_secret(self.api_key)
         self.temperature = spec.get("temperature")
         self.json_format = bool(spec.get("json_response_format", False))

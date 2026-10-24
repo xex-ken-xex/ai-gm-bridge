@@ -1,6 +1,7 @@
 """AI の接続先の振り分け (作業ごとに、どの接続先を使うか)
 
-設定ファイル (JSON。既定はリポジトリ直下の ai_providers.json、AI_GM_AI_CONFIG で変更) の形:
+設定ファイル (JSON。既定は ~/.config/ai-gm-bridge/ai_providers.json、AI_GM_AI_CONFIG で変更。
+モジュールのフォルダは Foundry がブラウザに配信するので置かない) の形:
 
     {
       "providers": {
@@ -114,7 +115,7 @@ def build_routing(data: dict, gemini_client=None, agy_runner=None, source: str =
             continue
         if cls is GeminiProvider:
             # 環境変数 GEMINI_API_KEY で作った接続をそのまま使う (同じキーなら作り直さない)
-            same_key = not spec.get("api_key") and str(spec.get("api_key_env") or "GEMINI_API_KEY") == "GEMINI_API_KEY"
+            same_key = str(spec.get("api_key_env") or "GEMINI_API_KEY") == "GEMINI_API_KEY"
             providers[name] = cls(name, spec, client=gemini_client if same_key else None)
         elif cls is AgyProvider:
             providers[name] = cls(name, spec, runner=agy_runner)
@@ -139,18 +140,31 @@ def build_routing(data: dict, gemini_client=None, agy_runner=None, source: str =
     return Routing(providers, tasks, source=source)
 
 
+def warn_public_config() -> None:
+    """モジュールのフォルダ (Foundry がブラウザに配信する) に設定ファイルがあれば、読まずに警告する"""
+    public = os.path.join(config.MODULE_DIR, "ai_providers.json")
+    if os.path.isfile(public) and os.path.abspath(public) != os.path.abspath(config.AI_CONFIG_PATH):
+        print(f"⚠️ {public} は Foundry からブラウザで読めてしまう場所なので読みません。"
+              f"{config.AI_CONFIG_PATH} に移してください")
+
+
 def load_routing(path: Optional[str] = None, gemini_client=None, agy_runner=None) -> Optional[Routing]:
     """設定ファイルを読む。無ければ None (既定の振り分けを使う)。読めなければ警告して None"""
     path = path or config.AI_CONFIG_PATH
+    warn_public_config()
     if not path or not os.path.isfile(path):
         return None
     try:
         with open(path, "r", encoding="utf-8") as f:
             data = json.load(f)
-        # 設定ファイルに直接書いたキーもログでは伏せる
-        for spec in (data.get("providers") or {}).values() if isinstance(data, dict) else []:
-            if isinstance(spec, dict):
-                logs.register_secret(spec.get("api_key"))
+        # 設定ファイルに直接書いたキーは使わない (環境変数の名前 api_key_env だけ)。警告し、ログでは伏せる
+        raw = data.get("providers") if isinstance(data, dict) else None
+        for name, spec in raw.items() if isinstance(raw, dict) else []:
+            if isinstance(spec, dict) and spec.get("api_key"):
+                logs.register_secret(str(spec.get("api_key")))
+                print(f"⚠️ AI の接続先 {name}: 設定ファイルの api_key は使いません。キーは環境変数に入れ、"
+                      f"その名前を api_key_env に書いてください")
+                logs.ai_logger.warning(f"AI の接続先 {name}: 設定ファイルの api_key は使いません (api_key_env を使ってください)")
         return build_routing(data, gemini_client=gemini_client, agy_runner=agy_runner, source=path)
     except (OSError, ValueError, AttributeError) as e:
         print(f"⚠️ AI の振り分け設定 ({path}) を読めませんでした ({e})。既定の振り分けを使います")

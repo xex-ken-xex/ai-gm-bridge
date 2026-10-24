@@ -9,10 +9,11 @@ DATA_DIR = os.path.expanduser(os.environ.get("AI_GM_DATA_DIR", "~/foundrydata/Da
 API_KEY = os.environ.get("GEMINI_API_KEY")
 GEMINI_MODEL = os.environ.get("AI_GM_GEMINI_MODEL", "gemini-3.8-flash")
 
+# このモジュールのフォルダ (FVTT の Data/modules/ai-gm-bridge。Foundry がブラウザに配信する)
+MODULE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # AI の接続先の振り分け設定 (gm_server/ai_routing.py)。無ければ既定の振り分け (Gemini → agy)
-AI_CONFIG_PATH = os.path.expanduser(os.environ.get(
-    "AI_GM_AI_CONFIG", os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "ai_providers.json"),
-))
+# モジュールのフォルダに置くとプレイヤーのブラウザからも読めるため、Data の外に置く
+AI_CONFIG_PATH = os.path.expanduser(os.environ.get("AI_GM_AI_CONFIG", "~/.config/ai-gm-bridge/ai_providers.json"))
 
 # agy CLI の応答待ち上限 (秒)。超えたら打ち切り、呼び出し側のフォールバックに任せる
 AGY_TIMEOUT = float(os.environ.get("AI_GM_AGY_TIMEOUT", "300"))
