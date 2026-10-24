@@ -47,16 +47,26 @@ _SECRET_PATTERNS = [
     _KEY_SHAPES,
     re.compile(r"(?i)\b(key|api_key|apikey|access_token|token)=[^&\s\"']+"),
     re.compile(r"(?i)\b(x-goog-api-key|x-api-key|authorization)(\"?\s*[:=]\s*\"?)(bearer\s+)?[^\s\",]+"),
-    # JSON や設定ファイルの "api_key": "…" / api_key = "…"
-    re.compile(r"(?i)(\"?\b(?:api_?key|apikey|access_token|secret|password)\"?\s*[:=]\s*\")[^\"]+(\")"),
+    # JSON・YAML・.env・dict の表示などの「名前: 値」。名前が api_key / _key / secret / token / password で終わるもの
+    # (anthropic_api_key・secret_key・access_token など。max_tokens・token_count は名前の終わりが違うので伏せない)
+    # 値は "…" / '…' / 引用符なしのどれでも
+    re.compile(
+        r"""(?i)(?<![A-Za-z0-9_\-])(["']?)([A-Za-z0-9_\-]*(?:api_?key|_key|secret|token|password|passwd))\1(\s*[:=]\s*)"""
+        r"""(?:"([^"\n]*)"|'([^'\n]*)'|([^\s,;"'}\]&]+))"""
+    ),
 ]
+# 引用符なしの値でも、数字や true / null などは秘密ではないので残す
+_PLAIN_VALUES = re.compile(r"(?i)^(?:\d+(?:\.\d+)?|true|false|null|none|\*\*\*)$")
 MASK = "***"
 # 環境変数以外から読んだ秘密 (設定ファイルの API キーなど)。register_secret で足す
 _extra_secrets: set = set()
 
 
 def register_secret(value: Optional[str]) -> None:
-    """環境変数以外から読んだ秘密 (設定ファイルの API キーなど) も伏せ字にする"""
+    """環境変数以外から読んだ秘密 (設定ファイルの API キーなど) も伏せ字にする
+
+    いまは呼び出し元が無い。AI の接続先の設定ファイルを読む処理を作るときに、そこで読んだキーを渡すこと
+    """
     if value and len(value) >= 8:
         _extra_secrets.add(value)
 
@@ -77,8 +87,19 @@ def mask_secrets(text: str, secrets: Optional[Iterable[str]] = None) -> str:
     text = _SECRET_PATTERNS[0].sub(MASK, text)
     text = _SECRET_PATTERNS[1].sub(lambda m: f"{m.group(1)}={MASK}", text)
     text = _SECRET_PATTERNS[2].sub(lambda m: f"{m.group(1)}{m.group(2)}{MASK}", text)
-    text = _SECRET_PATTERNS[3].sub(lambda m: f"{m.group(1)}{MASK}{m.group(2)}", text)
+    text = _SECRET_PATTERNS[3].sub(_mask_assignment, text)
     return text
+
+
+def _mask_assignment(m: "re.Match") -> str:
+    q, name, sep, dq, sq, bare = m.groups()
+    if dq is not None:
+        return f'{q}{name}{q}{sep}"{MASK if dq else ""}"'
+    if sq is not None:
+        return f"{q}{name}{q}{sep}'{MASK if sq else ''}'"
+    if _PLAIN_VALUES.match(bare):
+        return m.group(0)
+    return f"{q}{name}{q}{sep}{MASK}"
 
 
 def mask_log_file(path: Optional[str]) -> bool:

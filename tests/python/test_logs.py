@@ -45,6 +45,31 @@ def test_mask_secrets_hides_openai_anthropic_and_config_keys():
     assert logs.mask_secrets("task-list sk-short", secrets=[]) == "task-list sk-short"
 
 
+def test_mask_secrets_hides_prefixed_unquoted_and_single_quoted_names():
+    text = "\n".join([
+        "anthropic_api_key=plainsecret1",
+        '"secret_key": "jsonsecret2"',
+        "api_key: yamlsecret3",
+        "{'api_key': 'dictsecret4'}",
+        "ANTHROPIC_API_KEY=envsecret5",
+        "client_secret = 'tomlsecret6'",
+        "refresh_token: tokensecret7",
+        "db_password=pwsecret8",
+    ])
+    masked = logs.mask_secrets(text, secrets=[])
+    for i, value in enumerate(("plainsecret1", "jsonsecret2", "yamlsecret3", "dictsecret4", "envsecret5",
+                               "tomlsecret6", "tokensecret7", "pwsecret8"), 1):
+        assert value not in masked, value
+    assert "anthropic_api_key=***" in masked
+    assert '"secret_key": "***"' in masked
+    assert "{'api_key': '***'}" in masked
+
+
+def test_mask_secrets_keeps_token_counts_and_plain_values():
+    text = '{"token_count": 1200, "max_tokens": 4096, "max_output_tokens": "8192", "tokens": 30} use_secret: true api_key: null'
+    assert logs.mask_secrets(text, secrets=[]) == text
+
+
 def test_register_secret_masks_values_from_config(monkeypatch):
     monkeypatch.setattr(logs, "_extra_secrets", set())
     logs.register_secret("lmstudio-token-777")
