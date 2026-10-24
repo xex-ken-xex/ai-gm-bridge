@@ -264,3 +264,28 @@ def test_complete_agy_output():
     assert complete_agy_output(b'{"response": "x"}\n')
     assert not complete_agy_output(b'{"response": "x"')
     assert not complete_agy_output(b'[1, 2]') and not complete_agy_output(b"")
+
+
+async def test_call_agy_masks_its_own_log_file(monkeypatch, file_log, tmp_path):
+    """agy の動作ログはサーバーを通らないので、終わったあとで API キーを伏せる"""
+    import asyncio
+    import sys
+
+    from gm_server import llm as llm_mod
+
+    monkeypatch.setattr(llm_mod, "AGY_WORKDIR", str(tmp_path / "work"))
+    key = "AIza" + "q" * 35
+    real_exec = asyncio.create_subprocess_exec
+    written = []
+
+    async def run(*args, **kwargs):
+        path = args[args.index("--log-file") + 1]
+        written.append(path)
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(f"POST generateContent?key={key}\n")
+        return await real_exec(sys.executable, "-c", "print('{\"response\": \"ok\"}')", **kwargs)
+
+    monkeypatch.setattr("asyncio.create_subprocess_exec", run)
+    assert (await call_agy("hi", None))[0] == "ok"
+    text = open(written[0], encoding="utf-8").read()
+    assert key not in text and "key=***" in text
