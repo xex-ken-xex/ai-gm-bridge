@@ -47,11 +47,13 @@ _SECRET_PATTERNS = [
     _KEY_SHAPES,
     re.compile(r"(?i)\b(key|api_key|apikey|access_token|token)=[^&\s\"']+"),
     re.compile(r"(?i)\b(x-goog-api-key|x-api-key|authorization)(\"?\s*[:=]\s*\"?)(bearer\s+)?[^\s\",]+"),
-    # JSON・YAML・.env・dict の表示などの「名前: 値」。名前が api_key / _key / secret / token / password で終わるもの
-    # (anthropic_api_key・secret_key・access_token など。max_tokens・token_count は名前の終わりが違うので伏せない)
+    # JSON・YAML・.env・dict の表示などの「名前: 値」。名前が認証の語で終わるもの
+    # (api_key・access_key・secret_key・private_key・client_secret・auth_token・access_token・refresh_token・password。
+    # anthropic_api_key・db_password のような接頭辞つきも)。シナリオの "ancient_secret"・"size_key" や max_tokens は伏せない
     # 値は "…" / '…' / 引用符なしのどれでも
     re.compile(
-        r"""(?i)(?<![A-Za-z0-9_\-])(["']?)([A-Za-z0-9_\-]*(?:api_?key|_key|secret|token|password|passwd))\1(\s*[:=]\s*)"""
+        r"""(?i)(?<![A-Za-z0-9_\-])(["']?)([A-Za-z0-9_\-]*?(?:api[_\-]?key|access[_\-]?key|secret[_\-]?key|private[_\-]?key|"""
+        r"""client[_\-]?secret|auth[_\-]?token|access[_\-]?token|refresh[_\-]?token|password|passwd))\1(\s*[:=]\s*)"""
         r"""(?:"([^"\n]*)"|'([^'\n]*)'|([^\s,;"'}\]&]+))"""
     ),
 ]

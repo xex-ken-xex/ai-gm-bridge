@@ -70,6 +70,12 @@ def test_mask_secrets_keeps_token_counts_and_plain_values():
     assert logs.mask_secrets(text, secrets=[]) == text
 
 
+def test_mask_secrets_keeps_scenario_words_that_are_not_credentials():
+    text = ('{"ancient_secret": "地下の祭壇", "shortcut_secret": "裏の抜け道", "secret": "王の正体", '
+            '"size_key": "large", "scene_key": "s1", "cache_key": "abc123", "primary_key": "id", "token": "金貨"}')
+    assert logs.mask_secrets(text, secrets=[]) == text
+
+
 def test_register_secret_masks_values_from_config(monkeypatch):
     monkeypatch.setattr(logs, "_extra_secrets", set())
     logs.register_secret("lmstudio-token-777")
