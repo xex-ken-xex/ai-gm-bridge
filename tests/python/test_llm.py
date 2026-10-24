@@ -154,10 +154,10 @@ def test_build_agy_command_adds_model_and_effort_only_when_set():
 
 
 def test_concurrency_depends_on_engine(monkeypatch):
-    from gm_server import llm as llm_mod
+    from gm_server import config
 
-    monkeypatch.setattr(llm_mod, "AGY_CONCURRENCY", 1)
-    monkeypatch.setattr(llm_mod, "LLM_CONCURRENCY", 3)
+    monkeypatch.setattr(config, "AGY_CONCURRENCY", 1)
+    monkeypatch.setattr(config, "LLM_CONCURRENCY", 3)
     assert LLMService(gemini_client=None).concurrency == 1
     assert LLMService(gemini_client=object()).concurrency == 3
 

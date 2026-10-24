@@ -98,9 +98,12 @@ async def handle_command(ctx, data: dict) -> None:
         return
 
     # スキル判定: 判定プロンプト + スキル一覧 + GM の文を agy に1回だけ送る (判定と回答をまとめる)
-    persona = "" if getattr(ctx.llm, "conversation_id", None) else SUPPORT_GM_CHARACTER
+    has_conversation = getattr(ctx.llm, "has_conversation", None)
+    talked = has_conversation("skill_router") if callable(has_conversation) else getattr(ctx.llm, "conversation_id", None)
+    persona = "" if talked else SUPPORT_GM_CHARACTER
     print(f"agyへスキル判定を依頼中: {prompt}")
-    resp = await ctx.llm.ask_support_gm(skills.build_router_prompt(prompt, persona), raw=True, timeout=ROUTER_TIMEOUT)
+    resp = await ctx.llm.ask_support_gm(skills.build_router_prompt(prompt, persona), raw=True, timeout=ROUTER_TIMEOUT,
+                                     task="skill_router")
     if not resp:
         await _say(ctx, NO_REPLY_MESSAGE)
         return

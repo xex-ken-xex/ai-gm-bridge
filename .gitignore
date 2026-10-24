@@ -3,3 +3,5 @@ __pycache__/
 *.log
 node_modules/
 .pytest_cache/
+# AI の接続先の振り分け設定 (各自の環境ごと。ai_providers.example.json を写して作る)
+ai_providers.json

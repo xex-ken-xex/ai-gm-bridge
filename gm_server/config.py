@@ -9,6 +9,11 @@ DATA_DIR = os.path.expanduser(os.environ.get("AI_GM_DATA_DIR", "~/foundrydata/Da
 API_KEY = os.environ.get("GEMINI_API_KEY")
 GEMINI_MODEL = os.environ.get("AI_GM_GEMINI_MODEL", "gemini-3.8-flash")
 
+# AI の接続先の振り分け設定 (gm_server/ai_routing.py)。無ければ既定の振り分け (Gemini → agy)
+AI_CONFIG_PATH = os.path.expanduser(os.environ.get(
+    "AI_GM_AI_CONFIG", os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "ai_providers.json"),
+))
+
 # agy CLI の応答待ち上限 (秒)。超えたら打ち切り、呼び出し側のフォールバックに任せる
 AGY_TIMEOUT = float(os.environ.get("AI_GM_AGY_TIMEOUT", "300"))
 # /ai のスキル判定 (agy) を待つ秒数。過ぎたらキーワード判定に切り替える (GM を長く待たせないため短め)

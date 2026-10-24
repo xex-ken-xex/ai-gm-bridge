@@ -118,6 +118,35 @@ flowchart TD
 - **LLM**: `google-genai` (モデル: `gemini-3.8-flash`)
 - **TTS**: `edge-tts` (ボイスモデル: `ja-JP-NanamiNeural`)。`AI_GM_TTS_ENGINE=irodori` で Irodori-TTS-Server (OpenAI 互換 API) に切り替えられる。Irodori で作れないときは edge-tts で作り直し、その後 `AI_GM_IRODORI_RETRY_AFTER` 秒は edge-tts だけを使う (切り替わった最初の 1 回だけ GM の画面に `progress` で知らせる)。起動時に `/health` で繋がるかを確かめて表示し、繋がれば裏で短いあいさつを 1 回作らせてモデルを読み込ませる (音声は捨てる)。繋がらなければ最初の読み上げから短い待ち上限にする。入れ方は [`irodori_tts_setup.md`](irodori_tts_setup.md)
 
+#### AI の接続先の振り分け
+作業ごとに、どの AI に頼むかを設定ファイルで決められます (`gm_server/ai_routing.py`・接続先は `gm_server/ai_providers.py`)。
+
+- **設定ファイル**: リポジトリ直下の `ai_providers.json` (`AI_GM_AI_CONFIG` で変更。git には入れない)。`ai_providers.example.json` を写して作る。無ければ今までどおり (Gemini のキーがあれば Gemini → agy、サポートGM の相談とスキル判定は agy)。
+- **接続先 (`providers`)**: 名前を付けて並べる。`type` は次のどれか。共通で `timeout` (秒) と `concurrency` (同時に投げる数) を書ける。
+
+  | `type` | 内容 | 主な項目 |
+  | :--- | :--- | :--- |
+  | `gemini` | Gemini API | `model`、`api_key_env` (キーを入れた環境変数の名前。既定 `GEMINI_API_KEY`) |
+  | `agy` | agy CLI (今までの呼び方) | モデル・effort・同時実行数は `AI_GM_AGY_*` の環境変数で決まる |
+  | `claude_code` | Claude Code CLI (`claude -p --output-format json`。プロンプトは標準入力) | `model` (`sonnet` など)、`command` (既定 `claude`)、`extra_args`、`workdir` (既定 `~/ai-gm-logs/claude-workspace`)。会話は `--resume` で続ける。先に `claude` を一度起動してログインしておく (API キーなら `ANTHROPIC_API_KEY`) |
+  | `openai` | OpenAI 互換の Chat Completions API (LM Studio・Ollama・OpenAI など) | `base_url` (既定 `http://localhost:1234/v1`)、`model`、`api_key_env` (要るときだけ)、`temperature`、`json_response_format` (`true` で `response_format: json_object` を付ける)。会話はサーバーの中で直近 20 件まで覚える |
+
+- **作業ごとの接続先 (`tasks`)**: 作業の名前に接続先の名前 (並べるとフォールバックの順) を書く。書いていない作業は `default` を使う。キーが無いなど使えない接続先は飛ばす。
+
+  | 作業 | 内容 |
+  | :--- | :--- |
+  | `ai_gm` | AI GM の語り (プレイヤーの発言への応答) |
+  | `support_gm` | サポートGM Geminiちゃん への相談 |
+  | `skill_router` | `/ai` のスキル判定 |
+  | `builder` | シナリオビルダー (各段階と、区画・地点の描写) |
+  | `dungeon` | ダンジョン生成 (伝承・部屋の情景) |
+  | `npc_dialogue` | NPC の会話 |
+  | `npc_turn` | NPC の戦闘の手番 |
+  | `adventure_log` | 冒険記録 |
+
+- **API キー**: 設定ファイルには環境変数の名前 (`api_key_env`) を書き、値は書かない。起動時の表示と `python3 -m gm_server.ai_routing` (いまの振り分けを表示) では「設定済み / 未設定」だけを出す。設定ファイルに直接 `api_key` を書いた場合も、その値はログで伏せる。
+- 分割した問い合わせ (部屋の情景など) の同時実行数と 1 回の待ち上限は、その作業で最初に試す接続先の `concurrency` / `timeout` を使う。
+
 #### エラーハンドリング & レジリエンス
 - **HTML クリーニング**: FVTT チャットに含まれる `<p>...</p>` などの HTML タグを正規表現で事前除去。
 - **API 再試行 (Exponential Backoff)**: Gemini API が 503 過負荷を返した場合、最大 3 回まで指数関数的待機時間（2秒、4秒）を設けて自動再試行。
@@ -188,6 +217,7 @@ FVTT のビルダー画面にも同じ内容を 2 行で出します (`builder_p
 | :--- | :--- | :--- |
 | `GEMINI_API_KEY` | (なし) | Gemini API のキー。設定すると Gemini を直接使い、無ければ agy CLI を使う。ログには `***` で伏せて書く |
 | `AI_GM_GEMINI_MODEL` | `gemini-3.8-flash` | Gemini を直接使うときのモデル |
+| `AI_GM_AI_CONFIG` | `<リポジトリ>/ai_providers.json` | AI の接続先の振り分け設定ファイル (無ければ既定の振り分け) |
 | `AI_GM_GEMINI_TIMEOUT` | `120` | Gemini の 1 回の問い合わせの待ち上限 (秒) |
 | `AI_GM_LLM_CONCURRENCY` | `3` | Gemini に同時に投げる問い合わせの数 (部屋の情景などの分割分) |
 | `AI_GM_AGY_MODEL` | `gemini-3.8-flash-medium` | agy に `--model` で渡すモデル (`agy models` で一覧)。空文字にすると `--model` を付けず agy 自身の既定を使う |

@@ -128,7 +128,7 @@ class PromptLLM(FakeLLM):
         super().__init__()
         self.answer = answer
 
-    async def query_json(self, prompt, unbounded=False):
+    async def query_json(self, prompt, unbounded=False, task="dungeon"):
         self.prompts.append(("json", prompt))
         return self.answer(prompt)
 
@@ -301,7 +301,7 @@ async def test_wilderness_details_run_one_at_a_time_on_agy(make_ctx, sent):
     class OneAtATime(PromptLLM):
         concurrency = 1
 
-        async def query_json(self, prompt, unbounded=False):
+        async def query_json(self, prompt, unbounded=False, task="dungeon"):
             nonlocal running, peak
             running += 1
             peak = max(peak, running)

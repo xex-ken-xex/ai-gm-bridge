@@ -31,7 +31,8 @@ _hub = ConnectionHub()
 def _services():
     global _llm, _tts
     if _llm is None:
-        _llm = LLMService(gemini_client=create_gemini_client())
+        # AI の接続先の振り分け設定 (ai_providers.json) があれば読む
+        _llm = LLMService.from_config(gemini_client=create_gemini_client())
     if _tts is None:
         _tts = SpeechSynthesizer()
         # edge-tts に切り替わったときの通知は、そのとき繋がっている GM に送る

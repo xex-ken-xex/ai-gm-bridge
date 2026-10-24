@@ -104,6 +104,8 @@ ai-gm-bridge/
   - プレイヤーの入力から HTML タグを除去し、Gemini (`gemini-3.8-flash`) へ問い合わせ。
   - 構造化 JSON (`narrative`, `speech`, `dice`) を取得。
   - `edge-tts` で音声ファイル (`voice_<timestamp>.mp3`) を生成し、FVTT へ順次送信。
+- **`gm_server/llm.py` / `gm_server/ai_routing.py` / `gm_server/ai_providers.py`**
+  AI への問い合わせ。`LLMService` は作業 (`task`: ai_gm / support_gm / skill_router / builder / dungeon / npc_dialogue / npc_turn / adventure_log) ごとに、振り分け設定 (`ai_providers.json`、例は `ai_providers.example.json`) の接続先 (Gemini API / agy / Claude Code / OpenAI 互換) を順に試す。新しく AI を呼ぶ処理を足すときは `task=` を渡し、必要なら `ai_routing.TASKS` に作業を足す。API キーの値は表示もログもしない (設定済みかどうかだけ)。
 - **[`tools/test_send.py`](file:///home/kenic/foundrydata/Data/modules/ai-gm-bridge/tools/test_send.py)** / **[`tools/test_voice.py`](file:///home/kenic/foundrydata/Data/modules/ai-gm-bridge/tools/test_voice.py)**
   FVTT との接続や音声再生の単体検証用モックサーバー（手動検証ツール）。
 

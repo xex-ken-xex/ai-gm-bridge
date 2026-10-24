@@ -250,10 +250,12 @@ async def query_room_flavors(
     on_status=None,
     auto_extend: bool = False,
     on_chunk: Optional[Callable[[List[Dict]], Awaitable[None]]] = None,
+    task: str = "dungeon",
 ) -> Optional[List[Dict]]:
     """
-    部屋の情景を ROOMS_PER_JOB 部屋ずつのジョブに分け、ctx.llm.concurrency 本まで並列に問い合わせる
+    部屋の情景を ROOMS_PER_JOB 部屋ずつのジョブに分け、task の接続先の同時実行数まで並列に問い合わせる
     (Gemini は LLM_CONCURRENCY、agy は AGY_CONCURRENCY。agy の既定は 1 本ずつ)。
+    task は AI の振り分けの作業 (ダンジョン生成は dungeon、シナリオビルダーは builder)。
     返す id は 0 始まり。全ジョブ失敗なら None (呼び出し側は既定のノートを使う)。
     prompt_for_chunk を渡すと、1 ジョブ分の部屋からプロンプトを作る処理を差し替えられる (シナリオビルダー用)。
     label は進捗表示とログに使う名前 (旅路の地点にも使うため)。
@@ -269,7 +271,7 @@ async def query_room_flavors(
     chunks = [selected[i:i + ROOMS_PER_JOB] for i in range(0, len(selected), ROOMS_PER_JOB)]
     if not chunks:
         return None
-    concurrency = max(1, int(getattr(ctx.llm, "concurrency", LLM_CONCURRENCY)))
+    concurrency = max(1, int(llm_concurrency(ctx, task)))
     sem = asyncio.Semaphore(concurrency)
     done = 0
     # 進捗とログに「区画 3・5・8 の情景を作成中」と出すため、今書いているジョブと書き終えた部屋数を数える
@@ -288,7 +290,7 @@ async def query_room_flavors(
             log_detail(f"[{label}] {unit} {names} の{what}を作成中 ({total_rooms} {unit}中 {rooms_done} {unit}済み)")
             try:
                 prompt = prompt_for_chunk(chunk)
-                parsed = await ctx.llm.query_json(prompt, unbounded=True)
+                parsed = await ctx.llm.query_json(prompt, unbounded=True, task=task)
             except Exception as e:
                 log_detail(f"[{label}] 生成失敗 ({e})。この部屋群は既定のノートを使用します。")
                 parsed = None
@@ -311,7 +313,7 @@ async def query_room_flavors(
     try:
         await run_with_deadline(
             ctx, label, asyncio.gather(*(run(c) for c in chunks)),
-            limit=llm_step_limit(ctx) * rounds, on_status=on_status,
+            limit=llm_step_limit(ctx, task) * rounds, on_status=on_status,
             detail=lambda: progress_detail(unit, what, list(working.values()), rooms_done, total_rooms),
             auto_extend=auto_extend,
         )
@@ -338,9 +340,19 @@ def progress_detail(unit: str, what: str, working: List[str], rooms_done: int, t
     return f"{head} の{what}を作成中 ({count})" if head else count
 
 
-def llm_step_limit(ctx) -> float:
-    """AI 問い合わせ 1 回の待ち上限 (Gemini があれば Gemini、無ければ agy の上限)"""
+def llm_step_limit(ctx, task: str = "dungeon") -> float:
+    """AI 問い合わせ 1 回の待ち上限 (task の最初の接続先の上限。振り分けを持たない LLM なら Gemini / agy の上限)"""
+    step_limit = getattr(ctx.llm, "step_limit", None)
+    if callable(step_limit):
+        return step_limit(task)
     return GEMINI_TIMEOUT if getattr(ctx.llm, "client", None) else AGY_TIMEOUT
+
+
+def llm_concurrency(ctx, task: str = "dungeon") -> int:
+    concurrency_for = getattr(ctx.llm, "concurrency_for", None)
+    if callable(concurrency_for):
+        return concurrency_for(task)
+    return getattr(ctx.llm, "concurrency", LLM_CONCURRENCY)
 
 
 def _build_geometry(w: int, h: int, density: float, loop_ratio: float, png_path: str, cell_size: int,
@@ -402,7 +414,7 @@ async def generate_and_create_dungeon_scene(
     lore_data = None
     try:
         lore_data = await run_with_deadline(
-            ctx, "伝承", ctx.llm.query_json(lore_prompt, unbounded=True), limit=llm_step_limit(ctx)
+            ctx, "伝承", ctx.llm.query_json(lore_prompt, unbounded=True, task="dungeon"), limit=llm_step_limit(ctx, "dungeon")
         )
     except Exception as e:
         print(f"Lore生成失敗 ({e})。フォールバック伝承を使用します。")
