@@ -1,4 +1,8 @@
-"""Gemini API / agy CLI への問い合わせ"""
+"""AI への問い合わせ窓口 (LLMService) と agy CLI の呼び出し
+
+接続先 (Gemini API / agy / Claude Code / OpenAI 互換) は gm_server/ai_providers.py、
+作業ごとの振り分けは gm_server/ai_routing.py
+"""
 
 import asyncio
 import contextlib
@@ -6,9 +10,10 @@ import json
 import logging
 import os
 import time
-from typing import Awaitable, Callable, List, Optional, Tuple, Union
+from typing import Awaitable, Callable, Dict, List, Optional, Tuple, Union
 
 from gm_server import logs
+from gm_server.ai_providers import Provider, is_retryable_error  # noqa: F401 (is_retryable_error は互換のため)
 from gm_server.config import (
     AGY_CONCURRENCY,
     AGY_EFFORT,
@@ -17,7 +22,6 @@ from gm_server.config import (
     GEMINI_MODEL,
     AGY_WORKDIR,
     GEMINI_TIMEOUT,
-    LLM_CONCURRENCY,
 )
 from gm_server.progress import log, progress
 from gm_server.text import first_sentence, newlines_to_br
@@ -47,15 +51,6 @@ SUPPORT_GM_CHARACTER = (
     "NPC のセリフ案を求められたときは、その NPC の口調で書きます (Geminiちゃんの口調を混ぜない)。"
 )
 SUPPORT_GM_PERSONA = SUPPORT_GM_CHARACTER + "\nGMからの指示: "
-
-# 一時的な混雑・レート制限とみなすエラー文字列
-_RETRYABLE_MARKERS = ("503", "429", "UNAVAILABLE", "RESOURCE_EXHAUSTED", "overloaded")
-
-
-def is_retryable_error(err: Exception) -> bool:
-    msg = str(err)
-    return any(m in msg for m in _RETRYABLE_MARKERS)
-
 
 def build_agy_command(prompt: str, conversation_id: Optional[str] = None,
                       model: str = AGY_MODEL, effort: str = AGY_EFFORT, log_file: Optional[str] = None) -> List[str]:
@@ -299,6 +294,8 @@ async def _call_agy(
         return "", conversation_id or ""
     finally:
         watcher.cancel()
+        # agy の動作ログはサーバーを通らずに書かれるので、終わったら API キーを伏せる
+        logs.mask_log_file(agy_log)
     stdout, stderr = bytes(out_buf), bytes(err_buf)
     out_str = stdout.decode("utf-8", errors="replace").strip()
     err_str = stderr.decode("utf-8", errors="replace").strip()
@@ -315,10 +312,21 @@ async def _call_agy(
 
 AgyRunner = Callable[[str, Optional[str]], Awaitable[Tuple[str, str]]]
 
+# Gemini 以外 (システム指示を別に渡さない接続先) に AI GM の語りを頼むときのプロンプト
+AI_GM_PROMPT = (
+    "あなたはファンタジーTRPGの熟練ゲームマスター(GM)です。\n"
+    "プレイヤーの発言・行動: 「{player_input}」\n"
+    "状況の描写とGMとしての返答をしてください。\n"
+    "以下のJSONフォーマットのみを出力してください（Markdownコードブロックは不要です）:\n"
+    '{{"narrative": "チャット欄に表示する情景描写（セリフ含む）", '
+    '"speech": "音声読み上げ用テキスト（簡潔に1〜2文。記号や括弧は不要）", "dice": null}}'
+)
+
 
 class LLMService:
     """
-    Gemini (優先) と agy CLI (フォールバック) をまとめた問い合わせ窓口。
+    AI への問い合わせ窓口。作業 (task) ごとに振り分け設定 (ai_routing.Routing) の接続先を順に試す。
+    routing を渡さなければ今までと同じ振り分け (Gemini → agy、相談とスキル判定は agy)。
     gemini_client / agy_runner / sleep はテスト時に差し替え可能。
     """
 
@@ -329,145 +337,128 @@ class LLMService:
         agy_runner: AgyRunner = call_agy,
         sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
         gemini_timeout: float = GEMINI_TIMEOUT,
+        routing=None,
     ):
+        from gm_server.ai_routing import default_routing
+
         self.client = gemini_client
-        self.gemini_timeout = gemini_timeout
         self.model = model
-        self.agy_runner = agy_runner
-        self.sleep = sleep
-        # サポートGM Geminiちゃん とのマルチターン会話 ID
-        self.conversation_id: Optional[str] = None
+        self.routing = routing or default_routing(
+            gemini_client=gemini_client, agy_runner=agy_runner, sleep=sleep, gemini_timeout=gemini_timeout, model=model,
+        )
+        # 接続先ごとの会話 ID (サポートGM Geminiちゃん とのマルチターン会話。AI GM の語りと共有する)
+        self.conversations: Dict[str, Optional[str]] = {}
+
+    @classmethod
+    def from_config(cls, gemini_client=None, path: Optional[str] = None, **kwargs) -> "LLMService":
+        """振り分け設定ファイルがあれば読む (無ければ既定の振り分け)"""
+        from gm_server.ai_routing import load_routing
+
+        routing = load_routing(path, gemini_client=gemini_client, agy_runner=kwargs.get("agy_runner"))
+        return cls(gemini_client=gemini_client, routing=routing, **kwargs)
+
+    def chain(self, task: str) -> List[Provider]:
+        return self.routing.chain(task)
+
+    @property
+    def conversation_id(self) -> Optional[str]:
+        """サポートGM の相談に使う接続先の会話 ID (無ければ None = 次の相談でキャラクター設定を付ける)"""
+        chain = self.chain("support_gm")
+        return self.conversations.get(chain[0].name) if chain else None
+
+    @conversation_id.setter
+    def conversation_id(self, value: Optional[str]) -> None:
+        chain = self.chain("support_gm")
+        if chain:
+            self.conversations[chain[0].name] = value
+
+    def has_conversation(self, task: str) -> bool:
+        chain = self.chain(task)
+        return bool(chain and self.conversations.get(chain[0].name))
 
     @property
     def engine_name(self) -> str:
-        if self.client:
-            return f"Gemini API ({self.model})"
-        detail = ", ".join(x for x in (
-            f"モデル: {AGY_MODEL or 'agy の既定'}", f"effort: {AGY_EFFORT}" if AGY_EFFORT else "", f"同時実行: {AGY_CONCURRENCY}",
-        ) if x)
-        return f"agy (Antigravity Agent) [GEMINI_API_KEY 不要] ({detail})"
+        """起動時の表示 (作業ごとの接続先。API キーは設定済みかどうかだけ)"""
+        return "\n    ".join([""] + self.routing.describe())
+
+    def concurrency_for(self, task: str) -> int:
+        """分割した問い合わせを同時に何本まで投げるか (最初に試す接続先の上限。agy は同時起動に弱いため既定 1)"""
+        chain = self.chain(task)
+        return chain[0].concurrency if chain else 1
 
     @property
     def concurrency(self) -> int:
-        """分割した問い合わせを同時に何本まで投げるか (agy は同時起動に弱いため別の上限)"""
-        return LLM_CONCURRENCY if self.client else AGY_CONCURRENCY
+        return self.concurrency_for("dungeon")
 
-    def _generate(self, contents: str, system_instruction: Optional[str]):
-        from google.genai import types
+    def step_limit(self, task: str) -> float:
+        """AI 問い合わせ 1 回の待ち上限 (最初に試す接続先の上限)"""
+        chain = self.chain(task)
+        return chain[0].timeout if chain else AGY_TIMEOUT
 
-        config = types.GenerateContentConfig(
-            system_instruction=system_instruction,
-            response_mime_type="application/json",
-        )
-        return self.client.models.generate_content(model=self.model, contents=contents, config=config)
+    async def _complete(self, provider: Provider, prompt: str, system: Optional[str] = None,
+                        conversation: Optional[str] = None, timeout: Optional[float] = None,
+                        json_mode: bool = True) -> Tuple[str, Optional[str]]:
+        try:
+            return await provider.complete(prompt, system=system, conversation=conversation,
+                                           timeout=timeout, json_mode=json_mode)
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            log(f"{provider.name} の問い合わせに失敗しました ({e})")
+            return "", conversation
 
-    async def query_gemini_with_retry(
-        self,
-        contents: str,
-        system_instruction: Optional[str] = None,
-        retries: int = 3,
-        unbounded: bool = False,
-    ) -> Optional[JsonValue]:
-        """503エラーなどの一時的な混雑に備えて指数バックオフで再試行し、JSON を返す"""
-        if not self.client:
-            raise ValueError("GEMINI_API_KEY が環境変数に設定されていません。")
-        for attempt in range(retries):
-            rid = logs.ai_request(
-                "Gemini", contents, model=self.model, attempt=f"{attempt + 1}/{retries}",
-                system_instruction=f"{len(system_instruction)}文字" if system_instruction else None,
-            )
-            started = time.monotonic()
-            try:
-                # 同期 SDK 呼び出しでイベントループを止めないよう別スレッドで実行
-                # 応答が無いまま待ち続けないよう上限を設ける (超えたら TimeoutError → 呼び出し側で agy へ)
-                # unbounded のときは呼び出し側 (run_with_deadline) が上限と延長確認を管理する
-                limit = None if unbounded else self.gemini_timeout
-                async with progress("Gemini 応答待ち", limit=limit):
-                    response = await asyncio.wait_for(
-                        asyncio.to_thread(self._generate, contents, system_instruction),
-                        timeout=limit,
-                    )
-                logs.ai_response(rid, "Gemini", response.text, time.monotonic() - started)
-                return extract_json_from_response(response.text)
-            except asyncio.CancelledError:
-                logs.ai_error(rid, "Gemini", "打ち切り (キャンセル)", time.monotonic() - started)
-                raise
-            except Exception as e:
-                logs.ai_error(rid, "Gemini", e, time.monotonic() - started)
-                if is_retryable_error(e) and attempt < retries - 1:
-                    wait_sec = 2 ** (attempt + 1)
-                    print(f"Geminiサーバー混雑中。{wait_sec}秒後に再試行します... (試行 {attempt + 1}/{retries})")
-                    await self.sleep(wait_sec)
-                else:
-                    raise
-        return None
-
-    async def query_json(self, prompt: str, unbounded: bool = False) -> Optional[JsonValue]:
+    async def query_json(self, prompt: str, unbounded: bool = False, task: str = "dungeon") -> Optional[JsonValue]:
         """
-        Gemini API (優先) または agy CLI を使用して構造化JSONを取得。
+        構造化 JSON を取得する。task の接続先を順に試し、JSON として読めた最初の応答を返す。
         unbounded=True なら個別のタイムアウトを掛けない (run_with_deadline で包んで使う)
         """
-        if self.client:
-            try:
-                parsed = await self.query_gemini_with_retry(prompt, unbounded=unbounded)
-                if parsed is not None:
-                    return parsed
-            except Exception as e:
-                log(f"Gemini JSON生成警告 ({e}) - agy へフォールバック")
-        if unbounded:
-            resp_text, _ = await self.agy_runner(prompt, None, timeout=0)
-        else:
-            resp_text, _ = await self.agy_runner(prompt, None)
-        parsed = extract_json_from_response(resp_text)
-        if parsed is None:
-            logs.ai_logger.warning(f"agy の応答を JSON として読めませんでした ({len(resp_text or '')}文字)")
-        return parsed
+        chain = self.chain(task)
+        for i, provider in enumerate(chain):
+            text, _ = await self._complete(provider, prompt, timeout=0 if unbounded else None)
+            parsed = extract_json_from_response(text) if text else None
+            if parsed is not None:
+                return parsed
+            nxt = f" - {chain[i + 1].name} へフォールバック" if i + 1 < len(chain) else ""
+            logs.ai_logger.warning(f"{provider.name} の応答を JSON として読めませんでした ({len(text or '')}文字){nxt}")
+        return None
 
-    async def query_ai_gm(self, player_input: str) -> dict:
+    async def query_ai_gm(self, player_input: str, task: str = "ai_gm") -> dict:
         """通常プレイヤー発言に対するGM応答 {narrative, speech, dice} を生成"""
-        if self.client:
-            try:
-                parsed = await self.query_gemini_with_retry(
-                    f"プレイヤーの行動: {player_input}", system_instruction=SYSTEM_INSTRUCTION
-                )
-                if isinstance(parsed, dict) and "narrative" in parsed:
-                    return parsed
-                print("Gemini 応答が想定形式ではありません。agy CLI へフォールバックします...")
-            except Exception as e:
-                print(f"Gemini API 呼び出し失敗 ({e})。agy CLI へフォールバックします...")
-
-        print("agy CLI (サポートGM) にプレイヤー発言を問い合わせ中...")
-        prompt = (
-            "あなたはファンタジーTRPGの熟練ゲームマスター(GM)です。\n"
-            f"プレイヤーの発言・行動: 「{player_input}」\n"
-            "状況の描写とGMとしての返答をしてください。\n"
-            "以下のJSONフォーマットのみを出力してください（Markdownコードブロックは不要です）:\n"
-            '{"narrative": "チャット欄に表示する情景描写（セリフ含む）", '
-            '"speech": "音声読み上げ用テキスト（簡潔に1〜2文。記号や括弧は不要）", "dice": null}'
-        )
-        resp_text, conv_id = await self.agy_runner(prompt, self.conversation_id)
-        self.conversation_id = conv_id or self.conversation_id
-
-        parsed = extract_json_from_response(resp_text)
-        if isinstance(parsed, dict) and "narrative" in parsed:
-            return parsed
+        last_text = ""
+        for provider in self.chain(task):
+            if provider.kind == "gemini":
+                text, _ = await self._complete(provider, f"プレイヤーの行動: {player_input}", system=SYSTEM_INSTRUCTION)
+            else:
+                print(f"{provider.name} にプレイヤー発言を問い合わせ中...")
+                conv = self.conversations.get(provider.name)
+                text, conv = await self._complete(provider, AI_GM_PROMPT.format(player_input=player_input), conversation=conv)
+                if conv:
+                    self.conversations[provider.name] = conv
+                last_text = text or last_text
+            parsed = extract_json_from_response(text) if text else None
+            if isinstance(parsed, dict) and "narrative" in parsed:
+                return parsed
+            print(f"{provider.name} の応答が想定形式ではありません。次の接続先を試します...")
 
         return {
-            "narrative": newlines_to_br(resp_text),
-            "speech": first_sentence(resp_text),
+            "narrative": newlines_to_br(last_text),
+            "speech": first_sentence(last_text),
             "dice": None,
         }
 
-    async def ask_support_gm(self, prompt: str, raw: bool = False, timeout: Optional[float] = None) -> str:
+    async def ask_support_gm(self, prompt: str, raw: bool = False, timeout: Optional[float] = None,
+                             task: str = "support_gm") -> str:
         """
         サポートGM Geminiちゃん へ自然言語の相談を送り、会話 ID を引き継ぐ。
         raw: キャラクター設定を前に付けない (スキル判定プロンプトのように、呼び出し側が組み立て済みのとき)
-        timeout: agy を待つ秒数 (None なら AI_GM_AGY_TIMEOUT)。過ぎたら空文字を返す
+        timeout: 待つ秒数 (None なら接続先の既定)。過ぎたら次の接続先へ、最後まで駄目なら空文字を返す
         """
-        support_prompt = prompt if self.conversation_id or raw else SUPPORT_GM_PERSONA + prompt
-        if timeout is None:
-            resp_text, conv_id = await self.agy_runner(support_prompt, self.conversation_id)
-        else:
-            resp_text, conv_id = await self.agy_runner(support_prompt, self.conversation_id, timeout=timeout)
-        self.conversation_id = conv_id or self.conversation_id
-        return resp_text
+        for provider in self.chain(task):
+            conv = self.conversations.get(provider.name)
+            support_prompt = prompt if conv or raw else SUPPORT_GM_PERSONA + prompt
+            text, conv = await self._complete(provider, support_prompt, conversation=conv, timeout=timeout, json_mode=False)
+            if conv:
+                self.conversations[provider.name] = conv
+            if text:
+                return text
+        return ""

@@ -36,17 +36,22 @@ class FakeLLM:
         self.prompts = []
         self.conversation_id = None
         self.timeouts = []
+        # 呼ばれた作業 (AI の振り分けの task)
+        self.tasks = []
 
-    async def query_ai_gm(self, player_input):
+    async def query_ai_gm(self, player_input, task="ai_gm"):
         self.prompts.append(("gm", player_input))
+        self.tasks.append(task)
         return self.gm_responses.pop(0) if self.gm_responses else {"narrative": "", "speech": "", "dice": None}
 
-    async def query_json(self, prompt, unbounded=False):
+    async def query_json(self, prompt, unbounded=False, task="dungeon"):
         self.prompts.append(("json", prompt))
+        self.tasks.append(task)
         return self.json_responses.pop(0) if self.json_responses else None
 
-    async def ask_support_gm(self, prompt, raw=False, timeout=None):
+    async def ask_support_gm(self, prompt, raw=False, timeout=None, task="support_gm"):
         self.prompts.append(("support", prompt))
+        self.tasks.append(task)
         self.timeouts.append(timeout)
         return self.support_responses.pop(0) if self.support_responses else ""
 

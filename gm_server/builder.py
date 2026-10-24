@@ -272,12 +272,12 @@ def auto_extend_of(data: dict) -> bool:
 
 async def query_stage(ctx, label: str, prompt: str, on_status=None, auto_extend: bool = False):
     """AI に 1 回問い合わせる。打ち切り・失敗なら None"""
-    log_step(f"[{label}] AI に問い合わせます (プロンプト {len(prompt)} 文字、上限 {int(llm_step_limit(ctx))}秒"
+    log_step(f"[{label}] AI に問い合わせます (プロンプト {len(prompt)} 文字、上限 {int(llm_step_limit(ctx, 'builder'))}秒"
         f"{'、自動延長あり' if auto_extend else ''})")
     started = time.monotonic()
     try:
-        result = await run_with_deadline(ctx, label, ctx.llm.query_json(prompt, unbounded=True), limit=llm_step_limit(ctx),
-                                         on_status=on_status, auto_extend=auto_extend)
+        result = await run_with_deadline(ctx, label, ctx.llm.query_json(prompt, unbounded=True, task="builder"),
+                                         limit=llm_step_limit(ctx, "builder"), on_status=on_status, auto_extend=auto_extend)
         took = int(time.monotonic() - started)
         log_step(f"[{label}] 応答を受け取りました ({took}秒)" if result is not None
             else f"[{label}] 応答を JSON として読めませんでした ({took}秒)")
@@ -376,6 +376,7 @@ async def generate_wilderness(ctx, data: dict, label: str, core_prompt: str, top
     details = await query_room_flavors(
         ctx, None, targets, "wilderness", prompt_for_chunk=prompt_for_chunk, label=f"{label} 2/2 地点の描写",
         on_status=stage_status(ctx, "wilderness", 2, 2, "地点の描写"), auto_extend=auto_extend_of(data),
+        task="builder",
     )
     result = {k: v for k, v in core.items() if k != "landmark_plan"}
     result["landmarks"] = merge_landmarks(plan, details)
@@ -579,7 +580,7 @@ async def build_scene(ctx, data, scene_mode, name, site_public, site_dm, seed, s
     flavors = await query_room_flavors(
         ctx, None, selected, scene_mode, prompt_for_chunk=prompt_for_chunk, label="区画の情景",
         on_status=stage_status(ctx, stage, 2, steps, "区画の情景", kind="build"),
-        auto_extend=auto_extend, on_chunk=on_chunk,
+        auto_extend=auto_extend, on_chunk=on_chunk, task="builder",
     )
     got = len(flavors or [])
     speech_text = f"{mode_name}『{name}』の全{len(selected)}区画のうち、{got}区画に情景を入れたよ！"

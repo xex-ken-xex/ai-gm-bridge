@@ -195,7 +195,7 @@ async def handle(ctx, data: dict) -> None:
     prompt = build_adventure_log_prompt(data, mode, session_number, transcript, inventory_changes)
     log_step(f"AI に問い合わせます (プロンプト {len(prompt)} 文字)")
     try:
-        raw = await ctx.llm.query_json(prompt)
+        raw = await ctx.llm.query_json(prompt, task="adventure_log")
     except Exception as e:
         log_step(f"AI の問い合わせに失敗しました ({e})")
         raw = None

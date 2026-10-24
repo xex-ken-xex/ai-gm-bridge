@@ -33,6 +33,75 @@ def test_mask_secrets_hides_api_keys():
     assert logs.mask_secrets("値 my-secret-value", secrets=["my-secret-value"]) == "値 ***"
 
 
+def test_mask_secrets_hides_openai_anthropic_and_config_keys():
+    openai = "sk-proj-" + "a1B2" * 8
+    anthropic = "sk-ant-api03-" + "Z9_y" * 8
+    text = f'OPENAI {openai} / {anthropic} / x-api-key: {anthropic} / {{"api_key": "lm-local-secret", "model": "qwen"}} / api_key = "toml-secret"'
+    masked = logs.mask_secrets(text, secrets=[])
+    for value in (openai, anthropic, "lm-local-secret", "toml-secret"):
+        assert value not in masked
+    assert '"model": "qwen"' in masked
+    # 「sk-」で始まるだけの短い語は伏せない
+    assert logs.mask_secrets("task-list sk-short", secrets=[]) == "task-list sk-short"
+
+
+def test_mask_secrets_hides_prefixed_unquoted_and_single_quoted_names():
+    text = "\n".join([
+        "anthropic_api_key=plainsecret1",
+        '"secret_key": "jsonsecret2"',
+        "api_key: yamlsecret3",
+        "{'api_key': 'dictsecret4'}",
+        "ANTHROPIC_API_KEY=envsecret5",
+        "client_secret = 'tomlsecret6'",
+        "refresh_token: tokensecret7",
+        "db_password=pwsecret8",
+    ])
+    masked = logs.mask_secrets(text, secrets=[])
+    for i, value in enumerate(("plainsecret1", "jsonsecret2", "yamlsecret3", "dictsecret4", "envsecret5",
+                               "tomlsecret6", "tokensecret7", "pwsecret8"), 1):
+        assert value not in masked, value
+    assert "anthropic_api_key=***" in masked
+    assert '"secret_key": "***"' in masked
+    assert "{'api_key': '***'}" in masked
+
+
+def test_mask_secrets_keeps_token_counts_and_plain_values():
+    text = '{"token_count": 1200, "max_tokens": 4096, "max_output_tokens": "8192", "tokens": 30} use_secret: true api_key: null'
+    assert logs.mask_secrets(text, secrets=[]) == text
+
+
+def test_mask_secrets_keeps_scenario_words_that_are_not_credentials():
+    text = ('{"ancient_secret": "地下の祭壇", "shortcut_secret": "裏の抜け道", "secret": "王の正体", '
+            '"size_key": "large", "scene_key": "s1", "cache_key": "abc123", "primary_key": "id", "token": "金貨"}')
+    assert logs.mask_secrets(text, secrets=[]) == text
+
+
+def test_register_secret_masks_values_from_config(monkeypatch):
+    monkeypatch.setattr(logs, "_extra_secrets", set())
+    logs.register_secret("lmstudio-token-777")
+    logs.register_secret("short")
+    assert logs.mask_secrets("token lmstudio-token-777 short") == "token *** short"
+
+
+def test_mask_log_file_and_mask_agy_logs(tmp_path):
+    key = "AIza" + "k" * 35
+    day = tmp_path / "2026-10-24"
+    day.mkdir()
+    agy = day / "agy-120000-0001.log"
+    agy.write_text(f"request header x-goog-api-key: {key}\nok\n", encoding="utf-8")
+    clean = day / "agy-120001-0002.log"
+    clean.write_text("nothing secret\n", encoding="utf-8")
+    other = day / "notes.log"
+    other.write_text(key, encoding="utf-8")
+    assert logs.mask_agy_logs(str(tmp_path)) == 1
+    assert key not in agy.read_text(encoding="utf-8") and "ok" in agy.read_text(encoding="utf-8")
+    assert clean.read_text(encoding="utf-8") == "nothing secret\n"
+    # agy のログ以外は触らない (サーバーのログは書くときに伏せている)
+    assert other.read_text(encoding="utf-8") == key
+    assert logs.mask_log_file(str(tmp_path / "missing.log")) is False
+    assert logs.mask_log_file(None) is False
+
+
 def test_secret_values_reads_key_like_env(monkeypatch):
     monkeypatch.setattr(logs.config, "API_KEY", "gemini-key-123456")
     values = logs.secret_values({"OPENAI_API_KEY": "sk-abcdefgh", "GITHUB_TOKEN": "short", "HOME": "/home/kenic"})
