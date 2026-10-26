@@ -1,0 +1,49 @@
+{
+  "_説明": "AI GM Bridge の「作業ごとに使う AI」の設定例です。「_」で始まる項目は説明なので、読み込むときは無視されます。",
+  "_手順": [
+    "1. このファイルを写します: mkdir -p ~/.config/ai-gm-bridge && cp ai_providers.sample.json ~/.config/ai-gm-bridge/ai_providers.json",
+    "   ※ モジュールのフォルダ (Data/modules/ai-gm-bridge) に置いた ai_providers.json は、Foundry からブラウザで読めてしまうので読みません。",
+    "2. API キーは ~/.bashrc などで環境変数に入れます (例: export GEMINI_API_KEY=...)。このファイルにはキーの値を書かず、環境変数の名前を api_key_env に書きます。",
+    "3. providers に使う接続先を並べ、tasks に作業ごとの接続先を試す順に書きます。前の接続先が失敗したら次を試します。",
+    "4. 書いていない作業は tasks.default を使います。",
+    "5. AI GM サーバーを起動し直すと読み込みます。python3 -m gm_server.ai_routing で今の振り分けを確かめられます (キーは設定済みかどうかだけ表示)。",
+    "6. FVTT では、Geminiちゃんのメニューの「⚙️ AI の設定」からも書き換えられます (保存するとこのファイルが書き換わり、すぐ使われます)。"
+  ],
+  "_接続先の種類": {
+    "gemini": "Gemini API。model・api_key_env (既定 GEMINI_API_KEY)・timeout・concurrency",
+    "agy": "agy CLI。モデル・effort・同時実行数は環境変数 AI_GM_AGY_* で決まる。timeout だけ書ける",
+    "claude_code": "Claude Code CLI (claude -p)。先に claude を一度起動してログインしておく。model (sonnet / opus など)・timeout・concurrency・extra_args",
+    "openai": "OpenAI 互換 API (LM Studio・Ollama・OpenAI など)。base_url・model (必須)・api_key_env (要るときだけ)・timeout・concurrency・json_response_format"
+  },
+  "_作業の一覧": {
+    "ai_gm": "AI GM の語り (プレイヤーの発言への応答)",
+    "support_gm": "サポートGM Geminiちゃん への相談",
+    "skill_router": "/ai のスキル判定",
+    "builder": "シナリオビルダー",
+    "dungeon": "ダンジョン生成 (伝承・部屋の情景)",
+    "npc_dialogue": "NPC の会話",
+    "npc_turn": "NPC の戦闘の手番",
+    "adventure_log": "冒険記録"
+  },
+  "providers": {
+    "gemini": {"type": "gemini", "model": "gemini-3.8-flash", "api_key_env": "GEMINI_API_KEY"},
+    "agy": {"type": "agy"},
+    "claude": {"type": "claude_code", "model": "sonnet", "timeout": 300},
+    "lmstudio": {
+      "type": "openai",
+      "base_url": "http://localhost:1234/v1",
+      "model": "qwen3-8b",
+      "timeout": 120,
+      "concurrency": 1
+    }
+  },
+  "tasks": {
+    "_例": "シナリオビルダーは Claude Code、NPC はローカルの LM Studio (落ちていたら Gemini)、ほかは Gemini → agy",
+    "default": ["gemini", "agy"],
+    "support_gm": ["agy"],
+    "skill_router": ["agy"],
+    "builder": ["claude", "gemini"],
+    "npc_dialogue": ["lmstudio", "gemini"],
+    "npc_turn": ["lmstudio", "gemini"]
+  }
+}

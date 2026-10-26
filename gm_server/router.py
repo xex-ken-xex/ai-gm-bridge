@@ -6,7 +6,7 @@ from typing import Awaitable, Callable, Dict
 
 from gm_server.deadline import is_timeout_choice
 from gm_server import builder, logs
-from gm_server.handlers import adventure_log, ai_command, npc_dialogue, npc_turn, player_message, room_entered, voice_test
+from gm_server.handlers import adventure_log, ai_command, ai_settings, npc_dialogue, npc_turn, player_message, room_entered, voice_test
 
 Handler = Callable[[object, dict], Awaitable[None]]
 
@@ -21,6 +21,8 @@ HANDLERS: Dict[str, Handler] = {
     "builder_build_scene": builder.handle_build_scene,
     "adventure_log_request": adventure_log.handle,
     "voice_test": voice_test.handle,
+    "ai_settings_request": ai_settings.handle_request,
+    "ai_settings_save": ai_settings.handle_save,
 }
 
 

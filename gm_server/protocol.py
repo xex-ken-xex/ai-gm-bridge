@@ -124,6 +124,11 @@ def execute_npc_turn(decision: Dict, token_id: str, scene_id=None, combat: Optio
     }
 
 
+def ai_settings(settings: Dict) -> Dict:
+    """AI の設定画面: 接続先・作業ごとの接続先・キーが設定済みかどうか (キーの値は含めない)"""
+    return {"action": "ai_settings", **settings}
+
+
 def adventure_log_collect(mode: str) -> Dict:
     """冒険記録: FVTT (GM) にチャットの記録・所持品の差分・場所の名前を集めて adventure_log_request を送ってもらう"""
     return {"action": "adventure_log_collect", "mode": mode}

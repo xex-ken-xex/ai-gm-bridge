@@ -105,6 +105,8 @@ def build_routing(data: dict, gemini_client=None, agy_runner=None, source: str =
     providers: Dict[str, Provider] = {}
     raw_providers = data.get("providers") if isinstance(data, dict) else None
     for name, spec in (raw_providers or {}).items() if isinstance(raw_providers, dict) else []:
+        if str(name).startswith("_"):
+            continue  # 「_」で始まる項目は説明書き (ai_providers.sample.json の _説明 など)
         if not isinstance(spec, dict):
             logs.ai_logger.warning(f"AI の接続先 {name}: 設定が読めないため飛ばします")
             continue
@@ -127,6 +129,8 @@ def build_routing(data: dict, gemini_client=None, agy_runner=None, source: str =
     tasks: Dict[str, List[str]] = {}
     raw_tasks = data.get("tasks") if isinstance(data.get("tasks"), dict) else {}
     for task, value in raw_tasks.items():
+        if str(task).startswith("_"):
+            continue
         if task != DEFAULT_TASK and task not in TASKS:
             logs.ai_logger.warning(f"AI の振り分け: 作業「{task}」はありません ({' / '.join(TASKS)})")
             continue

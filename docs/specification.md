@@ -93,6 +93,7 @@ flowchart TD
 - GM の画面では、サーバーにつながるまで「切断」で表示する (Python サーバーを起動していないと気づけるように)。
 - クリック (左でも右でも。ドラッグとは 5px 以上動いたかで分ける) でメニューを出す。GM は「シナリオビルダー」「NPC ブレイン管理」「冒険記録を更新」(サーバー接続時)、全員が「あいさつ」「位置を戻す」(保存した位置も消す)「マスコットを隠す」(設定「マスコットを表示」を切る)。
   メニューの外を押すか Esc で閉じる。ほかの機能は `registerMascotMenuItem({ id, icon, label, gmOnly, onSelect })` で項目を足せる (あいさつの後ろに入る)。
+- サーバーと繋ぐ GM のメニューには「⚙️ AI の設定」も出る (`registerAiSettingsMenu`)。押すと `ai_settings_request` を送り、返ってきた `ai_settings` で設定画面を開く。画面では接続先 (名前・種類・モデル・URL・API キーの環境変数の名前・待ち上限・同時実行) と作業ごとの接続先 (試す順に「→」区切り) を書き換え、「保存する」で `ai_settings_save` を送る。API キーは「設定済み / 未設定」だけを表示し、値は画面にもやり取りにも出さない。
 - サーバーと繋ぐ GM のメニューには「声のテスト (ナレーター)」「声のテスト (Geminiちゃん)」も出る (`registerVoiceTestMenu`)。押すと `voice_test` を送り、見本のセリフが GM の画面でだけ鳴る (`play_sound` の `gm_only`)。どのエンジン (Irodori-TTS / edge-tts) で鳴ったか、Irodori で作れなかった理由、使った声 (参照音声・説明文・種) は GM の画面の通知 (`progress`) に出る。テストのときは、Irodori に失敗したあとの edge-tts だけの間 (`AI_GM_IRODORI_RETRY_AFTER`) を待たずにもう一度 Irodori を試す。
 - ウィンドウ (シート・ビルダー・ジャーナル) より下、キャンバスと画面の枠より上に出す (`z-index: 70`)。
 - 設定: 「マスコットを表示」(ユーザーごと)、「マスコットの画像」と状態ごとの「マスコットの画像 (考え中 / 話し中 / 聞いている / 切断)」(ワールド。空欄なら共通の画像、それも空なら内蔵の SVG)。
@@ -121,7 +122,7 @@ flowchart TD
 #### AI の接続先の振り分け
 作業ごとに、どの AI に頼むかを設定ファイルで決められます (`gm_server/ai_routing.py`・接続先は `gm_server/ai_providers.py`)。
 
-- **設定ファイル**: `~/.config/ai-gm-bridge/ai_providers.json` (`AI_GM_AI_CONFIG` で変更)。`ai_providers.example.json` を写して作る。モジュールのフォルダ (`Data/modules/ai-gm-bridge/`) は Foundry がブラウザに配信するため、そこに置いた `ai_providers.json` は読まずに警告する。無ければ今までどおり (Gemini のキーがあれば Gemini → agy、サポートGM の相談とスキル判定は agy)。
+- **設定ファイル**: `~/.config/ai-gm-bridge/ai_providers.json` (`AI_GM_AI_CONFIG` で変更)。`ai_providers.sample.json` (例と手順を `_` で始まる項目に書いてある。`_` で始まる項目は読み込むときに無視する) を写して作るか、FVTT の「⚙️ AI の設定」画面で保存して作る。モジュールのフォルダ (`Data/modules/ai-gm-bridge/`) は Foundry がブラウザに配信するため、そこに置いた `ai_providers.json` は読まずに警告する。無ければ今までどおり (Gemini のキーがあれば Gemini → agy、サポートGM の相談とスキル判定は agy)。
 - **接続先 (`providers`)**: 名前を付けて並べる。`type` は次のどれか。共通で `timeout` (秒) と `concurrency` (同時に投げる数) を書ける。
 
   | `type` | 内容 | 主な項目 |
@@ -363,6 +364,24 @@ GM がマスコットのメニューで「声のテスト」を押したとき�
 }
 ```
 
+#### AI の設定画面 (`ai_settings_request` / `ai_settings_save`)
+GM がマスコットのメニューで「⚙️ AI の設定」を押すと `ai_settings_request` を送ります。サーバーは今の振り分けを `ai_settings` で返します。
+「保存する」を押すと `ai_settings_save` を送ります。
+
+```json
+{
+  "event": "ai_settings_save",
+  "providers": { "名前": { "type": "gemini | agy | claude_code | openai", "model": "…", "base_url": "…", "api_key_env": "環境変数の名前", "timeout": "秒", "concurrency": "本数", "json_response_format": true } },
+  "tasks": { "default": ["名前", "…"], "npc_dialogue": ["…"] }
+}
+```
+
+- サーバーは中身を検めてから設定ファイル (`AI_GM_AI_CONFIG`) に書き (ファイルの権限は 600)、読み直して `ai_settings` を返す。おかしければ書かずに理由を `message` に入れて返す (`ok: false`)。
+- 種類ごとに書ける項目だけを残す (agy は `timeout` だけ)。画面に出さない項目 (`extra_args` など) と、ファイルの `_` で始まる説明はそのまま残す。
+- `api_key` (キーの値) は受け取っても書かない。`api_key_env` にキーの値らしいもの (`AIza…`・`sk-…` など) が入っていたら「環境変数の名前を書いてください」と断る。
+- サーバーは LAN からも繋げるため、画面からは「API キーを localhost 以外の URL へ送る」OpenAI 互換の接続先を作れない (キーの持ち出しを防ぐ)。設定ファイルに書いてあった URL・環境変数の名前のままなら、ほかの欄は画面で変えられる。キーを使うクラウドの OpenAI 互換 API は設定ファイルに直接書く。
+- 保存すると、相談の会話 (会話 ID) は最初からになる。
+
 #### チャット内ボタン選択イベント (`ai_choice`)
 GM が対話型チャットカード上の選択肢ボタンをクリックした際に送信されます。
 
@@ -562,6 +581,24 @@ PC のトークン (プレイヤー所有、または所有者未設定の `char
 - 短期記憶は最新 5 件。あふれた古いものは鮮明度 0.9 で長期記憶へ移す。重要度 4 以上はすぐ長期記憶にも入れる (二重には移さない)。
 - 「⏳ 時間を進める」で長期記憶を 1 段階風化させる: 鮮明度 × (1 − (5 − 重要度) × (1 − 記憶力) × 0.35)。重要度 5 は忘れない。0.15 未満で忘れる。
 - AI には鮮明度を [鮮明] (0.8 以上) / [うろ覚え] (0.4 以上) / [ほぼ忘却] の印で渡す。
+
+#### 5-3-2. AI の設定 (`ai_settings`)
+設定画面の中身です。API キーの値は含めません。
+
+```json
+{
+  "action": "ai_settings",
+  "config_path": "~/.config/ai-gm-bridge/ai_providers.json",
+  "config_exists": "boolean (false なら既定の振り分け)",
+  "providers": [{ "name": "gemini", "type": "gemini", "type_label": "Gemini API", "model": "…", "api_key_env": "GEMINI_API_KEY", "key_status": "設定済み | 未設定 | 不要", "available": true, "timeout": 120, "concurrency": 3 }],
+  "tasks": { "default": ["gemini", "agy"], "npc_dialogue": [] },
+  "task_labels": { "default": "書いていない作業 (default)", "npc_dialogue": "NPC の会話" },
+  "type_labels": { "gemini": "Gemini API" },
+  "editable_fields": { "agy": ["timeout"] },
+  "message": "保存しました … / 保存できませんでした: …",
+  "ok": true
+}
+```
 
 #### 5-4. NPC の手番の行動 (`execute_npc_turn`)
 
