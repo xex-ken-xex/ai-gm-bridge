@@ -5,7 +5,8 @@
   LOG_RETENTION_DAYS 日より古い日付フォルダは削除する。1 日分が LOG_MAX_BYTES を超えたら server.log.1 … に回す
 - AI への問い合わせと応答 (プロンプト全文・応答全文・所要時間) は ai_request / ai_response でログファイルにだけ書く
 - コンソールの出力 (print / traceback) は 1 行ずつ「日時 レベル」を付けて表示し、ログファイルにも同じ行を書く
-- API キーなどの秘密は、ログファイルにもコンソールにも出さない (mask_secrets)
+- API キーなどの秘密は、ログファイルにもコンソールにも出さない (mask_secrets)。
+  agy 自身の動作ログ (agy-*.log) はサーバーを通らないので、agy が終わったあとと起動時に書き直して伏せる (mask_log_file)
 """
 
 import datetime
@@ -40,12 +41,36 @@ console_logger = logger.getChild("console")
 # 秘密の伏せ字
 # -------------------------------------------------------------------------
 _SECRET_ENV = re.compile(r"(KEY|TOKEN|SECRET|PASSWORD)", re.IGNORECASE)
+# 形で分かるキー: Google (AIza…)・OpenAI / Anthropic (sk-… / sk-ant-… / sk-proj-…)
+_KEY_SHAPES = re.compile(r"AIza[0-9A-Za-z_\-]{30,}|\bsk-[0-9A-Za-z_\-]{20,}")
 _SECRET_PATTERNS = [
-    re.compile(r"AIza[0-9A-Za-z_\-]{30,}"),  # Google API キー
+    _KEY_SHAPES,
     re.compile(r"(?i)\b(key|api_key|apikey|access_token|token)=[^&\s\"']+"),
-    re.compile(r"(?i)\b(x-goog-api-key|authorization)(\"?\s*[:=]\s*\"?)(bearer\s+)?[^\s\",]+"),
+    re.compile(r"(?i)\b(x-goog-api-key|x-api-key|authorization)(\"?\s*[:=]\s*\"?)(bearer\s+)?[^\s\",]+"),
+    # JSON・YAML・.env・dict の表示などの「名前: 値」。名前が認証の語で終わるもの
+    # (api_key・access_key・secret_key・private_key・client_secret・auth_token・access_token・refresh_token・password。
+    # anthropic_api_key・db_password のような接頭辞つきも)。シナリオの "ancient_secret"・"size_key" や max_tokens は伏せない
+    # 値は "…" / '…' / 引用符なしのどれでも
+    re.compile(
+        r"""(?i)(?<![A-Za-z0-9_\-])(["']?)([A-Za-z0-9_\-]*?(?:api[_\-]?key|access[_\-]?key|secret[_\-]?key|private[_\-]?key|"""
+        r"""client[_\-]?secret|auth[_\-]?token|access[_\-]?token|refresh[_\-]?token|password|passwd))\1(\s*[:=]\s*)"""
+        r"""(?:"([^"\n]*)"|'([^'\n]*)'|([^\s,;"'}\]&]+))"""
+    ),
 ]
+# 引用符なしの値でも、数字や true / null などは秘密ではないので残す
+_PLAIN_VALUES = re.compile(r"(?i)^(?:\d+(?:\.\d+)?|true|false|null|none|\*\*\*)$")
 MASK = "***"
+# 環境変数以外から読んだ秘密 (設定ファイルの API キーなど)。register_secret で足す
+_extra_secrets: set = set()
+
+
+def register_secret(value: Optional[str]) -> None:
+    """環境変数以外から読んだ秘密 (設定ファイルの API キーなど) も伏せ字にする
+
+    いまは呼び出し元が無い。AI の接続先の設定ファイルを読む処理を作るときに、そこで読んだキーを渡すこと
+    """
+    if value and len(value) >= 8:
+        _extra_secrets.add(value)
 
 
 def secret_values(environ=None) -> List[str]:
@@ -53,6 +78,7 @@ def secret_values(environ=None) -> List[str]:
     environ = os.environ if environ is None else environ
     values = {config.API_KEY} if config.API_KEY else set()
     values |= {v for k, v in environ.items() if _SECRET_ENV.search(k) and v}
+    values |= _extra_secrets
     # 短すぎる値は普通の文字列まで伏せてしまうので対象外
     return sorted((v for v in values if len(v) >= 8), key=len, reverse=True)
 
@@ -63,7 +89,54 @@ def mask_secrets(text: str, secrets: Optional[Iterable[str]] = None) -> str:
     text = _SECRET_PATTERNS[0].sub(MASK, text)
     text = _SECRET_PATTERNS[1].sub(lambda m: f"{m.group(1)}={MASK}", text)
     text = _SECRET_PATTERNS[2].sub(lambda m: f"{m.group(1)}{m.group(2)}{MASK}", text)
+    text = _SECRET_PATTERNS[3].sub(_mask_assignment, text)
     return text
+
+
+def _mask_assignment(m: "re.Match") -> str:
+    q, name, sep, dq, sq, bare = m.groups()
+    if dq is not None:
+        return f'{q}{name}{q}{sep}"{MASK if dq else ""}"'
+    if sq is not None:
+        return f"{q}{name}{q}{sep}'{MASK if sq else ''}'"
+    if _PLAIN_VALUES.match(bare):
+        return m.group(0)
+    return f"{q}{name}{q}{sep}{MASK}"
+
+
+def mask_log_file(path: Optional[str]) -> bool:
+    """サーバーを通らずに書かれたログ (agy の動作ログ) の秘密を伏せて書き直す。書き直したら True"""
+    if not path or not os.path.isfile(path):
+        return False
+    try:
+        with open(path, "r", encoding="utf-8", errors="replace") as f:
+            text = f.read()
+        masked = mask_secrets(text)
+        if masked == text:
+            return False
+        tmp = f"{path}.masking"
+        with open(tmp, "w", encoding="utf-8") as f:
+            f.write(masked)
+        os.replace(tmp, path)
+        return True
+    except OSError as e:
+        logger.warning(f"ログの伏せ字に失敗しました: {path} ({e})")
+        return False
+
+
+def mask_agy_logs(log_dir: str) -> int:
+    """ログフォルダに残った agy-*.log をすべて伏せる (前回のサーバーが途中で止まった分も)。書き直した数を返す"""
+    count = 0
+    if not os.path.isdir(log_dir):
+        return 0
+    for day in os.listdir(log_dir):
+        folder = os.path.join(log_dir, day)
+        if not _DAY_DIR.match(day) or not os.path.isdir(folder):
+            continue
+        for name in os.listdir(folder):
+            if name.startswith("agy-") and name.endswith(".log"):
+                count += mask_log_file(os.path.join(folder, name))
+    return count
 
 
 class MaskingFormatter(logging.Formatter):
@@ -325,4 +398,7 @@ def setup_logging(log_dir: Optional[str] = None, keep_days: Optional[int] = None
         sys.stdout = ConsoleStream(sys.stdout)
         sys.stderr = ConsoleStream(sys.stderr, default_level=logging.ERROR)
     logger.info(f"ログ出力先: {os.path.abspath(handler.log_dir)} ({handler.keep_days} 日分を保持)")
+    masked = mask_agy_logs(handler.log_dir)
+    if masked:
+        logger.info(f"agy の動作ログ {masked} 件の API キーを伏せました")
     return handler
