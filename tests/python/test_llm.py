@@ -67,7 +67,8 @@ async def test_gemini_non_retryable_error_falls_back_to_agy():
     llm = LLMService(gemini_client=client, agy_runner=agy, sleep=no_sleep)
     result = await llm.query_ai_gm("扉を開ける")
     assert result["narrative"] == "agy応答"
-    assert llm.conversation_id == "conv-1"
+    # 語りの会話はサポートGM の相談とは別に持つ
+    assert llm.conversation_id is None and llm.conversations["ai_gm:agy"] == "conv-1"
     assert client.models.calls == 1
 
 
@@ -82,7 +83,7 @@ async def test_agy_plain_text_is_wrapped():
     agy = make_agy([("通路の奥で水音がする。気をつけて！\n次へ", "c")])
     llm = LLMService(gemini_client=None, agy_runner=agy)
     result = await llm.query_ai_gm("進む")
-    assert result == {"narrative": "通路の奥で水音がする。気をつけて！<br>次へ", "speech": "通路の奥で水音がする", "dice": None}
+    assert result == {"narrative": "通路の奥で水音がする。気をつけて！\n次へ", "speech": "通路の奥で水音がする", "dice": None}
 
 
 async def test_query_json_prefers_gemini_and_falls_back():

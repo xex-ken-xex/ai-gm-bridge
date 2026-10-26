@@ -2,8 +2,10 @@
 
 import asyncio
 import contextlib
+from typing import Optional
 
 from gm_server import config, logs, protocol
+from gm_server.handlers.ai_settings import is_loopback_url
 from gm_server.context import ConnectionHub, Context, SessionState
 from gm_server.llm import LLMService
 from gm_server.router import dispatch, is_immediate
@@ -40,7 +42,32 @@ def _services():
     return _llm, _tts
 
 
+def is_allowed_origin(origin: Optional[str], allowed=None) -> bool:
+    """
+    繋いできたページ (Origin ヘッダー) を受けてよいか。
+    ブラウザは開いているどのサイトからでも ws://127.0.0.1:8765 に繋げてしまうため、FVTT のページ以外は断る。
+    Origin が無いもの (tools/test_send.py など、ブラウザ以外の自分の PC のプログラム) は受ける
+    """
+    if not origin:
+        return True
+    allowed = config.ALLOWED_ORIGINS if allowed is None else allowed
+    return origin.rstrip("/") in allowed or is_loopback_url(origin)
+
+
+def request_origin(websocket) -> Optional[str]:
+    # websockets 14 以降は websocket.request.headers、13 以前 (legacy) は websocket.request_headers
+    request = getattr(websocket, "request", None)
+    headers = getattr(request, "headers", None) or getattr(websocket, "request_headers", None)
+    return headers.get("Origin") if headers is not None else None
+
+
 async def handler(websocket):
+    origin = request_origin(websocket)
+    if not is_allowed_origin(origin):
+        print(f"⚠️ {origin} のページからの接続を断りました。FVTT をこの URL で開いているなら、"
+              f"AI_GM_ALLOWED_ORIGINS={origin} を設定してください")
+        await websocket.close(code=1008, reason="origin not allowed")
+        return
     print("\nFoundry VTT が接続しました！(サポートGM agy 連携モード待機中)")
     print("=" * 65)
     llm, tts = _services()

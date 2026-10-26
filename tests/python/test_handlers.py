@@ -31,6 +31,15 @@ async def test_player_message_without_dice_or_speech(make_ctx, sent):
     assert actions(sent) == ["chat"]
 
 
+async def test_player_message_shows_ai_markup_as_text(make_ctx, sent):
+    """プレイヤーに操られた AI が画像やスクリプトのタグを返しても、全員のチャットでは文字として出す"""
+    narrative = '<b>扉</b>が開く。\n<img src="https://evil.example/t.png">'
+    ctx = make_ctx(FakeLLM(gm_responses=[{"narrative": narrative, "speech": "", "dice": "/r 99999d6"}]))
+    await dispatch(ctx, json.dumps({"event": "player_message", "content": "扉を開ける"}))
+    assert actions(sent) == ["chat"]
+    assert sent[0]["content"] == '<b>扉</b>が開く。<br>&lt;img src=&quot;https://evil.example/t.png&quot;&gt;'
+
+
 async def test_player_message_empty_is_ignored(make_ctx, sent):
     llm = FakeLLM()
     ctx = make_ctx(llm)

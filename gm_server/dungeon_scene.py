@@ -1,6 +1,7 @@
 """ダンジョン自動生成ウィザードとシーン構築命令 (create_dungeon_scene)"""
 
 import asyncio
+import html
 import os
 import time
 from dataclasses import dataclass
@@ -395,7 +396,7 @@ async def generate_and_create_dungeon_scene(
     world_desc = world_info.get("description", "ゴブリンキングとブラックドラゴンの地下城塞")
 
     is_custom_theme = bool(user_prompt and user_prompt not in GENERIC_DUNGEON_PROMPTS)
-    target_theme_desc = f"GM指定テーマ『{user_prompt}』" if is_custom_theme else f"ワールド設定『{world_desc}』"
+    target_theme_desc = html.escape(f"GM指定テーマ『{user_prompt}』" if is_custom_theme else f"ワールド設定『{world_desc}』")
     await ctx.send(protocol.chat(
         f"🏰 <b>{mode_name}の構造ができたよ！</b> (部屋数: {len(gen.rooms)}部屋)<br>📜 {target_theme_desc} をもとに、伝承・生態系と各部屋の情景を考えているところ…",
         speaker=SPEAKER_SUPPORT,
@@ -422,7 +423,7 @@ async def generate_and_create_dungeon_scene(
         lore_data = fallback_lore(size_name)
 
     await ctx.send(protocol.chat(
-        f"⚔️ <b>伝承決定:</b> 『{lore_data.get('dungeon_name')}』 - {lore_data.get('floor_title')}<br>次は各部屋のつながり（接続数・深さ・空室の配分）を見ながら、情景と GM メモを書いていくね…",
+        f"⚔️ <b>伝承決定:</b> 『{html.escape(str(lore_data.get('dungeon_name')))}』 - {html.escape(str(lore_data.get('floor_title')))}<br>次は各部屋のつながり（接続数・深さ・空室の配分）を見ながら、情景と GM メモを書いていくね…",
         speaker=SPEAKER_SUPPORT,
     ))
 

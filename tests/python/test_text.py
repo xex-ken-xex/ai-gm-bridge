@@ -1,6 +1,7 @@
 import pytest
 
 from gm_server.text import (
+    ai_text_to_html,
     clean_html,
     dice_formula_from_command,
     first_sentence,
@@ -33,9 +34,31 @@ def test_dice_formula_from_command(raw, expected):
     assert dice_formula_from_command(raw) == expected
 
 
-def test_dice_formula_keeps_roll_prefix_inside_formula():
-    # 旧実装の str.replace("/r ", "") は式の途中も消していた
-    assert dice_formula_from_command("/r 1d20 /r") == "1d20 /r"
+def test_dice_formula_strips_roll_prefix_only_at_start():
+    # 旧実装の str.replace("/r ", "") は式の途中も消していた。途中に残った /r は式として断る
+    assert dice_formula_from_command("/r 1d20 /r") is None
+    assert dice_formula_from_command("/r 4d6kh3 + (2 * 3)") == "4d6kh3 + (2 * 3)"
+
+
+@pytest.mark.parametrize("raw", [
+    "/r 99999d6",          # GM のブラウザが固まる個数
+    "/r 1d100000",         # 面数が大きすぎる
+    "/r 60d6 + 50d6",      # 合計の個数が上限を超える
+    "/r 1d20 + @abilities.str.mod",  # キャラクターの値の参照
+    "/r 1d20[<img src=x>]",          # フレーバー文
+])
+def test_dice_formula_rejects_unsafe_formulas(raw):
+    assert dice_formula_from_command(raw) is None
+
+
+def test_ai_text_to_html_escapes_markup_but_keeps_plain_emphasis():
+    text = '扉が<b>開いた</b>。\n<img src="https://evil.example/x.png" onerror="alert(1)"><B class="x">罠</B>'
+    assert ai_text_to_html(text) == (
+        "扉が<b>開いた</b>。<br>&lt;img src=&quot;https://evil.example/x.png&quot; onerror=&quot;alert(1)&quot;&gt;"
+        "&lt;B class=&quot;x&quot;&gt;罠</b>"
+    )
+    assert ai_text_to_html("<br/>次へ<script>alert(1)</script>") == "<br>次へ&lt;script&gt;alert(1)&lt;/script&gt;"
+    assert ai_text_to_html(None) == ""
 
 
 def test_first_sentence():

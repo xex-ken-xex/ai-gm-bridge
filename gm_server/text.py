@@ -1,5 +1,6 @@
 """テキスト処理の純粋関数 (I/O なし・テスト容易)"""
 
+import html
 import re
 from typing import Optional
 
@@ -19,6 +20,20 @@ def newlines_to_br(text: str) -> str:
     return (text or "").replace("\n", "<br>")
 
 
+# AI の文章で残してよい飾りのタグ (属性なし)。ほかは文字として見せる
+_ALLOWED_TAG_RE = re.compile(r"&lt;(/?)(b|i|em|strong|br)\s*/?&gt;", re.IGNORECASE)
+
+
+def ai_text_to_html(text: str) -> str:
+    """
+    AI の文章をチャットの HTML にする。AI の文章はプレイヤーの発言に操られうるため、
+    いったん全部エスケープしてから、属性なしの b / i / em / strong / br だけを戻す
+    (img の外部 URL で閲覧者の IP を集める、on* 属性でスクリプトを動かす、などを防ぐ)
+    """
+    escaped = html.escape(text or "", quote=True)
+    return newlines_to_br(_ALLOWED_TAG_RE.sub(lambda m: f"<{m.group(1)}{m.group(2).lower()}>", escaped))
+
+
 def first_sentence(text: str, fallback_len: int = 50) -> str:
     """音声読み上げ用に最初の1文を取り出す"""
     clean = (text or "").replace("\n", " ").strip()
@@ -31,7 +46,26 @@ def dice_formula_from_command(dice: Optional[str]) -> Optional[str]:
     if not dice or not isinstance(dice, str):
         return None
     formula = re.sub(r"^\s*/(?:r|roll)\b\s*", "", dice.strip(), flags=re.IGNORECASE).strip()
-    return formula or None
+    return formula if is_safe_dice_formula(formula) else None
+
+
+# ダイスの個数・面数の上限 (AI がプレイヤーに操られて 99999d99999 を返すと、GM のブラウザが固まる)
+MAX_DICE_COUNT = 100
+MAX_DICE_FACES = 1000
+_DICE_FORMULA_RE = re.compile(r"^[0-9dDkKhHlL+\-*/() ]{1,60}$")
+_DICE_TERM_RE = re.compile(r"(\d*)[dD](\d+)")
+
+
+def is_safe_dice_formula(formula: str) -> bool:
+    """数字・d・kh/kl・四則演算・括弧だけで、ダイスの数と面数が上限以内か (@ の参照やフレーバー文は断る)"""
+    if not formula or not _DICE_FORMULA_RE.match(formula):
+        return False
+    total = 0
+    for count, faces in _DICE_TERM_RE.findall(formula):
+        total += int(count or 1)
+        if int(faces) > MAX_DICE_FACES or total > MAX_DICE_COUNT:
+            return False
+    return True
 
 
 def normalize_tts_rate(rate_str: Optional[str]) -> str:

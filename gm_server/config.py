@@ -33,9 +33,13 @@ MAPGEN_TIMEOUT = float(os.environ.get("AI_GM_MAPGEN_TIMEOUT", "300"))
 # 部屋の情景を分割して問い合わせるときの同時実行数 (Gemini のとき。agy は AGY_CONCURRENCY)
 LLM_CONCURRENCY = max(1, int(os.environ.get("AI_GM_LLM_CONCURRENCY", "3")))
 
-# WebSocket サーバー
-HOST = os.environ.get("AI_GM_HOST", "0.0.0.0")
+# WebSocket サーバー。FVTT (bridge.js) は GM の PC の ws://127.0.0.1:8765 に繋ぐので、既定は自分の PC からだけ受ける
+# (0.0.0.0 にすると、同じ LAN の誰でも認証なしで AI の設定を書き換えたり、AI を動かしたりできる)
+HOST = os.environ.get("AI_GM_HOST", "127.0.0.1")
 PORT = int(os.environ.get("AI_GM_PORT", "8765"))
+# ブラウザから繋いでよいページ (Origin)。localhost・127.0.0.1 のページはいつでも受ける。
+# FVTT を別の名前 (http://192.168.1.10:30000 など) で開くときは、カンマ区切りで足す
+ALLOWED_ORIGINS = [o.strip().rstrip("/") for o in os.environ.get("AI_GM_ALLOWED_ORIGINS", "").split(",") if o.strip()]
 # シーン構築ペイロード (壁・部屋情報) が大きくなるため受信上限を拡張
 MAX_MESSAGE_SIZE = 15 * 1024 * 1024
 

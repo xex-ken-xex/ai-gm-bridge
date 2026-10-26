@@ -1,7 +1,7 @@
 """D. 通常のプレイヤー発言 (Gemini TRPG GM 演出)"""
 
 from gm_server import protocol
-from gm_server.text import clean_html, dice_formula_from_command
+from gm_server.text import ai_text_to_html, clean_html, dice_formula_from_command
 from gm_server.tts import voice_filename
 
 
@@ -29,7 +29,7 @@ async def handle(ctx, data: dict) -> None:
 
     # チャット描写送信
     if narrative:
-        await ctx.send(protocol.chat(narrative))
+        await ctx.send(protocol.chat(ai_text_to_html(narrative)))
 
     # ダイスロール送信
     if formula:

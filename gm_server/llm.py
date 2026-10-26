@@ -24,7 +24,7 @@ from gm_server.config import (
     GEMINI_TIMEOUT,
 )
 from gm_server.progress import log, progress
-from gm_server.text import first_sentence, newlines_to_br
+from gm_server.text import first_sentence
 from tools.prompt_manager import extract_json_from_response
 
 JsonValue = Union[dict, list]
@@ -349,7 +349,9 @@ class LLMService:
         self._defaults = dict(gemini_client=gemini_client, agy_runner=agy_runner, sleep=sleep,
                               gemini_timeout=gemini_timeout, model=model)
         self.routing = routing or default_routing(**self._defaults)
-        # 接続先ごとの会話 ID (サポートGM Geminiちゃん とのマルチターン会話。AI GM の語りと共有する)
+        # 接続先ごとの会話 ID (サポートGM Geminiちゃん とのマルチターン会話)。
+        # AI GM の語りは "ai_gm:<接続先>" で別に持つ: 語りはプレイヤーの発言に答えて全員のチャットに出るため、
+        # GM の相談 (伏線・NPC の正体など) と同じ会話にすると、プレイヤーが聞き出せてしまう
         self.conversations: Dict[str, Optional[str]] = {}
 
     @classmethod
@@ -442,10 +444,11 @@ class LLMService:
                 text, _ = await self._complete(provider, f"プレイヤーの行動: {player_input}", system=SYSTEM_INSTRUCTION)
             else:
                 print(f"{provider.name} にプレイヤー発言を問い合わせ中...")
-                conv = self.conversations.get(provider.name)
+                key = f"ai_gm:{provider.name}"
+                conv = self.conversations.get(key)
                 text, conv = await self._complete(provider, AI_GM_PROMPT.format(player_input=player_input), conversation=conv)
                 if conv:
-                    self.conversations[provider.name] = conv
+                    self.conversations[key] = conv
                 last_text = text or last_text
             parsed = extract_json_from_response(text) if text else None
             if isinstance(parsed, dict) and "narrative" in parsed:
@@ -453,7 +456,7 @@ class LLMService:
             print(f"{provider.name} の応答が想定形式ではありません。次の接続先を試します...")
 
         return {
-            "narrative": newlines_to_br(last_text),
+            "narrative": last_text,
             "speech": first_sentence(last_text),
             "dice": None,
         }
