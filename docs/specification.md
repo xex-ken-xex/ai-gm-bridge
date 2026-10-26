@@ -245,7 +245,7 @@ FVTT のビルダー画面にも同じ内容を 2 行で出します (`builder_p
 | `AI_GM_IRODORI_CAPTION_MALE` | 落ち着いた大人の男性の声。… | 男性の NPC (ボイスが Keita) の声の説明文 |
 | `AI_GM_IRODORI_SEED` | `1234` | 声の揺れを抑える乱数の種。ナレーターはこの値、NPC はこの値とボイス名・声の高さ・説明文から決めた値。空にすると毎回変わる |
 | `AI_GM_IRODORI_NARRATOR_VOICE` | (なし) | ナレーターの参照音声の ID (Irodori-TTS-Server の voices フォルダのファイル名)。設定するとナレーターはこの声だけで作る (説明文は付けない) |
-| `AI_GM_HOST` | `127.0.0.1` | WebSocket サーバーの待ち受けアドレス。bridge.js は `ws://127.0.0.1:8765` に繋ぐので、LAN に開く必要はない (認証が無いため `0.0.0.0` にしない) |
+| `AI_GM_HOST` | `127.0.0.1` | WebSocket サーバーの待ち受けアドレス。bridge.js は `ws://127.0.0.1:8765` に繋ぐので、LAN に開く必要はない (認証が無いため `0.0.0.0` にしない。Origin の確認はブラウザにしか効かず、ブラウザ以外のプログラムは Origin を偽れる) |
 | `AI_GM_ALLOWED_ORIGINS` | (なし) | 接続を受けるページ (Origin) をカンマ区切りで足す。`localhost`・ループバックの IP のページと、Origin の無い接続 (ブラウザ以外) はいつでも受ける。ほかは接続直後に 1008 で閉じる |
 | `AI_GM_PORT` | `8765` | WebSocket サーバーのポート |
 | `AI_GM_LOG_DIR` | `~/ai-gm-logs` | 詳細ログの出力先 (日付フォルダを作る) |

@@ -206,7 +206,7 @@ NPC の会話はローカルの LM Studio、シナリオビルダーは Claude C
 | `AI_GM_AGY_TIMEOUT` | `300` | agy の待ち時間（秒） |
 | `AI_GM_ROUTER_TIMEOUT` | `45` | `/ai` のスキル判定で agy を待つ秒数。過ぎたら「応答がなかった」と知らせる |
 | `AI_GM_AGY_CONCURRENCY` | `1` | agy を同時に動かす数 |
-| `AI_GM_HOST` / `AI_GM_PORT` | `127.0.0.1` / `8765` | AI GM サーバーの待ち受け。既定は自分の PC からだけ受ける（`0.0.0.0` にすると同じ LAN の誰でも認証なしで繋げるので、変えないでください） |
+| `AI_GM_HOST` / `AI_GM_PORT` | `127.0.0.1` / `8765` | AI GM サーバーの待ち受け。既定は自分の PC からだけ受ける（`0.0.0.0` にすると、同じ LAN のプログラムが Origin を偽って認証なしで繋げるので、変えないでください） |
 | `AI_GM_ALLOWED_ORIGINS` | (なし) | FVTT を `localhost` / `127.0.0.1` 以外の URL で開くときだけ、その URL をカンマ区切りで書く（例: `http://192.168.1.10:30000`）。ほかのサイトのページからの接続は断ります |
 | `AI_GM_DATA_DIR` | `~/foundrydata/Data` | FVTT の Data フォルダ |
 | `AI_GM_LOG_DIR` / `AI_GM_LOG_DAYS` | `~/ai-gm-logs` / `10` | 詳細ログの置き場所と保存日数 |

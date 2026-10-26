@@ -48,7 +48,8 @@ def is_allowed_origin(origin: Optional[str], peer: Optional[str] = None, allowed
     繋いできたページ (Origin ヘッダー) を受けてよいか。
     ブラウザは開いているどのサイトからでも ws://127.0.0.1:8765 に繋げてしまうため、FVTT のページ以外は断る。
     Origin が無いもの (tools/test_send.py など、ブラウザ以外のプログラム) は、自分の PC から (peer がループバック) だけ受ける。
-    AI_GM_HOST=0.0.0.0 にしても、LAN のプログラムが Origin を付けずに繋いでこられないように
+    (Origin を付けない LAN のプログラムは断る。ただし Origin はブラウザ以外なら偽れるので、
+    AI_GM_HOST=0.0.0.0 にしたときの守りにはならない。0.0.0.0 が要るなら合言葉 (トークン) を足すこと)
     """
     if not origin:
         return is_loopback_address(peer)
