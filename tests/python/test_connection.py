@@ -50,7 +50,6 @@ async def test_hub_keeps_results_until_someone_connects():
 
 
 @pytest.mark.parametrize("origin, allowed", [
-    (None, True),                              # ブラウザ以外 (tools/test_send.py など)
     ("http://localhost:30000", True),
     ("http://127.0.0.1:30000", True),
     ("http://[::1]:30000", True),
@@ -60,11 +59,18 @@ async def test_hub_keeps_results_until_someone_connects():
     ("null", False),                           # file:// や sandbox の iframe
 ])
 def test_is_allowed_origin(origin, allowed):
-    assert app.is_allowed_origin(origin, allowed=[]) is allowed
+    assert app.is_allowed_origin(origin, "127.0.0.1", allowed=[]) is allowed
 
 
-def test_is_allowed_origin_accepts_configured_origins():
-    assert app.is_allowed_origin("http://192.168.1.10:30000/", allowed=["http://192.168.1.10:30000"])
+def test_is_allowed_origin_accepts_configured_origins_except_null():
+    assert app.is_allowed_origin("http://192.168.1.10:30000/", "127.0.0.1", allowed=["http://192.168.1.10:30000"])
+    assert not app.is_allowed_origin("null", "127.0.0.1", allowed=["null"])
+
+
+@pytest.mark.parametrize("peer, allowed", [("127.0.0.1", True), ("::1", True), ("192.168.1.20", False), (None, False)])
+def test_connections_without_origin_only_from_this_pc(peer, allowed):
+    """ブラウザ以外 (Origin なし) は自分の PC からだけ。AI_GM_HOST=0.0.0.0 にしても LAN のプログラムは断る"""
+    assert app.is_allowed_origin(None, peer, allowed=[]) is allowed
 
 
 async def test_server_closes_connections_from_other_sites(monkeypatch):

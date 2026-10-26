@@ -2,6 +2,7 @@
 
 import asyncio
 import contextlib
+import ipaddress
 from typing import Optional
 
 from gm_server import config, logs, protocol
@@ -42,16 +43,27 @@ def _services():
     return _llm, _tts
 
 
-def is_allowed_origin(origin: Optional[str], allowed=None) -> bool:
+def is_allowed_origin(origin: Optional[str], peer: Optional[str] = None, allowed=None) -> bool:
     """
     繋いできたページ (Origin ヘッダー) を受けてよいか。
     ブラウザは開いているどのサイトからでも ws://127.0.0.1:8765 に繋げてしまうため、FVTT のページ以外は断る。
-    Origin が無いもの (tools/test_send.py など、ブラウザ以外の自分の PC のプログラム) は受ける
+    Origin が無いもの (tools/test_send.py など、ブラウザ以外のプログラム) は、自分の PC から (peer がループバック) だけ受ける。
+    AI_GM_HOST=0.0.0.0 にしても、LAN のプログラムが Origin を付けずに繋いでこられないように
     """
     if not origin:
-        return True
+        return is_loopback_address(peer)
+    # null は file:// や sandbox の iframe。どのサイトからでも名乗れるので、一覧にあっても受けない
+    if origin == "null":
+        return False
     allowed = config.ALLOWED_ORIGINS if allowed is None else allowed
     return origin.rstrip("/") in allowed or is_loopback_url(origin)
+
+
+def is_loopback_address(address: Optional[str]) -> bool:
+    try:
+        return ipaddress.ip_address(address or "").is_loopback
+    except ValueError:
+        return False
 
 
 def request_origin(websocket) -> Optional[str]:
@@ -61,11 +73,18 @@ def request_origin(websocket) -> Optional[str]:
     return headers.get("Origin") if headers is not None else None
 
 
+def peer_address(websocket) -> Optional[str]:
+    remote = getattr(websocket, "remote_address", None)
+    return str(remote[0]) if remote else None
+
+
 async def handler(websocket):
     origin = request_origin(websocket)
-    if not is_allowed_origin(origin):
-        print(f"⚠️ {origin} のページからの接続を断りました。FVTT をこの URL で開いているなら、"
-              f"AI_GM_ALLOWED_ORIGINS={origin} を設定してください")
+    peer = peer_address(websocket)
+    if not is_allowed_origin(origin, peer):
+        # 断った相手は攻撃してきたページかもしれないので、その URL を足すようには勧めない
+        print(f"⚠️ 接続を断りました (ページ: {origin or 'なし'}、接続元: {peer})。"
+              f"自分で FVTT を localhost 以外の URL で開いているときだけ、その URL を AI_GM_ALLOWED_ORIGINS に書いてください")
         await websocket.close(code=1008, reason="origin not allowed")
         return
     print("\nFoundry VTT が接続しました！(サポートGM agy 連携モード待機中)")

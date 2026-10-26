@@ -46,6 +46,11 @@ def test_dice_formula_strips_roll_prefix_only_at_start():
     "/r 60d6 + 50d6",      # 合計の個数が上限を超える
     "/r 1d20 + @abilities.str.mod",  # キャラクターの値の参照
     "/r 1d20[<img src=x>]",          # フレーバー文
+    "/r (9999*9999)d6",    # 個数を括弧で書いて上限をすり抜ける
+    "/r (99d1000)d1000",
+    "/r (2) d6",
+    "/r 1d(1000*1000)",    # 面数を括弧で書く
+    "/r 1dd6",
 ])
 def test_dice_formula_rejects_unsafe_formulas(raw):
     assert dice_formula_from_command(raw) is None

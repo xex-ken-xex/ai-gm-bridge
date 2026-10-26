@@ -60,6 +60,9 @@ def is_safe_dice_formula(formula: str) -> bool:
     """数字・d・kh/kl・四則演算・括弧だけで、ダイスの数と面数が上限以内か (@ の参照やフレーバー文は断る)"""
     if not formula or not _DICE_FORMULA_RE.match(formula):
         return False
+    # 個数や面数を括弧で書いたもの ((9999*9999)d6・1d(10*10)) は数えられないので断る
+    if re.search(r"\)\s*\d*\s*[dD]|[dD]\s*\(", formula) or re.search(r"[dD]", _DICE_TERM_RE.sub("", formula)):
+        return False
     total = 0
     for count, faces in _DICE_TERM_RE.findall(formula):
         total += int(count or 1)
