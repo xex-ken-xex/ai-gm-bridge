@@ -12,7 +12,8 @@
   ],
   "styles": [
     "styles/builder.css",
-    "styles/mascot.css"
+    "styles/mascot.css",
+    "styles/ai-settings.css"
   ],
   "socket": true
 }

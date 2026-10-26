@@ -2,6 +2,7 @@
 // プロトコルを変更する場合は gm_server/protocol.py も同時に更新すること
 
 import { handleAdventureLogCollect, handleAdventureLogWrite } from "./adventure-log.js";
+import { handleAiSettings } from "./ai-settings.js";
 import { handleBuilderProgress, handleBuilderStageResult, handleOpenBuilder } from "./builder.js";
 import { handleNpcDialogueResponse } from "./npc.js";
 import { handleExecuteNpcTurn } from "./npc-combat.js";
@@ -211,6 +212,7 @@ export const ACTION_HANDLERS = {
   execute_npc_turn: handleExecuteNpcTurn,
   adventure_log_collect: handleAdventureLogCollect,
   adventure_log_write: handleAdventureLogWrite,
+  ai_settings: handleAiSettings,
 };
 
 export async function handleServerAction(data) {

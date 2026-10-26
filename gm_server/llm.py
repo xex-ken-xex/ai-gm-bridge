@@ -345,9 +345,10 @@ class LLMService:
 
         self.client = gemini_client
         self.model = model
-        self.routing = routing or default_routing(
-            gemini_client=gemini_client, agy_runner=agy_runner, sleep=sleep, gemini_timeout=gemini_timeout, model=model,
-        )
+        # 設定画面で保存したときに作り直すため、既定の振り分けの材料を持っておく
+        self._defaults = dict(gemini_client=gemini_client, agy_runner=agy_runner, sleep=sleep,
+                              gemini_timeout=gemini_timeout, model=model)
+        self.routing = routing or default_routing(**self._defaults)
         # 接続先ごとの会話 ID (サポートGM Geminiちゃん とのマルチターン会話。AI GM の語りと共有する)
         self.conversations: Dict[str, Optional[str]] = {}
 
@@ -358,6 +359,15 @@ class LLMService:
 
         routing = load_routing(path, gemini_client=gemini_client, agy_runner=kwargs.get("agy_runner"))
         return cls(gemini_client=gemini_client, routing=routing, **kwargs)
+
+    def reload_config(self, path: Optional[str] = None) -> None:
+        """振り分け設定ファイルを読み直す (AI の設定画面で保存したとき)。無ければ既定の振り分け"""
+        from gm_server.ai_routing import default_routing, load_routing
+
+        self.routing = (load_routing(path, gemini_client=self.client, agy_runner=self._defaults["agy_runner"])
+                        or default_routing(**self._defaults))
+        # 接続先が変わると会話は続けられないので、相談の会話も最初からにする
+        self.conversations = {}
 
     def chain(self, task: str) -> List[Provider]:
         return self.routing.chain(task)

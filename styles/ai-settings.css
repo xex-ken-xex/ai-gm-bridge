@@ -1,0 +1,29 @@
+/* AI の設定画面 (scripts/ai-settings.js)。module.json の styles で読み込む。セレクタはダイアログのクラス .ai-gm-settings に閉じる */
+.ai-gm-settings .aiset { color: #f0f0e0; background: #1a1a20; padding: 10px; border-radius: 6px; font-size: 12px; display: flex; flex-direction: column; gap: 6px; }
+.ai-gm-settings .aiset * { box-sizing: border-box; }
+.ai-gm-settings .aiset h3 { color: #f39c12; font-size: 13px; margin: 6px 0 0 0; border-bottom: 1px solid #444; }
+.ai-gm-settings .aiset .aiset-note { margin: 0; color: #ccc; line-height: 1.5; }
+.ai-gm-settings .aiset code { background: #101014; padding: 0 3px; border-radius: 3px; }
+.ai-gm-settings .aiset .aiset-scroll { overflow-x: auto; }
+.ai-gm-settings .aiset .aiset-table { width: 100%; border-collapse: collapse; margin: 0; }
+.ai-gm-settings .aiset .aiset-table th, .ai-gm-settings .aiset .aiset-table td { padding: 3px 3px; border-bottom: 1px solid #333; text-align: left; vertical-align: middle; }
+.ai-gm-settings .aiset .aiset-table th { color: #f39c12; font-weight: bold; white-space: nowrap; }
+.ai-gm-settings .aiset .aiset-tasks th { width: 230px; }
+.ai-gm-settings .aiset input[type=text], .ai-gm-settings .aiset select { width: 100%; min-width: 70px; height: 26px; background: #101014; color: #f0f0f0; border: 1px solid #555; border-radius: 4px; padding: 3px 5px; font-size: 12px; margin: 0; }
+.ai-gm-settings .aiset input[disabled] { opacity: 0.35; }
+.ai-gm-settings .aiset .aiset-check { display: flex; align-items: center; gap: 3px; white-space: nowrap; margin: 0; }
+.ai-gm-settings .aiset .aiset-check input { margin: 0; }
+.ai-gm-settings .aiset .aiset-status { display: inline-block; padding: 1px 6px; border-radius: 8px; }
+.ai-gm-settings .aiset .aiset-status.ok { background: #1e5631; }
+.ai-gm-settings .aiset .aiset-status.ng { background: #7b241c; }
+.ai-gm-settings .aiset .aiset-message { padding: 6px 8px; border-radius: 4px; font-weight: bold; }
+.ai-gm-settings .aiset .aiset-message.ok { background: #1e5631; }
+.ai-gm-settings .aiset .aiset-message.ng { background: #7b241c; }
+.ai-gm-settings .aiset .aiset-actions { display: flex; gap: 6px; padding-top: 8px; border-top: 1px solid #333; }
+.ai-gm-settings .aiset .aiset-actions button { flex: 1 1 160px; margin: 0; color: #fff; background: #8e44ad; border: none; padding: 7px; border-radius: 4px; cursor: pointer; font-weight: bold; }
+.ai-gm-settings .aiset input[data-field=name] { min-width: 80px; }
+.ai-gm-settings .aiset select[data-field=type] { min-width: 110px; }
+.ai-gm-settings .aiset input[data-field=model] { min-width: 120px; }
+.ai-gm-settings .aiset input[data-field=base_url] { min-width: 150px; }
+.ai-gm-settings .aiset input[data-field=api_key_env] { min-width: 120px; }
+.ai-gm-settings .aiset input[data-field=timeout], .ai-gm-settings .aiset input[data-field=concurrency] { min-width: 45px; width: 55px; }
