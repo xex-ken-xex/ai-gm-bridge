@@ -11,6 +11,7 @@ flag に保存する (L11: ブラウザのリロードでランドマークが�
 """
 
 import asyncio
+import html
 import random
 import time
 import uuid
@@ -555,7 +556,7 @@ async def build_scene(ctx, data, scene_mode, name, site_public, site_dm, seed, s
         return
     await send_scene(ctx, name, scene_mode, png_filename, gen, walls, lore, rooms, density, None, scene_key=scene_key)
     await ctx.send(protocol.chat(
-        f"🏰 <b>{mode_name}『{name}』のマップができたよ！</b> (区画数: {len(gen.rooms)})<br>"
+        f"🏰 <b>{mode_name}『{html.escape(name)}』のマップができたよ！</b> (区画数: {len(gen.rooms)})<br>"
         f"各区画の情景は、書き終わったところから順に入れていくね ({len(selected)} 区画)。",
         speaker=SPEAKER_SUPPORT,
     ))

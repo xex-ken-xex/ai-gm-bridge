@@ -129,7 +129,7 @@ flowchart TD
   | :--- | :--- | :--- |
   | `gemini` | Gemini API | `model`、`api_key_env` (キーを入れた環境変数の名前。既定 `GEMINI_API_KEY`) |
   | `agy` | agy CLI (今までの呼び方) | モデル・effort・同時実行数は `AI_GM_AGY_*` の環境変数で決まる |
-  | `claude_code` | Claude Code CLI (`claude -p --output-format json`。プロンプトは標準入力) | `model` (`sonnet` など)、`command` (既定 `claude`)、`extra_args`、`workdir` (既定 `~/ai-gm-logs/claude-workspace`)。会話は `--resume` で続ける。打ち切りのときは `claude` が起こした子プロセスごと止める。先に `claude` を一度起動してログインしておく (API キーなら `ANTHROPIC_API_KEY`) |
+  | `claude_code` | Claude Code CLI (`claude -p --output-format json --tools "" --strict-mcp-config`。プロンプトは標準入力。プロンプトにプレイヤーの発言が入るため、道具と MCP サーバーは持たせない) | `model` (`sonnet` など)、`command` (既定 `claude`)、`extra_args`、`workdir` (既定 `~/ai-gm-logs/claude-workspace`)。会話は `--resume` で続ける。打ち切りのときは `claude` が起こした子プロセスごと止める。先に `claude` を一度起動してログインしておく (API キーなら `ANTHROPIC_API_KEY`) |
   | `openai` | OpenAI 互換の Chat Completions API (LM Studio・Ollama・OpenAI など) | `base_url` (既定 `http://localhost:1234/v1`)、`model`、`api_key_env` (要るときだけ)、`temperature`、`json_response_format` (`true` で `response_format: json_object` を付ける)。会話はサーバーの中で直近 20 件まで覚える |
 
 - **作業ごとの接続先 (`tasks`)**: 作業の名前に接続先の名前 (並べるとフォールバックの順) を書く。書いていない作業は `default` を使う。キーが無いなど使えない接続先は飛ばす。
@@ -245,7 +245,8 @@ FVTT のビルダー画面にも同じ内容を 2 行で出します (`builder_p
 | `AI_GM_IRODORI_CAPTION_MALE` | 落ち着いた大人の男性の声。… | 男性の NPC (ボイスが Keita) の声の説明文 |
 | `AI_GM_IRODORI_SEED` | `1234` | 声の揺れを抑える乱数の種。ナレーターはこの値、NPC はこの値とボイス名・声の高さ・説明文から決めた値。空にすると毎回変わる |
 | `AI_GM_IRODORI_NARRATOR_VOICE` | (なし) | ナレーターの参照音声の ID (Irodori-TTS-Server の voices フォルダのファイル名)。設定するとナレーターはこの声だけで作る (説明文は付けない) |
-| `AI_GM_HOST` | `0.0.0.0` | WebSocket サーバーの待ち受けアドレス |
+| `AI_GM_HOST` | `127.0.0.1` | WebSocket サーバーの待ち受けアドレス。bridge.js は `ws://127.0.0.1:8765` に繋ぐので、LAN に開く必要はない (認証が無いため `0.0.0.0` にしない。Origin の確認はブラウザにしか効かず、ブラウザ以外のプログラムは Origin を偽れる) |
+| `AI_GM_ALLOWED_ORIGINS` | (なし) | 接続を受けるページ (Origin) をカンマ区切りで足す。`localhost`・ループバックの IP のページと、Origin の無い接続 (ブラウザ以外) はいつでも受ける。ほかは接続直後に 1008 で閉じる |
 | `AI_GM_PORT` | `8765` | WebSocket サーバーのポート |
 | `AI_GM_LOG_DIR` | `~/ai-gm-logs` | 詳細ログの出力先 (日付フォルダを作る) |
 | `AI_GM_LOG_DAYS` | `10` | 詳細ログを残す日数 (今日を含む) |

@@ -210,9 +210,15 @@ def kill_process_group(proc) -> None:
             proc.kill()
 
 
+# claude に道具 (ファイルの読み書き・コマンド・Web・MCP サーバー) を持たせない。
+# プロンプトにはプレイヤーの発言が入るため、道具があると「~/.bashrc を読んで語りに書いて」のような
+# 指示で鍵を持ち出されうる。ここで要るのは文章だけ
+CLAUDE_NO_TOOLS_ARGS = ["--tools", "", "--strict-mcp-config"]
+
+
 def build_claude_command(model: str = "", session_id: Optional[str] = None, extra_args=None) -> List[str]:
     """Claude Code CLI (`claude -p`)。プロンプトは標準入力で渡す (長いプロンプトでも引数の上限に掛からない)"""
-    cmd = ["claude", "-p", "--output-format", "json"]
+    cmd = ["claude", "-p", "--output-format", "json", *CLAUDE_NO_TOOLS_ARGS]
     if model:
         cmd.extend(["--model", model])
     if session_id:

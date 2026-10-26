@@ -348,8 +348,9 @@ export function setMascotState(state, text = "", durationMs = 5000, { isPublic =
 export function listenMascotSocket() {
   game.socket?.on(SOCKET, (data, senderId) => {
     if (data?.action !== "sync_mascot") return;
+    // 送り主が分からないものも受けない (プレイヤーが GM のふりをしてマスコットに喋らせないように)
     const sender = senderId ? game.users?.get(senderId) : null;
-    if (sender && !sender.isGM) return;
+    if (!sender?.isGM) return;
     controller?.set(normalizeMascotState(data));
   });
 }

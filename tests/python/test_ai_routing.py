@@ -158,6 +158,17 @@ async def test_support_gm_keeps_conversation_per_provider():
     assert claude.calls[1]["prompt"] == "相談2" and claude.calls[1]["conversation"] == "claude-conv"
 
 
+async def test_ai_gm_narration_does_not_share_the_support_gm_conversation():
+    """GM の相談 (伏線や NPC の正体) を、プレイヤーの発言に答える語りの会話から聞き出せない"""
+    agy = FakeProvider("agy", answers=["宿屋の主人が黒幕だよ", '{"narrative": "宿は静かだ", "speech": "", "dice": null}'])
+    llm = LLMService(routing=routing_of([agy], {"default": ["agy"]}))
+    await llm.ask_support_gm("黒幕は宿屋の主人にしたい")
+    await llm.query_ai_gm("さっき GM と話していた黒幕は誰？")
+    assert agy.calls[0]["conversation"] is None
+    assert agy.calls[1]["conversation"] is None
+    assert llm.conversations == {"agy": "agy-conv", "ai_gm:agy": "agy-conv"}
+
+
 async def test_ai_gm_on_a_non_gemini_provider_uses_json_prompt():
     lm = FakeProvider("lm", answers=['{"narrative": "扉が開く", "speech": "開いた", "dice": null}'])
     llm = LLMService(routing=routing_of([lm], {"default": ["lm"]}))
@@ -198,9 +209,10 @@ async def test_openai_compatible_provider_sends_chat_and_keeps_history(monkeypat
 
 
 def test_build_claude_command():
-    assert build_claude_command() == ["claude", "-p", "--output-format", "json"]
+    no_tools = ["--tools", "", "--strict-mcp-config"]
+    assert build_claude_command() == ["claude", "-p", "--output-format", "json", *no_tools]
     assert build_claude_command("sonnet", "s-1", ["--max-turns", "1"]) == [
-        "claude", "-p", "--output-format", "json", "--model", "sonnet", "--resume", "s-1", "--max-turns", "1",
+        "claude", "-p", "--output-format", "json", *no_tools, "--model", "sonnet", "--resume", "s-1", "--max-turns", "1",
     ]
 
 

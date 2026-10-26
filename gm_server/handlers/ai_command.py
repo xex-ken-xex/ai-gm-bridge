@@ -4,7 +4,7 @@ from gm_server import deadline, dungeon_scene, protocol, skills
 from gm_server.handlers import adventure_log
 from gm_server.config import ROUTER_TIMEOUT, SPEAKER_SUPPORT
 from gm_server.llm import SUPPORT_GM_CHARACTER
-from gm_server.text import newlines_to_br
+from gm_server.text import ai_text_to_html
 
 
 # スキル判定の聞き返しカードのボタンの値 (ai_skill:<カード番号>:<選択肢の番号>)
@@ -14,7 +14,7 @@ NO_REPLY_MESSAGE = "⚠️ ごめんね、Geminiちゃんの返事が届かな�
 
 async def _say(ctx, text: str) -> None:
     if text:
-        await ctx.send(protocol.chat(newlines_to_br(text), speaker=SPEAKER_SUPPORT))
+        await ctx.send(protocol.chat(ai_text_to_html(text), speaker=SPEAKER_SUPPORT))
 
 
 async def _run_generate_dungeon(ctx, params: dict, prompt: str, say: str, text: str) -> None:
