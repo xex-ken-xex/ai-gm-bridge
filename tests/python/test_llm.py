@@ -130,6 +130,44 @@ async def test_call_agy_times_out_and_kills_process(monkeypatch):
     assert procs[0].returncode is not None
 
 
+async def test_call_agy_timeout_kills_child_processes(monkeypatch, tmp_path):
+    import asyncio
+    import os
+    import sys
+
+    real_exec = asyncio.create_subprocess_exec
+    pid_file = tmp_path / "child.pid"
+    script = (
+        "import subprocess, sys, time; "
+        "p = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(30)']); "
+        f"open({str(pid_file)!r}, 'w').write(str(p.pid)); time.sleep(30)"
+    )
+
+    async def fake_agy(*args, **kwargs):
+        assert kwargs.get("start_new_session") is True
+        return await real_exec(sys.executable, "-c", script, **kwargs)
+
+    monkeypatch.setattr("asyncio.create_subprocess_exec", fake_agy)
+    assert await call_agy("hi", "conv", timeout=1.5) == ("", "conv")
+    child = int(pid_file.read_text())
+
+    def gone() -> bool:
+        # 止まった子プロセスは、親が回収するまでゾンビ (Z) として残ることがある
+        try:
+            with open(f"/proc/{child}/stat") as f:
+                return f.read().rsplit(")", 1)[-1].split()[0] == "Z"
+        except OSError:
+            return True
+
+    for _ in range(50):
+        if gone():
+            break
+        await asyncio.sleep(0.05)
+    else:
+        os.kill(child, 9)
+        raise AssertionError("agy の子プロセスが残っています")
+
+
 async def test_gemini_timeout_falls_back_to_agy():
     import time
 

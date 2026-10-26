@@ -13,7 +13,7 @@ import time
 from typing import Awaitable, Callable, Dict, List, Optional, Tuple, Union
 
 from gm_server import logs
-from gm_server.ai_providers import Provider, is_retryable_error  # noqa: F401 (is_retryable_error は互換のため)
+from gm_server.ai_providers import Provider, is_retryable_error, kill_process_group  # noqa: F401 (is_retryable_error は互換のため)
 from gm_server.config import (
     AGY_CONCURRENCY,
     AGY_EFFORT,
@@ -174,8 +174,8 @@ async def _watch_agy(rid: int, proc, started: float, out_buf: bytearray, err_buf
 
 
 async def _kill(proc, readers) -> None:
-    with contextlib.suppress(ProcessLookupError):
-        proc.kill()
+    # agy が起こした子プロセス (ツールや言語サーバーなど) もまとめて止める
+    kill_process_group(proc)
     await proc.wait()
     for r in readers:
         r.cancel()
@@ -225,6 +225,8 @@ async def _call_agy(
             cwd=workdir,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
+            # 新しいプロセスグループで起動し、止めるときに子プロセスごと止められるようにする
+            start_new_session=True,
         )
     except FileNotFoundError:
         print("agy CLI が見つかりません (PATH を確認してください)")
