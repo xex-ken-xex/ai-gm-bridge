@@ -31,7 +31,10 @@ async def test_request_sends_routing_without_key_values(make_ctx, sent, config_p
     assert msg["tasks"]["default"] == ["gemini", "agy"] and msg["tasks"]["npc_dialogue"] == []
     assert "AIzaSyTESTVALUE" not in json.dumps(msg, ensure_ascii=False)
     gemini = next(p for p in msg["providers"] if p["name"] == "gemini")
-    assert gemini["key_status"] == "設定済み" and gemini["api_key_env"] == "GEMINI_API_KEY"
+    assert gemini["key_status"] == "設定済み"
+    # 設定ファイルが無いときは欄を空にし、今の値は defaults (画面では薄く見せる) にだけ入れる
+    assert "api_key_env" not in gemini and "timeout" not in gemini
+    assert gemini["defaults"]["api_key_env"] == "GEMINI_API_KEY" and gemini["defaults"]["timeout"] > 0
 
 
 async def test_save_writes_file_and_reloads_routing(make_ctx, sent, config_path, monkeypatch):
@@ -95,25 +98,49 @@ async def test_save_rejects_bad_settings(make_ctx, sent, config_path, data, expe
     assert not config_path.exists()
 
 
-def test_screen_cannot_send_a_key_to_a_new_remote_url():
+def test_screen_cannot_point_at_a_new_remote_url():
     remote = {"type": "openai", "model": "m", "base_url": "http://192.168.0.9:9999/v1", "api_key_env": "GEMINI_API_KEY"}
     with pytest.raises(ai_settings.SettingsError, match="localhost 以外"):
         ai_settings.clean_provider("x", remote)
+    # キーを付けなくても、外の URL は断る (プレイヤーの発言が外へ出て、返事で NPC を操られるため)
+    with pytest.raises(ai_settings.SettingsError, match="localhost 以外"):
+        ai_settings.clean_provider("x", {**remote, "api_key_env": ""})
+    # 127 で始まるだけのホスト名は自分の PC ではない
+    for url in ("http://127.attacker.com/v1", "http://127.0.0.1.nip.io/v1", "http://localhost.attacker.com/v1"):
+        with pytest.raises(ai_settings.SettingsError, match="localhost 以外"):
+            ai_settings.clean_provider("x", {**remote, "base_url": url})
     # 設定ファイルに書いてあったものと同じなら保存できる (ほかの欄だけを変えるとき)
     previous = {**remote, "api_key_env": "OPENROUTER_API_KEY", "base_url": "https://openrouter.ai/api/v1"}
     same = {**previous, "model": "m2"}
     assert ai_settings.clean_provider("x", same, previous)["model"] == "m2"
     with pytest.raises(ai_settings.SettingsError):
         ai_settings.clean_provider("x", {**same, "base_url": "https://evil.example/v1"}, previous)
-    # キーを使わないか、localhost 宛てなら書ける
-    assert ai_settings.clean_provider("x", {**remote, "api_key_env": ""})["base_url"].startswith("http://192")
-    assert ai_settings.clean_provider("x", {**remote, "base_url": "http://127.0.0.1:1234/v1"})
+    with pytest.raises(ai_settings.SettingsError):
+        ai_settings.clean_provider("x", {**same, "api_key_env": "GEMINI_API_KEY"}, previous)
+    # 自分の PC 宛てなら書ける
+    for url in ("http://127.0.0.1:1234/v1", "http://localhost:1234/v1", "http://[::1]:1234/v1"):
+        assert ai_settings.clean_provider("x", {**remote, "base_url": url})["base_url"] == url
 
 
-def test_env_name_check_accepts_usual_names():
-    for name in ("GEMINI_API_KEY", "LMSTUDIO_API_KEY", "OPENAI_API_KEY", "my_key"):
-        spec = ai_settings.clean_provider("x", {"type": "openai", "model": "m", "api_key_env": name})
+def test_env_name_check_accepts_usual_names_and_rejects_key_values():
+    for name in ("GEMINI_API_KEY", "LMSTUDIO_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "MY_KEY2"):
+        spec = ai_settings.clean_provider("x", {"type": "gemini", "api_key_env": name})
         assert spec["api_key_env"] == name
+    hex64 = "d4f3a9c1" * 8
+    for value in (hex64, hex64.upper(), "my_key", "AIzaSyABCDEFGHIJ0123456789", "sk-proj-abc", "ABCDEFGHIJKLMNOPQRSTUVWX",
+                  "KEY_1234567890"):
+        with pytest.raises(ai_settings.SettingsError) as e:
+            ai_settings.clean_provider("x", {"type": "gemini", "api_key_env": value})
+        assert value not in str(e.value)
+
+
+def test_key_status_does_not_show_a_key_pasted_as_env_name(monkeypatch):
+    from gm_server.ai_providers import OpenAICompatProvider
+
+    hex64 = "D4F3A9C1" * 8
+    monkeypatch.delenv(hex64, raising=False)
+    assert OpenAICompatProvider("x", {"model": "m", "api_key_env": hex64}).key_status == "未設定"
+    assert OpenAICompatProvider("x", {"model": "m", "api_key_env": "LM_KEY_NOT_SET"}).key_status == "未設定 (LM_KEY_NOT_SET)"
 
 
 def test_sample_config_is_valid_and_loadable(monkeypatch):

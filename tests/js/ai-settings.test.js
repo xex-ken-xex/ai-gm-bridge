@@ -7,7 +7,7 @@ const SETTINGS = {
   config_exists: false,
   providers: [
     { name: "gemini", type: "gemini", model: "gemini-3.8-flash", api_key_env: "GEMINI_API_KEY", key_status: "設定済み", available: true, timeout: 120, concurrency: 3 },
-    { name: "agy", type: "agy", key_status: "不要", available: true, timeout: 300 },
+    { name: "agy", type: "agy", key_status: "不要", available: true, defaults: { timeout: 300 } },
     { name: "lm", type: "openai", base_url: "http://localhost:1234/v1", model: "qwen<b>", key_status: "未設定 (LM_KEY)", available: true },
   ],
   tasks: { default: ["gemini", "agy"], npc_dialogue: ["lm"], support_gm: [] },
@@ -32,6 +32,11 @@ test("buildSettingsHtml shows key status only and escapes values", () => {
   assert.match(html, /保存すると/);
   // agy では使わない欄は書けない
   assert.match(html, /data-row="agy"[\s\S]*?data-field="model" value=""\s+placeholder="使いません" disabled/);
+});
+
+test("buildSettingsHtml shows current defaults only as placeholders", () => {
+  const html = buildSettingsHtml(SETTINGS);
+  assert.match(html, /data-field="timeout" value=""\s+placeholder="300 \(既定\)"/);
 });
 
 test("buildSettingsHtml shows the server message", () => {

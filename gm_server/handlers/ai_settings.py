@@ -29,9 +29,7 @@ TYPE_LABELS = {
     "openai": "OpenAI 互換 (LM Studio など)",
 }
 _NAME = re.compile(r"^[A-Za-z0-9_\-]{1,32}$")
-_ENV_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,63}$")
-# キーの値そのもの (環境変数の名前の欄に貼ってしまったもの) の形
-_KEY_VALUE = re.compile(r"^(?:AIza|sk-|xai-|gsk_)|[a-z].*[A-Z].*\d|\d.*[a-z].*[A-Z]")
+_ENV_NAME = re.compile(r"^[A-Z_][A-Z0-9_]{0,63}$")
 
 
 class SettingsError(ValueError):
@@ -39,10 +37,32 @@ class SettingsError(ValueError):
 
 
 def is_loopback_url(url: str) -> bool:
+    """自分の PC 宛ての URL か (localhost か、ループバックの IP アドレスだけ。127.example.com などは違う)"""
+    import ipaddress
     from urllib.parse import urlparse
 
-    host = (urlparse(url).hostname or "").lower()
-    return host in ("localhost", "::1") or host.startswith("127.")
+    try:
+        host = (urlparse(url).hostname or "").lower()
+    except ValueError:
+        return False
+    if host == "localhost":
+        return True
+    try:
+        return ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        return False
+
+
+def looks_like_env_name(value: str) -> bool:
+    """
+    環境変数の名前らしいか (大文字・数字・_ だけ)。キーの値を貼ってしまったもの (16 進の長い文字列など) は断る:
+    数字が 4 文字より多いもの、_ を含まずに 20 文字以上のもの、40 文字より長いもの
+    """
+    if not _ENV_NAME.match(value) or len(value) > 40:
+        return False
+    if sum(c.isdigit() for c in value) > 4:
+        return False
+    return "_" in value or len(value) < 20
 
 
 def read_config_file(path: Optional[str] = None) -> dict:
@@ -57,34 +77,42 @@ def read_config_file(path: Optional[str] = None) -> dict:
         return {}
 
 
-def provider_view(provider) -> Dict:
-    """画面に出す接続先の中身 (キーの値は含めない)"""
-    spec = provider.spec or {}
+def provider_view(provider, file_spec: Optional[dict] = None) -> Dict:
+    """
+    画面に出す接続先の中身 (キーの値は含めない)。
+    欄に入れるのは設定ファイルに書いてある値だけ。今の実際の値 (環境変数の既定など) は defaults に入れ、画面では薄く見せる
+    (そのまま保存しても既定値がファイルに書き込まれず、あとで環境変数を変えれば効くように)
+    """
+    file_spec = file_spec if isinstance(file_spec, dict) and file_spec.get("type") == provider.kind else {}
     view = {
         "name": provider.name,
         "type": provider.kind,
         "type_label": TYPE_LABELS.get(provider.kind, provider.kind),
         "key_status": provider.key_status,
         "available": provider.available,
+        "defaults": {},
     }
     for field in EDITABLE_FIELDS.get(provider.kind, ()):
-        value = getattr(provider, field, None) if field in ("model", "base_url", "api_key_env", "timeout") else spec.get(field)
-        if field == "concurrency":
-            value = provider.concurrency
         if field == "json_response_format":
-            value = bool(getattr(provider, "json_format", False))
-        if value not in (None, ""):
-            view[field] = value
+            view[field] = bool(file_spec.get(field))
+            continue
+        if file_spec.get(field) not in (None, ""):
+            view[field] = file_spec[field]
+        effective = provider.concurrency if field == "concurrency" else getattr(provider, field, None)
+        if effective not in (None, ""):
+            view["defaults"][field] = effective
     return view
 
 
 def settings_payload(llm, message: str = "", ok: bool = True) -> Dict:
     routing = llm.routing
     path = config.AI_CONFIG_PATH
+    raw = read_config_file(path).get("providers")
+    file_providers = raw if isinstance(raw, dict) else {}
     return {
         "config_path": path,
         "config_exists": os.path.isfile(path),
-        "providers": [provider_view(p) for p in routing.providers.values()],
+        "providers": [provider_view(p, file_providers.get(p.name)) for p in routing.providers.values()],
         "tasks": {task: list(routing.tasks.get(task, [])) for task in [DEFAULT_TASK, *TASKS]},
         "task_labels": {DEFAULT_TASK: "書いていない作業 (default)", **TASKS},
         "type_labels": TYPE_LABELS,
@@ -130,8 +158,10 @@ def clean_provider(name: str, raw: dict, previous: Optional[dict] = None) -> dic
             spec.pop(field, None)
             continue
         if field == "api_key_env":
-            if _KEY_VALUE.search(value) or not _ENV_NAME.match(value):
-                raise SettingsError(f"{name} の API キーの欄には、キーの値ではなく環境変数の名前 (例: GEMINI_API_KEY) を書いてください")
+            if not looks_like_env_name(value):
+                # 断った値はキーかもしれないので、メッセージにもログにも出さない
+                raise SettingsError(f"{name} の API キーの欄には、キーの値ではなく環境変数の名前 "
+                                    f"(大文字・数字・_ だけ。例: GEMINI_API_KEY) を書いてください")
         if field == "model" and not re.match(r"^[A-Za-z0-9][A-Za-z0-9._:/@\-]{0,99}$", value):
             # claude -p --model <値> のようにコマンドの引数になるので、記号や「-」始まりは断る
             raise SettingsError(f"{name} のモデル名「{value}」は英数字と . _ : / @ - だけで書いてください")
@@ -140,14 +170,15 @@ def clean_provider(name: str, raw: dict, previous: Optional[dict] = None) -> dic
         spec[field] = value
     if kind == "openai" and not spec.get("model"):
         raise SettingsError(f"{name} (OpenAI 互換) にはモデル名を書いてください")
-    # サーバーは LAN からも繋げるため、画面から「キーを外の URL へ送る」設定は作らせない (キーの持ち出しを防ぐ)。
+    # サーバーは LAN からも繋げるため、画面から「外の URL へ送る」設定は作らせない
+    # (キーの持ち出しや、プレイヤーの発言を外へ送って返事で NPC を操ることを防ぐ)。
     # 自分の PC (localhost) 宛てか、設定ファイルに書いてあったものと同じ URL・環境変数のままなら保存できる
-    if kind == "openai" and spec.get("api_key_env"):
+    if kind == "openai" and not is_loopback_url(spec.get("base_url") or "http://localhost:1234/v1"):
         before = previous or {}
         unchanged = (before.get("type") == kind and before.get("base_url") == spec.get("base_url")
                      and before.get("api_key_env") == spec.get("api_key_env"))
-        if not unchanged and not is_loopback_url(spec.get("base_url") or "http://localhost:1234/v1"):
-            raise SettingsError(f"{name}: API キーを localhost 以外の URL へ送る設定は、画面からは作れません。"
+        if not unchanged:
+            raise SettingsError(f"{name}: localhost 以外の URL は、画面からは設定できません。"
                                 f"設定ファイル ({config.AI_CONFIG_PATH}) に直接書いてください")
     return spec
 

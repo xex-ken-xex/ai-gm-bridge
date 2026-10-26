@@ -185,7 +185,7 @@ NPC の会話はローカルの LM Studio、シナリオビルダーは Claude C
 
 1. `mkdir -p ~/.config/ai-gm-bridge && cp ai_providers.sample.json ~/.config/ai-gm-bridge/ai_providers.json` で設定ファイルを作り、接続先 (`providers`) と作業ごとの接続先 (`tasks`) を書き換えます。[`ai_providers.sample.json`](ai_providers.sample.json) の `_手順`・`_接続先の種類`・`_作業の一覧` に書き方があります。
 2. 使える接続先は Gemini API・agy・Claude Code (`claude` CLI)・OpenAI 互換 API (LM Studio など) です。API キーは `~/.bashrc` などで環境変数に入れ、設定ファイルにはその名前 (`api_key_env`) を書きます (ファイルにキーを書いても使いません)。設定ファイルをモジュールのフォルダに置くと Foundry からブラウザで読めてしまうので、必ず `~/.config/ai-gm-bridge/` に置きます。
-3. FVTT では、Geminiちゃんのメニューの「⚙️ AI の設定」から、接続先と作業ごとの接続先を画面で書き換えられます。保存すると設定ファイルに書き、すぐ使います (キーは「設定済み / 未設定」だけを表示し、書けるのは環境変数の名前だけです)。
+3. FVTT では、Geminiちゃんのメニューの「⚙️ AI の設定」から、接続先と作業ごとの接続先を画面で書き換えられます。保存すると設定ファイルに書き、すぐ使います (キーは「設定済み / 未設定」だけを表示し、書けるのは環境変数の名前だけです)。画面から設定できる OpenAI 互換の URL は自分の PC (localhost) だけで、別の PC やクラウドの URL は設定ファイルに直接書きます。
 4. `python3 -m gm_server.ai_routing` で、いまの振り分けとキーが設定済みかどうかを確かめられます (キーの値は出ません)。AI GM サーバーの起動時にも同じ表が出ます。
 
 設定ファイルが無ければ今までどおりです。書き方の詳細は [`docs/specification.md` の「AI の接続先の振り分け」](docs/specification.md#ai-の接続先の振り分け) にあります。

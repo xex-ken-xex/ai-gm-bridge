@@ -10,6 +10,7 @@ import asyncio
 import contextlib
 import json
 import os
+import re
 import signal
 import time
 import urllib.request
@@ -241,7 +242,7 @@ class ClaudeCodeProvider(Provider):
     def key_status(self) -> str:
         if os.environ.get("ANTHROPIC_API_KEY"):
             return "設定済み (ANTHROPIC_API_KEY)"
-        return "不要 (claude にログイン済みなら)"
+        return "不要 (要ログイン)"
 
     def describe(self) -> str:
         return f"{self.name} ({self.kind_label}, モデル: {self.model or 'claude の既定'}, 同時実行: {self.concurrency})"
@@ -330,7 +331,11 @@ class OpenAICompatProvider(Provider):
     def key_status(self) -> str:
         if self.api_key:
             return "設定済み"
-        return f"未設定 ({self.api_key_env})" if self.api_key_env else "不要"
+        if not self.api_key_env:
+            return "不要"
+        # 環境変数の名前の欄にキーの値を書いてしまった場合に備え、名前らしくなければ出さない
+        named = re.fullmatch(r"[A-Z_][A-Z0-9_]{0,39}", self.api_key_env) and sum(c.isdigit() for c in self.api_key_env) <= 4
+        return f"未設定 ({self.api_key_env})" if named else "未設定"
 
     def describe(self) -> str:
         key = f", API キー: {self.key_status}" if self.key_status != "不要" else ""

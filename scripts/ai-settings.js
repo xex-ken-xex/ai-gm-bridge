@@ -31,7 +31,7 @@ async function openDialog(content) {
       // 見た目は styles/ai-settings.css (module.json の styles)
       classes: ["ai-gm-settings"],
       window: { title: TITLE, resizable: true },
-      position: { width: 1000, height: "auto" },
+      position: { width: 1180, height: "auto" },
       content,
       buttons: [{ action: "close", label: "閉じる", default: true }],
     });
@@ -45,7 +45,7 @@ async function openDialog(content) {
       content,
       buttons: { close: { label: "閉じる" } },
       render: html => resolve({ app, root: html instanceof HTMLElement ? html : html[0] }),
-    }, { classes: ["dialog", "ai-gm-settings"], width: 1000, height: "auto", resizable: true });
+    }, { classes: ["dialog", "ai-gm-settings"], width: 1180, height: "auto", resizable: true });
     app.render(true);
   });
 }

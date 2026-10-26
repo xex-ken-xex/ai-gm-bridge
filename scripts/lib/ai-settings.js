@@ -45,8 +45,11 @@ function providerRow(settings, p, isNew = false) {
   const cells = PROVIDER_FIELDS.map(f => {
     const usable = isNew || fields.has(f.key);
     const value = p[f.key] ?? "";
+    // 欄には設定ファイルの値だけを入れ、今の実際の値 (環境変数の既定など) は薄く見せる (保存しても既定値をファイルに書かない)
+    const current = p.defaults?.[f.key];
+    const hint = !usable ? "使いません" : current !== undefined && current !== "" ? `${current} (既定)` : f.placeholder;
     return `<td><input type="text" data-field="${f.key}" value="${escapeHtml(value)}"
-      placeholder="${escapeHtml(usable ? f.placeholder : "使いません")}"${usable ? "" : " disabled"}></td>`;
+      placeholder="${escapeHtml(hint)}"${usable ? "" : " disabled"}></td>`;
   }).join("");
   const status = isNew
     ? ""

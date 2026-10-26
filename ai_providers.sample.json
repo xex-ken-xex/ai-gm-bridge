@@ -1,7 +1,7 @@
 {
   "_説明": "AI GM Bridge の「作業ごとに使う AI」の設定例です。「_」で始まる項目は説明なので、読み込むときは無視されます。",
   "_手順": [
-    "1. このファイルを写します: mkdir -p ~/.config/ai-gm-bridge && cp ai_providers.sample.json ~/.config/ai-gm-bridge/ai_providers.json",
+    "1. モジュールのフォルダ (~/foundrydata/Data/modules/ai-gm-bridge) で、このファイルを写します: cd ~/foundrydata/Data/modules/ai-gm-bridge && mkdir -p ~/.config/ai-gm-bridge && cp ai_providers.sample.json ~/.config/ai-gm-bridge/ai_providers.json",
     "   ※ モジュールのフォルダ (Data/modules/ai-gm-bridge) に置いた ai_providers.json は、Foundry からブラウザで読めてしまうので読みません。",
     "2. API キーは ~/.bashrc などで環境変数に入れます (例: export GEMINI_API_KEY=...)。このファイルにはキーの値を書かず、環境変数の名前を api_key_env に書きます。",
     "3. providers に使う接続先を並べ、tasks に作業ごとの接続先を試す順に書きます。前の接続先が失敗したら次を試します。",
