@@ -268,7 +268,7 @@ async def test_long_steps_send_progress_to_fvtt(make_ctx, sent, monkeypatch):
     monkeypatch.setattr(deadline, "NOTIFY_INTERVAL", 0.01)
 
     class SlowLLM(FakeLLM):
-        async def query_json(self, prompt, unbounded=False):
+        async def query_json(self, prompt, unbounded=False, task="dungeon"):
             assert unbounded  # 上限と延長確認は run_with_deadline が管理する
             await asyncio.sleep(0.05)
             return None

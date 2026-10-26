@@ -179,6 +179,16 @@ Foundry Virtual Tabletop (FVTT) と Python の AI GM サーバーを WebSocket �
 
 起動の順番は、**FVTT → Irodori → AI GM サーバー → ブラウザ** です（Irodori は後から起動しても、そのうち切り替わります）。
 
+### AI の接続先を作業ごとに変える
+
+NPC の会話はローカルの LM Studio、シナリオビルダーは Claude Code、というように、作業ごとに使う AI を選べます。
+
+1. `mkdir -p ~/.config/ai-gm-bridge && cp ai_providers.example.json ~/.config/ai-gm-bridge/ai_providers.json` で設定ファイルを作り、接続先 (`providers`) と作業ごとの接続先 (`tasks`) を書き換えます。
+2. 使える接続先は Gemini API・agy・Claude Code (`claude` CLI)・OpenAI 互換 API (LM Studio など) です。API キーは `~/.bashrc` などで環境変数に入れ、設定ファイルにはその名前 (`api_key_env`) を書きます (ファイルにキーを書いても使いません)。設定ファイルをモジュールのフォルダに置くと Foundry からブラウザで読めてしまうので、必ず `~/.config/ai-gm-bridge/` に置きます。
+3. `python3 -m gm_server.ai_routing` で、いまの振り分けとキーが設定済みかどうかを確かめられます (キーの値は出ません)。AI GM サーバーの起動時にも同じ表が出ます。
+
+設定ファイルが無ければ今までどおりです。書き方の詳細は [`docs/specification.md` の「AI の接続先の振り分け」](docs/specification.md#ai-の接続先の振り分け) にあります。
+
 ### 環境変数
 
 `~/.bashrc` に `export` で書きます。ほとんどは既定のままで大丈夫です。
@@ -188,6 +198,7 @@ Foundry Virtual Tabletop (FVTT) と Python の AI GM サーバーを WebSocket �
 | `GEMINI_API_KEY` | （なし） | Gemini API のキー |
 | `AI_GM_GEMINI_MODEL` | `gemini-3.8-flash` | Gemini API のモデル |
 | `AI_GM_GEMINI_TIMEOUT` | `120` | Gemini API の待ち時間（秒） |
+| `AI_GM_AI_CONFIG` | `~/.config/ai-gm-bridge/ai_providers.json` | AI の接続先の振り分け設定ファイル |
 | `AI_GM_LLM_CONCURRENCY` | `3` | 同時に投げる問い合わせの数 |
 | `AI_GM_MAPGEN_TIMEOUT` | `300` | マップ生成の待ち時間（秒） |
 | `AI_GM_AGY_MODEL` | `gemini-3.8-flash-medium` | agy のモデル |
